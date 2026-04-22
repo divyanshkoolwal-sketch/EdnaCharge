@@ -14,13 +14,19 @@
     "test": "echo \"(no tests)\"",
     "generate": "prisma generate",
     "migrate": "prisma migrate dev",
-    "migrate:deploy": "prisma migrate deploy"
+    "migrate:deploy": "prisma migrate deploy",
+    "seed": "tsx seed/index.ts",
+    "test": "vitest run",
+    "test:rls": "vitest run test/rls.test.ts",
+    "rls:apply": "psql $DATABASE_URL -f sql/rls.sql"
   },
   "dependencies": {
     "@prisma/client": "^5.22.0"
   },
   "devDependencies": {
     "prisma": "^5.22.0",
-    "typescript": "^5.5.4"
+    "tsx": "^4.19.0",
+    "typescript": "^5.5.4",
+    "vitest": "^2.0.5"
   }
 }

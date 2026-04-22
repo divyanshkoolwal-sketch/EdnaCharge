@@ -1,5 +1,5 @@
-// EdnaCharge Prisma schema.
-// Phase 0: datasource + generator only. Models arrive in Phase 1 per PRD §6.
+// EdnaCharge Prisma schema
+// Spec: PRD §6 (data model), §7 (hardware_setup), §10 (chat), §11 (sessions), §13 (RLS).
 
 generator client {
   provider        = "prisma-client-js"
@@ -10,4 +10,304 @@ datasource db {
   provider   = "postgresql"
   url        = env("DATABASE_URL")
   extensions = [postgis, pgcrypto]
+}
+
+/// ------------------------------------------------------------------
+/// Enums
+/// ------------------------------------------------------------------
+
+enum Role {
+  driver
+  host
+}
+
+enum ConnectorType {
+  j1772
+  nacs
+  tesla
+  ccs1
+  chademo
+}
+
+enum HardwareTier {
+  tier_1_smart_plug
+  tier_2_bridge_kit
+  tier_3_native
+  tier_4_unmetered
+}
+
+enum BookingStatus {
+  pending
+  confirmed
+  declined
+  cancelled
+  active
+  completed
+  no_show
+  errored
+}
+
+enum ChargerStatus {
+  offline
+  available
+  occupied
+  faulted
+}
+
+enum MessageKind {
+  text
+  system
+}
+
+enum PayoutStatus {
+  pending
+  paid
+  failed
+}
+
+/// ------------------------------------------------------------------
+/// Users & profiles
+/// ------------------------------------------------------------------
+
+model User {
+  id              String   @id @default(uuid()) @db.Uuid
+  email           String   @unique
+  phone           String?  @unique
+  fullName        String
+  avatarUrl       String?
+  roles           Role[]   @default([driver])
+  expoPushToken   String?
+  stripeCustomerId String?
+  defaultPaymentMethodId String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  driverProfile   DriverProfile?
+  hostProfile     HostProfile?
+  chargers        Charger[]      @relation("HostChargers")
+  driverBookings  Booking[]      @relation("DriverBookings")
+  sentMessages    ChatMessage[]  @relation("SentMessages")
+  reviewsAuthored Review[]       @relation("AuthorReviews")
+  reviewsReceived Review[]       @relation("SubjectReviews")
+  payouts         Payout[]
+
+  @@index([email])
+}
+
+model DriverProfile {
+  userId        String  @id @db.Uuid
+  vehicleMake   String
+  vehicleModel  String
+  vehicleYear   Int
+  connectorType ConnectorType
+  licensePlate  String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+/// PRD §7 hardware_setup lives in a JSON column with a typed Zod mirror in packages/schemas.
+model HostProfile {
+  userId              String  @id @db.Uuid
+  legalName           String
+  dob                 DateTime
+  addressLine1        String
+  addressLine2        String?
+  city                String
+  state               String
+  postalCode          String
+  country             String   @default("US")
+  stripeAccountId     String?
+  stripeOnboardingComplete Boolean @default(false)
+  hardwareSetup       Json?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+/// ------------------------------------------------------------------
+/// Chargers
+/// ------------------------------------------------------------------
+
+model Charger {
+  id             String   @id @default(uuid()) @db.Uuid
+  hostId         String   @db.Uuid
+  title          String
+  photoUrl       String?
+  addressLine1   String
+  city           String
+  state          String
+  postalCode     String
+  country        String   @default("US")
+  lat            Float
+  lng            Float
+  /// PostGIS geography(Point,4326). Maintained by trigger from lat/lng.
+  location       Unsupported("geography(Point,4326)")?
+  connectorType  ConnectorType
+  powerKw        Float
+  hardwareTier   HardwareTier
+  pricePerKwhCents Int?
+  pricePerHourCents Int?
+  houseRules     String?
+  status         ChargerStatus @default(offline)
+  instantAvailable Boolean @default(false)
+  published      Boolean @default(false)
+  /// OCPP auth (Tier 3 only)
+  ocppChargePointId String? @unique
+  ocppAuthHash   String?
+  /// Weekly availability template: array of { dow: 0-6, start: "HH:MM", end: "HH:MM" }
+  availability   Json     @default("[]")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  host           User      @relation("HostChargers", fields: [hostId], references: [id], onDelete: Cascade)
+  bookings       Booking[]
+  sessions       ChargingSession[]
+
+  @@index([hostId])
+  @@index([status])
+}
+
+/// ------------------------------------------------------------------
+/// Bookings & sessions
+/// ------------------------------------------------------------------
+
+model Booking {
+  id              String   @id @default(uuid()) @db.Uuid
+  chargerId       String   @db.Uuid
+  driverId        String   @db.Uuid
+  status          BookingStatus @default(pending)
+  startAt         DateTime
+  endAt           DateTime
+  estimatedKwh    Float
+  estimatedCostCents Int
+  platformFeeCents   Int
+  /// Driver's optional note attached at request time.
+  driverMessage   String?
+  /// Host's optional decline reason.
+  declineReason   String?
+  stripePaymentIntentId String? @unique
+  preauthAmountCents    Int
+  capturedAmountCents   Int?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  respondedAt     DateTime?
+  autoDeclineAt   DateTime
+
+  charger         Charger        @relation(fields: [chargerId], references: [id], onDelete: Cascade)
+  driver          User           @relation("DriverBookings", fields: [driverId], references: [id], onDelete: Cascade)
+  session         ChargingSession?
+  chatThread      ChatThread?
+  reviews         Review[]
+  payouts         Payout[]
+
+  @@index([driverId, status])
+  @@index([chargerId, status])
+  @@index([autoDeclineAt])
+}
+
+model ChargingSession {
+  id             String   @id @default(uuid()) @db.Uuid
+  bookingId      String   @unique @db.Uuid
+  chargerId      String   @db.Uuid
+  ocppTransactionId Int?  @unique
+  startedAt      DateTime @default(now())
+  endedAt        DateTime?
+  meterStartWh   Int      @default(0)
+  meterStopWh    Int?
+  finalKwh       Float?
+  finalCostCents Int?
+  errorCode      String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  booking        Booking   @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  charger        Charger   @relation(fields: [chargerId], references: [id], onDelete: Cascade)
+  meterValues    MeterValue[]
+
+  @@index([chargerId])
+}
+
+model MeterValue {
+  id             BigInt   @id @default(autoincrement())
+  sessionId      String   @db.Uuid
+  ts             DateTime @default(now())
+  energyWh       Int
+  powerW         Int
+  voltageV       Float?
+  currentA       Float?
+  createdAt      DateTime @default(now())
+
+  session        ChargingSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId, ts])
+}
+
+/// ------------------------------------------------------------------
+/// Chat (PRD §10)
+/// ------------------------------------------------------------------
+
+model ChatThread {
+  id             String   @id @default(uuid()) @db.Uuid
+  bookingId      String   @unique @db.Uuid
+  createdAt      DateTime @default(now())
+  closedAt       DateTime?
+
+  booking        Booking       @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  messages       ChatMessage[]
+}
+
+model ChatMessage {
+  id             String       @id @default(uuid()) @db.Uuid
+  threadId       String       @db.Uuid
+  senderId       String?      @db.Uuid /// null = system
+  kind           MessageKind  @default(text)
+  body           String
+  createdAt      DateTime     @default(now())
+  readAt         DateTime?
+
+  thread         ChatThread   @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  sender         User?        @relation("SentMessages", fields: [senderId], references: [id])
+
+  @@index([threadId, createdAt])
+}
+
+/// ------------------------------------------------------------------
+/// Reviews & payouts
+/// ------------------------------------------------------------------
+
+model Review {
+  id             String   @id @default(uuid()) @db.Uuid
+  bookingId      String   @db.Uuid
+  authorId       String   @db.Uuid
+  subjectId      String   @db.Uuid
+  stars          Int
+  text           String?
+  createdAt      DateTime @default(now())
+
+  booking        Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  author         User     @relation("AuthorReviews", fields: [authorId], references: [id])
+  subject        User     @relation("SubjectReviews", fields: [subjectId], references: [id])
+
+  @@unique([bookingId, authorId])
+  @@index([subjectId])
+}
+
+model Payout {
+  id             String   @id @default(uuid()) @db.Uuid
+  hostId         String   @db.Uuid
+  bookingId      String   @db.Uuid
+  grossCents     Int
+  platformFeeCents Int
+  netCents       Int
+  stripeTransferId String?
+  status         PayoutStatus @default(pending)
+  createdAt      DateTime @default(now())
+
+  host           User     @relation(fields: [hostId], references: [id])
+  booking        Booking  @relation(fields: [bookingId], references: [id])
+
+  @@index([hostId, status])
 }

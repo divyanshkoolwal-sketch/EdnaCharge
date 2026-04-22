@@ -1,9 +1,14 @@
-// Prisma client re-export. Populated once `prisma generate` runs in Phase 1.
-// For Phase 0 we expose a lazy getter so importers compile even before generate.
-export type PrismaClient = unknown;
+import { PrismaClient } from '@prisma/client';
 
-export function getPrisma(): PrismaClient {
-  throw new Error(
-    'Prisma client not generated yet. Run `pnpm -F @edna/db generate` after Phase 1 schema is in place.',
-  );
+declare global {
+  var __edna_prisma: PrismaClient | undefined;
 }
+
+/// Singleton PrismaClient. Reused across hot-reloads in dev to avoid exhausting
+/// the connection pool.
+export const prisma: PrismaClient =
+  globalThis.__edna_prisma ?? new PrismaClient({ log: ['warn', 'error'] });
+
+if (process.env.NODE_ENV !== 'production') globalThis.__edna_prisma = prisma;
+
+export * from '@prisma/client';
