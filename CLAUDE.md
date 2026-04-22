@@ -70,7 +70,7 @@ Keep this current. When a gate passes, mark it ✅ with the date.
 
 | Phase | Deliverable | Gate | Status |
 |---|---|---|---|
-| 0 | Repo boots, /healthz green, demo:loop passes, Sentry smoke fires | `pnpm dev` + `pnpm demo:loop` exit 0 | 🚧 in progress |
+| 0 | Repo boots, /healthz green, demo:loop passes, Sentry smoke fires | `pnpm dev` + `pnpm demo:loop` exit 0 | ✅ 2026-04-22 (commit `acf7a6a`). Sentry smoke deferred until real DSNs are provisioned. |
 | 1 | Prisma schema + RLS + Zod schemas + fixtures | RLS tests pass, `prisma migrate diff` empty | ⬜ |
 | 2 | Supabase auth + driver profile + Stripe SetupIntent + PaymentSheet | Clean sim: signup → card saved → listed in `payment.listPaymentMethods` | ⬜ |
 | 3 | Host onboarding + charger identification form | All 4 tier outcomes reachable, persisted correctly | ⬜ |
@@ -86,6 +86,12 @@ Keep this current. When a gate passes, mark it ✅ with the date.
 - **2026-04-22** — Sentry init in each service is guarded on the DSN env var; missing DSN logs a warning and continues (keeps local dev frictionless). `sentry:smoke` fails loud if DSNs are unset.
 - **2026-04-22** — Using local `redis-server` for dev Redis (Upstash URL in staging/prod). Driven via `REDIS_URL` env.
 - **2026-04-22** — Node 22 is installed locally; monorepo engines pinned to `>=20`. Works on both.
+- **2026-04-22** — Pinned `ocpp-rpc@^2.2.1` (latest; PRD's initial `^1.14.1` was wrong — that version doesn't exist on npm). `RPCServer` API may differ from 1.x docs; verify during Phase 5.
+- **2026-04-22** — Pinned `react-native-reanimated@~3.10.1` in mobile to satisfy Expo 51 / RN 0.74 peer; nativewind 4's newer reanimated 4 pull would have broken the mobile build.
+- **2026-04-22** — `tsx watch` dev scripts use `--ignore='**/node_modules/**'` to stop phantom restarts on pnpm lockfile touches.
+- **2026-04-22** — tRPC v11-rc peer-warns on TypeScript < 5.7.2 in `apps/mobile` (Expo 51 pins TS to 5.3.3). Peer mismatch is compile-time only; runtime is fine. Revisit when Expo SDK ships a newer TS pin.
+- **2026-04-22** — Phase 0 did not exercise `apps/mobile`'s Metro bundler (needs a simulator); gate verified on api/csms/worker only. First real mobile smoke is Phase 2 when auth screens render.
+- **2026-04-22** — Environment blockers for Phase 1: Docker is not running and the Supabase CLI is not installed. Install via `brew install supabase/tap/supabase` and start Docker before attempting `supabase start`.
 
 ## 10. Out of scope for v1 (don't build these, don't tempt yourself)
 
