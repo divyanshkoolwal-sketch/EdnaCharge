@@ -1,0 +1,47 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "ui": "stream",
+  "globalEnv": [
+    "NODE_ENV",
+    "DATABASE_URL",
+    "REDIS_URL",
+    "SUPABASE_URL",
+    "SUPABASE_ANON_KEY",
+    "SUPABASE_SERVICE_ROLE_KEY",
+    "STRIPE_SECRET_KEY",
+    "STRIPE_WEBHOOK_SECRET",
+    "SENTRY_DSN_API",
+    "SENTRY_DSN_CSMS",
+    "SENTRY_DSN_WORKER",
+    "SENTRY_DSN_MOBILE",
+    "API_URL",
+    "CSMS_PORT",
+    "API_PORT",
+    "WORKER_PORT",
+    "POSTHOG_KEY",
+    "MAPBOX_TOKEN",
+    "EXPO_PUBLIC_API_URL",
+    "EXPO_PUBLIC_SUPABASE_URL",
+    "EXPO_PUBLIC_SUPABASE_ANON_KEY",
+    "EXPO_PUBLIC_SENTRY_DSN",
+    "EXPO_PUBLIC_POSTHOG_KEY",
+    "EXPO_PUBLIC_MAPBOX_TOKEN"
+  ],
+  "tasks": {
+    "build": {
+      "dependsOn": ["^build"],
+      "outputs": ["dist/**", ".expo/**"]
+    },
+    "dev": {
+      "cache": false,
+      "persistent": true
+    },
+    "typecheck": {
+      "dependsOn": ["^build"]
+    },
+    "lint": {},
+    "test": {
+      "dependsOn": ["^build"]
+    }
+  }
+}

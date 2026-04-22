@@ -1,0 +1,15 @@
+{
+  "expo": {
+    "name": "EdnaCharge",
+    "slug": "ednacharge",
+    "version": "0.0.1",
+    "scheme": "ednacharge",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "ios": { "supportsTablet": false, "bundleIdentifier": "com.ednacharge.app" },
+    "android": { "package": "com.ednacharge.app" },
+    "plugins": ["expo-router"],
+    "experiments": { "typedRoutes": true }
+  }
+}

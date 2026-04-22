@@ -1,0 +1,13 @@
+// EdnaCharge Prisma schema.
+// Phase 0: datasource + generator only. Models arrive in Phase 1 per PRD §6.
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [postgis, pgcrypto]
+}

@@ -1,0 +1,17 @@
+node_modules
+dist
+.turbo
+.next
+.expo
+.expo-shared
+ios/Pods
+android/.gradle
+.DS_Store
+*.log
+.env
+.env.*
+!.env.example
+coverage
+*.tsbuildinfo
+supabase/.temp
+supabase/.branches
