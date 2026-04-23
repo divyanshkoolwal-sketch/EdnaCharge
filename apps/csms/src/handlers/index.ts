@@ -115,10 +115,36 @@ export function bindHandlers(client: Client, ctx: Ctx): void {
   client.handle('StopTransaction', async ({ params }) => {
     const p = params as { transactionId?: number; meterStop?: number; timestamp?: string };
     if (!p.transactionId) return { idTagInfo: { status: 'Accepted' } };
-    const session = await prisma.chargingSession.findUnique({
+    // AUDIT H3: StartTransaction's DB insert may not yet have committed when a
+    // StopTransaction arrives under heavy load / network flip. Short-retry
+    // with exponential backoff so we don't silently drop the stop and leave
+    // the session open forever.
+    let session = await prisma.chargingSession.findUnique({
       where: { ocppTransactionId: p.transactionId },
     });
-    if (!session) return { idTagInfo: { status: 'Accepted' } };
+    if (!session) {
+      for (const delayMs of [100, 300, 900]) {
+        await new Promise((r) => setTimeout(r, delayMs));
+        session = await prisma.chargingSession.findUnique({
+          where: { ocppTransactionId: p.transactionId },
+        });
+        if (session) break;
+      }
+    }
+    if (!session) {
+      logger.warn(
+        { transactionId: p.transactionId, cpId: ctx.chargePointId },
+        'StopTransaction: no matching session after retries; enqueueing deferred settle',
+      );
+      // Enqueue a delayed settle by transactionId so a late-committing
+      // StartTransaction can be reconciled by a background job.
+      await bookingsQueue().add(
+        'settle_session_by_txid',
+        { transactionId: p.transactionId, meterStop: p.meterStop, timestamp: p.timestamp },
+        { delay: 5_000 },
+      );
+      return { idTagInfo: { status: 'Accepted' } };
+    }
     const kwh = p.meterStop != null ? (p.meterStop - session.meterStartWh) / 1000 : 0;
     await prisma.chargingSession.update({
       where: { id: session.id },

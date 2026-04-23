@@ -138,6 +138,46 @@ alter table "Payout" enable row level security;
 create policy "payouts_read_host" on "Payout"
   for select using (auth.uid() = "hostId");
 
+-- ---------- BOOKING SLOT EXCLUSION (AUDIT H1) ----------
+-- Two drivers must not be able to hold overlapping non-terminal bookings on the
+-- same charger. Enforced at the database layer so it survives any application
+-- logic path (tRPC, direct PostgREST, worker).
+create extension if not exists btree_gist;
+alter table "Booking" drop constraint if exists booking_no_overlap;
+alter table "Booking" add constraint booking_no_overlap
+  exclude using gist (
+    "chargerId" with =,
+    tstzrange("startAt", "endAt", '[)') with &&
+  ) where (status in ('pending', 'confirmed', 'active'));
+
+-- ---------- AUDIT M4: bookings UPDATE split by role ----------
+-- Replace the permissive bookings_update_party policy with role-aware policies
+-- so a compromised driver JWT cannot flip status=confirmed or write
+-- capturedAmountCents via PostgREST.
+drop policy if exists "bookings_update_party" on "Booking";
+create policy "bookings_driver_update_limited" on "Booking"
+  for update using (auth.uid() = "driverId")
+  with check (
+    auth.uid() = "driverId"
+    -- Driver may only move a booking to 'cancelled'. All other fields must be
+    -- writable only by the server (service_role bypasses RLS).
+    and status in ('cancelled', 'pending')
+  );
+create policy "bookings_host_update_limited" on "Booking"
+  for update using (
+    auth.uid() = (select "hostId" from "Charger" where id = "chargerId")
+  )
+  with check (
+    auth.uid() = (select "hostId" from "Charger" where id = "chargerId")
+    and status in ('pending', 'confirmed', 'declined')
+  );
+
+-- ---------- AUDIT M5: ChatMessage UPDATE column-level grant ----------
+-- Even with the mark-read RLS policy, a party could UPDATE the `body` column.
+-- Combine RLS with a column grant so only `readAt` is writable by end users.
+revoke update on "ChatMessage" from authenticated;
+grant update("readAt") on "ChatMessage" to authenticated;
+
 -- Trigger: maintain Charger.location geography column from lat/lng.
 create or replace function charger_sync_location() returns trigger as $$
 begin

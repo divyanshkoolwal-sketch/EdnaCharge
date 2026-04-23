@@ -19,6 +19,16 @@ export async function settleSession(job: Job<{ sessionId: string }>) {
     throw new Error('Session not ended');
   }
 
+  // AUDIT H9: short-circuit if already captured. Stripe returns an error on
+  // double-capture which would fail the job and BullMQ would retry forever.
+  if (session.booking.capturedAmountCents != null) {
+    logger.info(
+      { sessionId: session.id, bookingId: session.bookingId },
+      'settle_session: booking already captured; skipping',
+    );
+    return;
+  }
+
   const kwh = session.finalKwh ?? 0;
   const charger = session.booking.charger;
   const energyCents =
@@ -30,37 +40,55 @@ export async function settleSession(job: Job<{ sessionId: string }>) {
               ((session.endedAt.getTime() - session.startedAt.getTime()) / 3_600_000),
           )
         : 0;
-  const fee = feeCents(energyCents);
-  const total = energyCents + fee;
+  // AUDIT H6: fee and total must be computed on the same base that Stripe will
+  // actually capture. The PI was created with application_fee_amount =
+  // feeCents(totalCents); at capture time we compute the fee off the clamped
+  // amount_to_capture so Stripe accounting stays consistent.
+  const rawTotal = energyCents + feeCents(energyCents);
+  const amountToCapture = Math.min(rawTotal, session.booking.preauthAmountCents);
+  const fee = feeCents(amountToCapture);
 
   await prisma.chargingSession.update({
     where: { id: session.id },
     data: { finalCostCents: energyCents },
   });
 
-  if (session.booking.stripePaymentIntentId && stripe && total > 0) {
-    // Capture only the real amount (might be less than pre-auth).
-    await stripe.paymentIntents.capture(session.booking.stripePaymentIntentId, {
-      amount_to_capture: Math.min(total, session.booking.preauthAmountCents),
-      application_fee_amount: fee,
-    });
+  if (session.booking.stripePaymentIntentId && stripe && amountToCapture > 0) {
+    // AUDIT H9: idempotency key so BullMQ retry after a partial failure doesn't
+    // error with "already captured".
+    await stripe.paymentIntents.capture(
+      session.booking.stripePaymentIntentId,
+      {
+        amount_to_capture: amountToCapture,
+        application_fee_amount: fee,
+      },
+      { idempotencyKey: `capture:${session.bookingId}` },
+    );
   }
 
   await prisma.booking.update({
     where: { id: session.bookingId },
-    data: { status: 'completed', capturedAmountCents: total },
+    data: { status: 'completed', capturedAmountCents: amountToCapture },
   });
 
-  await prisma.payout.create({
-    data: {
+  // AUDIT H9: upsert keyed on bookingId (Payout.bookingId is @unique in the
+  // schema) so a retry after a post-capture crash doesn't create a second row.
+  await prisma.payout.upsert({
+    where: { bookingId: session.bookingId },
+    create: {
       hostId: session.booking.charger.hostId,
       bookingId: session.bookingId,
-      grossCents: total,
+      grossCents: amountToCapture,
       platformFeeCents: fee,
-      netCents: total - fee,
+      netCents: amountToCapture - fee,
       status: 'pending',
+    },
+    update: {
+      grossCents: amountToCapture,
+      platformFeeCents: fee,
+      netCents: amountToCapture - fee,
     },
   });
 
-  logger.info({ sessionId: session.id, total, fee }, 'session settled');
+  logger.info({ sessionId: session.id, amountToCapture, fee }, 'session settled');
 }

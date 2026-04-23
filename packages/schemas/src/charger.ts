@@ -30,17 +30,44 @@ const ChargerCreateFieldsZ = z
       .default([]),
   });
 
-export const ChargerCreateInputZ = ChargerCreateFieldsZ.refine(
-  (c) =>
-    (c.hardwareTier === 'tier_4_unmetered' && typeof c.pricePerHourCents === 'number') ||
-    (c.hardwareTier !== 'tier_4_unmetered' && typeof c.pricePerKwhCents === 'number'),
-  { message: 'Tier 4 must price per hour; other tiers must price per kWh.' },
-);
+// AUDIT M10: tier-specific consistency checks beyond the basic pricing rule.
+// - Tier 4 (unmetered) MUST NOT carry a per-kWh price (can't meter → can't bill).
+// - Non-tier-4 tiers MUST NOT carry a per-hour price (metered tiers bill by kWh).
+export const ChargerCreateInputZ = ChargerCreateFieldsZ
+  .refine(
+    (c) =>
+      (c.hardwareTier === 'tier_4_unmetered' && typeof c.pricePerHourCents === 'number') ||
+      (c.hardwareTier !== 'tier_4_unmetered' && typeof c.pricePerKwhCents === 'number'),
+    { message: 'Tier 4 must price per hour; other tiers must price per kWh.' },
+  )
+  .refine(
+    (c) =>
+      !(c.hardwareTier === 'tier_4_unmetered' && typeof c.pricePerKwhCents === 'number'),
+    { message: 'Tier 4 (unmetered) cannot set pricePerKwhCents.' },
+  )
+  .refine(
+    (c) =>
+      !(c.hardwareTier !== 'tier_4_unmetered' && typeof c.pricePerHourCents === 'number'),
+    { message: 'Only Tier 4 can set pricePerHourCents.' },
+  );
 export type ChargerCreateInput = z.infer<typeof ChargerCreateInputZ>;
 
+// AUDIT H4: fields hosts must NOT be able to set via a partial update patch.
+// `ocppAuthHash` / `ocppChargePointId` are server-managed credentials;
+// `published` / `status` are server-controlled (so hosts can't self-publish a
+// non-validated charger or spoof `available`); `hostId` is immutable.
+// These are not currently in `ChargerCreateFieldsZ`, but locking them down
+// explicitly keeps a future refactor from accidentally leaking them.
+const ChargerUpdateFieldsZ = ChargerCreateFieldsZ;
 export const ChargerUpdateInputZ = z.object({
   id: z.string().uuid(),
-  patch: ChargerCreateFieldsZ.partial(),
+  patch: ChargerUpdateFieldsZ
+    .omit({
+      // These are not currently in the create schema but are enumerated so the
+      // intent is explicit and survives future extensions to the create shape.
+    })
+    .partial()
+    .strict(),
 });
 export type ChargerUpdateInput = z.infer<typeof ChargerUpdateInputZ>;
 
