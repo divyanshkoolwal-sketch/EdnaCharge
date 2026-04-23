@@ -17,7 +17,7 @@ Methodology: source read + PRD §15 diff + RLS SQL review + Stripe + BullMQ + OC
 
 ## CRITICAL
 
-### C1 — SQL injection in `charger.nearby` filters
+### C1 — SQL injection in `charger.nearby` filters  ✅ Fixed in 59874ae
 **File:** `apps/api/src/routers/charger.ts:42-49`
 **What:** The PostGIS nearby query uses `prisma.$queryRawUnsafe` and string-interpolates `filters.connectorType`, `filters.minPowerKw`, and `filters.maxPriceCents` directly into the SQL template. Zod narrows `connectorType` to an enum and the numeric fields to numbers, but the interpolation still lives in a raw SQL string.
 **Why it matters:** (a) `connectorType` is enum-validated today, but if the enum is ever widened or the schema is edited carelessly (e.g. a string passthrough added upstream, or `.passthrough()` leaking through a `.extend`), an attacker controls raw SQL. (b) The numeric interpolation (`${filters.minPowerKw}`) serializes via `String()`. If anyone later relaxes the zod validator to allow `NaN`, the literal "NaN" breaks the query; if someone widens it to a string (common during refactors) you have straight injection.
@@ -30,13 +30,13 @@ if (filters.connectorType) { params.push(filters.connectorType); conds.push(`"co
 await prisma.$queryRawUnsafe(`select … where ${conds.join(' and ')} order by …`, ...params);
 ```
 
-### C2 — Global raw-body parser breaks non-webhook JSON parsing
+### C2 — Global raw-body parser breaks non-webhook JSON parsing  ✅ Fixed in 59874ae
 **File:** `apps/api/src/webhooks/stripe.ts:9-13`, called from `apps/api/src/index.ts`
 **What:** `registerStripeWebhooks` calls `app.addContentTypeParser('application/json', {parseAs:'buffer'}, …)` globally at the Fastify instance level. This overrides JSON parsing for EVERY route that comes after, including tRPC at `/trpc/*`. tRPC then receives a `Buffer` where it expects a parsed object — every mutation silently breaks or mis-parses.
 **Why it matters:** Either all tRPC calls are broken in production, or (if Fastify routes the matched parser differently) webhook signature verification works by accident and tRPC works because it re-parses. Either way this is load-bearing and undocumented.
 **Fix:** scope the raw-body parser to the webhook route only. Use `fastify-raw-body` with `routes: ['/webhooks/stripe']`, or register webhooks inside an `app.register` encapsulation with its own `addContentTypeParser`, or switch to `app.post('/webhooks/stripe', {config:{rawBody:true}}, …)` with a route-level content-type parser.
 
-### C3 — Stripe PaymentIntent creation has no idempotency key
+### C3 — Stripe PaymentIntent creation has no idempotency key  ✅ Fixed in 59874ae
 **File:** `apps/api/src/routers/booking.ts:47-58`
 **What:** `booking.requestBooking` calls `paymentIntents.create(...)` with no `idempotencyKey`. A client that retries (lost connection, tRPC retry, user double-tapping) will trigger N pre-auths on the driver's card and create N Booking rows.
 **Why it matters:** real customer money held multiple times, multiple ChatThreads, multiple auto-decline jobs, multi-row host accept/decline confusion. Stripe documents this exact scenario as the #1 reason to use idempotency keys.
@@ -46,32 +46,32 @@ await prisma.$queryRawUnsafe(`select … where ${conds.join(' and ')} order by �
 
 ## HIGH
 
-### H1 — Race: double-spending a time slot (no booking-slot uniqueness)
+### H1 — Race: double-spending a time slot (no booking-slot uniqueness)  ✅ Fixed in 9727bbd
 **File:** `packages/db/prisma/schema.prisma` (Booking model); `apps/api/src/routers/booking.ts:30-98`
 **What:** Two drivers can POST `requestBooking` simultaneously for the same `chargerId` + overlapping `[startAt, endAt]`. Neither sees the other because there is no DB constraint or advisory lock. Both land `status=pending`; the host sees both and can accept both.
 **Fix:** add a Postgres exclusion constraint on `Booking` using `tstzrange(startAt, endAt, '[)')` with `WITH =` on `chargerId` for non-terminal statuses (`pending`, `confirmed`, `active`). Alternatively, take a `pg_advisory_xact_lock(hashtext(chargerId))` at the start of `requestBooking` inside a transaction and verify no overlap before insert.
 
-### H2 — Race: host accept arrives after auto-decline fired
+### H2 — Race: host accept arrives after auto-decline fired  ✅ Fixed in 9727bbd
 **File:** `apps/api/src/routers/booking.ts:100-158`; `apps/worker/src/jobs/auto-decline.ts`
 **What:** The host's `respond=accept` only checks `b.status !== 'pending'`. If the auto-decline worker has already flipped the row to `declined`, the host sees "already responded". Fine — but the PaymentIntent was cancelled by auto-decline, and the host could race: status read says `pending`, worker transitions to `declined` between read and update. `prisma.booking.update` will overwrite it back to `confirmed` with NO PI.
 **Fix:** make the accept an optimistic-lock update: `updateMany({where:{id, status:'pending'}, data:{status:'confirmed'}})` and check `count === 1`. Same guard for decline. Separately, `BullMQ.remove()` the `auto_decline:${bookingId}` job at the top of `respond` to close the window further.
 
-### H3 — Race: StopTransaction arrives before StartTransaction's response
+### H3 — Race: StopTransaction arrives before StartTransaction's response  ✅ Fixed in 9727bbd
 **File:** `apps/csms/src/handlers/index.ts:52-134`
 **What:** `StartTransaction` creates the `ChargingSession` row; if `StopTransaction` arrives before that insert commits (extremely unlikely but possible under load / network flips), `findUnique({ocppTransactionId})` returns null and the Stop is silently dropped — the session stays open with no settle ever fired.
 **Fix:** make StartTransaction return the DB-generated `ocppTransactionId` deterministically (current code stores a random int) and in StopTransaction, if the session is missing, short-retry with backoff or enqueue a deferred settle.
 
-### H4 — `ocppCredentials` returns the plaintext password; bcrypt hash never rotated on update
+### H4 — `ocppCredentials` returns the plaintext password; bcrypt hash never rotated on update  ✅ Fixed in 9727bbd
 **File:** `apps/api/src/routers/charger.ts:116-136` + `charger.update`
 **What:** The hash IS rotated inside `ocppCredentials` (good). But: the logger at `apps/api/src/routers/charger.ts` flows through pino, which would print the return value if the tRPC onError handler ever serializes inputs/outputs. More importantly, `charger.update` happily accepts a `patch` that includes `ocppAuthHash` / `ocppChargePointId` via the broad `ChargerCreateFieldsZ.partial()` — the schema doesn't omit those fields. A malicious host could overwrite their own hash to a known value and then authenticate directly.
 **Fix:** in `packages/schemas/src/charger.ts`, `ChargerUpdateInputZ.patch` must `omit({ocppChargePointId:true, ocppAuthHash:true, hostId:true, published:true, status:true})` — most of those aren't even in `ChargerCreateFieldsZ`, but `published` and `status` ARE implicitly writable via the create schema's extensions if anyone adds them later. Lock it down explicitly. Also: never log the `password` return value; document it as secret.
 
-### H5 — `charger.update` authorization check uses read-then-update (TOCTOU)
+### H5 — `charger.update` authorization check uses read-then-update (TOCTOU)  ✅ Fixed in 9727bbd
 **File:** `apps/api/src/routers/charger.ts:106-114`
 **What:** `findUniqueOrThrow → check hostId → update`. No transaction. If ownership changed between read and write (edge case, but also: an attacker could race transfer-of-ownership flows if/when they exist), the check succeeds while the row no longer belongs to the caller.
 **Fix:** collapse to a single `updateMany({where:{id, hostId: ctx.userId}, data: input.patch})` and assert `count === 1`.
 
-### H6 — Missing `application_fee_amount` consistency on Stripe capture
+### H6 — Missing `application_fee_amount` consistency on Stripe capture  ✅ Fixed in 9727bbd
 **File:** `apps/worker/src/jobs/settle-session.ts:41-47`
 **What:** The capture sends `application_fee_amount: fee` where `fee = feeCents(energyCents)` — i.e. 15% of energy cost only. But the PaymentIntent was CREATED with `application_fee_amount: est.platformFeeCents` which is 15% of the ORIGINAL `totalCents = energyCostCents + fee` from pricing. Stripe rejects a capture `application_fee_amount` that doesn't match what the PI was created with unless `amount_to_capture` is changed in a specific way. At minimum, this is inconsistent accounting (the 15% is computed off different bases).
 **Fix:** decide canonically whether the 15% is "of the customer charge" or "of the energy cost", compute both on the same base, and recompute based on `amount_to_capture` at capture time: `fee = Math.round(amount_to_capture * 0.15)`.
