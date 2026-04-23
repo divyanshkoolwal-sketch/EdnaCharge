@@ -12,13 +12,19 @@
   },
   "dependencies": {
     "@edna/config": "workspace:*",
+    "@edna/db": "workspace:*",
     "@sentry/node": "^8.30.0",
+    "@supabase/supabase-js": "^2.45.4",
+    "bcryptjs": "^2.4.3",
+    "bullmq": "^5.20.0",
     "fastify": "^4.28.1",
+    "ioredis": "^5.4.1",
     "ocpp-rpc": "^2.2.1",
     "pino": "^9.4.0",
     "pino-pretty": "^11.2.2"
   },
   "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
     "tsx": "^4.19.0",
     "typescript": "^5.5.4"
   }

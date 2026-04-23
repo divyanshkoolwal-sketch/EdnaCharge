@@ -93,12 +93,27 @@ importers:
       '@edna/config':
         specifier: workspace:*
         version: link:../../packages/config
+      '@edna/db':
+        specifier: workspace:*
+        version: link:../../packages/db
       '@sentry/node':
         specifier: ^8.30.0
         version: 8.55.1
+      '@supabase/supabase-js':
+        specifier: ^2.45.4
+        version: 2.104.0
+      bcryptjs:
+        specifier: ^2.4.3
+        version: 2.4.3
+      bullmq:
+        specifier: ^5.20.0
+        version: 5.76.1
       fastify:
         specifier: ^4.28.1
         version: 4.29.1
+      ioredis:
+        specifier: ^5.4.1
+        version: 5.10.1
       ocpp-rpc:
         specifier: ^2.2.1
         version: 2.2.1
@@ -109,6 +124,9 @@ importers:
         specifier: ^11.2.2
         version: 11.3.0
     devDependencies:
+      '@types/bcryptjs':
+        specifier: ^2.4.6
+        version: 2.4.6
       tsx:
         specifier: ^4.19.0
         version: 4.21.0
@@ -276,6 +294,19 @@ importers:
 
   packages/ui:
     devDependencies:
+      typescript:
+        specifier: ^5.5.4
+        version: 5.9.3
+
+  tools/ocpp-simulator:
+    dependencies:
+      ocpp-rpc:
+        specifier: ^2.2.1
+        version: 2.2.1
+    devDependencies:
+      tsx:
+        specifier: ^4.19.0
+        version: 4.21.0
       typescript:
         specifier: ^5.5.4
         version: 5.9.3

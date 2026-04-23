@@ -1,0 +1,22 @@
+{
+  "name": "@edna/ocpp-simulator",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "edna-sim": "src/index.ts"
+  },
+  "scripts": {
+    "start": "tsx src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "lint": "echo \"(no lint)\"",
+    "test": "echo \"(no tests)\""
+  },
+  "dependencies": {
+    "ocpp-rpc": "^2.2.1"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.0",
+    "typescript": "^5.5.4"
+  }
+}
