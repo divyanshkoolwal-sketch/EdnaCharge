@@ -5,6 +5,8 @@ import { loadEnv } from '@edna/config';
 import { initSentry, Sentry } from './sentry.js';
 import { logger } from './logger.js';
 import { appRouter, type AppRouter } from './router.js';
+import { createContext } from './trpc.js';
+import { registerStripeWebhooks } from './webhooks/stripe.js';
 
 async function main() {
   const env = loadEnv();
@@ -25,10 +27,13 @@ async function main() {
     return { fired: true };
   });
 
+  await registerStripeWebhooks(app);
+
   await app.register(fastifyTRPCPlugin, {
     prefix: '/trpc',
     trpcOptions: {
       router: appRouter,
+      createContext,
       onError({ error, path }) {
         logger.error({ err: error, path }, 'tRPC error');
         Sentry.captureException(error);
