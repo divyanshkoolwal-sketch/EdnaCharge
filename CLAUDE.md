@@ -99,6 +99,7 @@ Keep this current. When a gate passes, mark it ✅ with the date.
 - **2026-04-23** — Chat Realtime uses Supabase `postgres_changes` on `ChatMessage` filtered by `threadId`; RLS in `packages/db/sql/rls.sql` keeps off-thread users from ever receiving those replication events.
 - **2026-04-23** — Auto-decline uses BullMQ delayed jobs (`AUTO_DECLINE_MS`, default 30 min; override via env for fast local tests).
 - **2026-04-23** — Push: `apps/mobile/src/lib/push.ts` registers an Expo token once per install; worker posts to `exp.host/--/api/v2/push/send`. Token storage still needs a dedicated `auth.registerExpoPushToken` mutation — added to `BLOCKERS.md` §4.
+- **2026-04-23 (audit)** — `apps/api` connects to Postgres as `DATABASE_URL`'s role (service-role / direct `postgres` role), NOT the Supabase anon key. This is load-bearing: RLS policies on `ChatMessage` assume system inserts (`senderId = null`) come from a role that bypasses RLS. Never set `DATABASE_URL` to the PostgREST anon connection string. See AUDIT.md M6.
 
 ## 10. Out of scope for v1 (don't build these, don't tempt yourself)
 

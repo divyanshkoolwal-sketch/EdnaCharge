@@ -29,6 +29,24 @@ export async function registerPushToken(): Promise<void> {
   }
   const token = (await Notifications.getExpoPushTokenAsync()).data;
   await supabase.auth.updateUser({ data: { expoPushToken: token } });
-  // Also persist via our api so the User row in Postgres gets updated.
-  // (auth router stub: would be expanded with a dedicated mutation.)
+  // AUDIT L5: persist via the dedicated tRPC mutation so User.expoPushToken
+  // in Postgres is kept in sync (worker reads from there, not from Supabase
+  // auth metadata).
+  try {
+    const apiUrl = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000';
+    const { data } = await supabase.auth.getSession();
+    const accessToken = data.session?.access_token;
+    if (accessToken) {
+      await fetch(`${apiUrl}/trpc/auth.registerExpoPushToken`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({ token }),
+      });
+    }
+  } catch {
+    // Benign: next app launch will retry via this function.
+  }
 }

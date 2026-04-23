@@ -1,4 +1,5 @@
 import { TRPCError } from '@trpc/server';
+import { z } from 'zod';
 import { router, protectedProcedure } from '../trpc.js';
 import { prisma } from '@edna/db';
 import { stripe } from '../lib/stripe.js';
@@ -7,6 +8,7 @@ import {
   ChargerIdentificationInputZ,
   HostIdentityInputZ,
 } from '@edna/schemas';
+import { setHardwareSetup } from '../lib/hardwareSetup.js';
 
 export const authRouter = router({
   getSession: protectedProcedure.query(async ({ ctx }) => {
@@ -16,8 +18,9 @@ export const authRouter = router({
     });
     if (!user) {
       // first call after signup — bootstrap the User row.
+      const fallbackName = ctx.email.split('@')[0] || 'user';
       const created = await prisma.user.create({
-        data: { id: ctx.userId, email: ctx.email, fullName: ctx.email.split('@')[0] ?? 'user' },
+        data: { id: ctx.userId, email: ctx.email, fullName: fallbackName },
         include: { driverProfile: true, hostProfile: true },
       });
       return created;
@@ -50,7 +53,6 @@ export const authRouter = router({
   submitChargerIdentification: protectedProcedure
     .input(ChargerIdentificationInputZ)
     .mutation(async ({ ctx, input }) => {
-      const hardwareSetup = { ...input, submittedAt: new Date().toISOString() };
       const host = await prisma.hostProfile.findUnique({ where: { userId: ctx.userId } });
       if (!host) {
         throw new TRPCError({
@@ -58,10 +60,13 @@ export const authRouter = router({
           message: 'Complete identity step before charger identification.',
         });
       }
-      return prisma.hostProfile.update({
-        where: { userId: ctx.userId },
-        data: { hardwareSetup },
+      // AUDIT M7: route through the validated helper so the jsonb column only
+      // ever accepts shapes that satisfy HardwareSetupZ.
+      await setHardwareSetup(ctx.userId, {
+        ...input,
+        submittedAt: new Date().toISOString(),
       });
+      return prisma.hostProfile.findUniqueOrThrow({ where: { userId: ctx.userId } });
     }),
 
   startHostOnboarding: protectedProcedure.mutation(async ({ ctx }) => {
@@ -93,6 +98,19 @@ export const authRouter = router({
     });
     return { url: link.url, accountId };
   }),
+
+  // AUDIT L5: persist the Expo push token on the User row so the worker's
+  // notify() can reach the device. Idempotent — re-issuing the same token is
+  // a no-op; a null token clears it (e.g. on logout / token refresh failure).
+  registerExpoPushToken: protectedProcedure
+    .input(z.object({ token: z.string().min(1).max(512).nullable() }))
+    .mutation(async ({ ctx, input }) => {
+      await prisma.user.update({
+        where: { id: ctx.userId },
+        data: { expoPushToken: input.token },
+      });
+      return { ok: true as const };
+    }),
 
   hostOnboardingStatus: protectedProcedure.query(async ({ ctx }) => {
     const profile = await prisma.hostProfile.findUnique({ where: { userId: ctx.userId } });

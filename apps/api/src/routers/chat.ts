@@ -76,12 +76,26 @@ export const chatRouter = router({
 
   markRead: protectedProcedure.input(MarkReadInputZ).mutation(async ({ ctx, input }) => {
     await assertThreadParty(input.threadId, ctx.userId);
+    // AUDIT M3: honor upToMessageId. UUIDs aren't monotonic, so we look up the
+    // message's createdAt and mark read only counterparty messages <= that
+    // timestamp — avoids marking unseen later-arriving messages as read.
+    const upTo = await prisma.chatMessage.findUnique({
+      where: { id: input.upToMessageId },
+      select: { createdAt: true, threadId: true },
+    });
+    if (!upTo || upTo.threadId !== input.threadId) {
+      throw new TRPCError({
+        code: 'BAD_REQUEST',
+        message: 'upToMessageId does not belong to this thread.',
+      });
+    }
     const now = new Date();
     await prisma.chatMessage.updateMany({
       where: {
         threadId: input.threadId,
         senderId: { not: ctx.userId },
         readAt: null,
+        createdAt: { lte: upTo.createdAt },
       },
       data: { readAt: now },
     });

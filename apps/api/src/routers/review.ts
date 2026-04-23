@@ -20,6 +20,17 @@ export const reviewRouter = router({
     if (b.status !== 'completed') {
       throw new TRPCError({ code: 'BAD_REQUEST', message: 'Booking not completed.' });
     }
+    // AUDIT M2: check for existing review up front and surface a friendly error
+    // instead of letting Prisma throw a generic P2002 that surfaces as a 500.
+    const existing = await prisma.review.findUnique({
+      where: { bookingId_authorId: { bookingId: b.id, authorId: ctx.userId } },
+    });
+    if (existing) {
+      throw new TRPCError({
+        code: 'CONFLICT',
+        message: 'You have already reviewed this booking.',
+      });
+    }
     const review = await prisma.review.create({
       data: {
         bookingId: b.id,
