@@ -227,6 +227,9 @@ importers:
       '@edna/config':
         specifier: workspace:*
         version: link:../../packages/config
+      '@edna/db':
+        specifier: workspace:*
+        version: link:../../packages/db
       '@sentry/node':
         specifier: ^8.30.0
         version: 8.55.1
@@ -245,6 +248,9 @@ importers:
       pino-pretty:
         specifier: ^11.2.2
         version: 11.3.0
+      stripe:
+        specifier: ^16.12.0
+        version: 16.12.0
     devDependencies:
       tsx:
         specifier: ^4.19.0
