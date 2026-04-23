@@ -1,6 +1,18 @@
 import { prisma } from '@edna/db';
+import IORedis from 'ioredis';
+import { Queue } from 'bullmq';
 import { supabase } from '../lib/supabase.js';
 import { logger } from '../logger.js';
+
+let _bookings: Queue | null = null;
+function bookingsQueue(): Queue {
+  if (_bookings) return _bookings;
+  const connection = new IORedis(process.env.REDIS_URL ?? 'redis://localhost:6379', {
+    maxRetriesPerRequest: null,
+  });
+  _bookings = new Queue('bookings', { connection });
+  return _bookings;
+}
 
 // ocpp-rpc v2 doesn't export a named server-client type. We type it structurally
 // to avoid a runtime-only `any`.
@@ -116,6 +128,8 @@ export function bindHandlers(client: Client, ctx: Ctx): void {
         finalKwh: kwh,
       },
     });
+    // Hand off settlement + Stripe capture to the worker.
+    await bookingsQueue().add('settle_session', { sessionId: session.id });
     return { idTagInfo: { status: 'Accepted' } };
   });
 }
