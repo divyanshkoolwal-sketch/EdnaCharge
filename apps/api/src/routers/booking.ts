@@ -1,5 +1,6 @@
 import { TRPCError } from '@trpc/server';
 import { z } from 'zod';
+import { createHash } from 'crypto';
 import { router, protectedProcedure } from '../trpc.js';
 import { prisma } from '@edna/db';
 import {
@@ -11,7 +12,9 @@ import {
 } from '@edna/schemas';
 import { stripe } from '../lib/stripe.js';
 import { estimateBooking } from '../lib/pricing.js';
-import { ocppCommandsQueue, notificationsQueue } from '../lib/queues.js';
+import { ocppCommandsQueue, notificationsQueue, bookingsQueue } from '../lib/queues.js';
+import { logger } from '../logger.js';
+import { Sentry } from '../sentry.js';
 
 const AUTO_DECLINE_MS = Number(process.env.AUTO_DECLINE_MS ?? 30 * 60 * 1000);
 
@@ -44,18 +47,27 @@ export const bookingRouter = router({
       const end = new Date(input.endAt);
       const est = estimateBooking(charger, start, end);
 
-      const pi = await stripe().paymentIntents.create({
-        amount: est.totalCents,
-        currency: 'usd',
-        customer: driver.stripeCustomerId,
-        payment_method: driver.defaultPaymentMethodId,
-        capture_method: 'manual',
-        confirm: true,
-        off_session: true,
-        application_fee_amount: est.platformFeeCents,
-        transfer_data: { destination: host.stripeAccountId },
-        metadata: { ednaUserId: ctx.userId, chargerId: charger.id },
-      });
+      // AUDIT C3: deterministic idempotency key so client retries /
+      // double-submits don't create N pre-auths + N booking rows.
+      const idempotencyKey = createHash('sha256')
+        .update(`booking:${ctx.userId}:${charger.id}:${start.toISOString()}:${end.toISOString()}`)
+        .digest('hex');
+
+      const pi = await stripe().paymentIntents.create(
+        {
+          amount: est.totalCents,
+          currency: 'usd',
+          customer: driver.stripeCustomerId,
+          payment_method: driver.defaultPaymentMethodId,
+          capture_method: 'manual',
+          confirm: true,
+          off_session: true,
+          application_fee_amount: est.platformFeeCents,
+          transfer_data: { destination: host.stripeAccountId },
+          metadata: { ednaUserId: ctx.userId, chargerId: charger.id },
+        },
+        { idempotencyKey },
+      );
 
       const booking = await prisma.booking.create({
         data: {
@@ -108,11 +120,26 @@ export const bookingRouter = router({
       if (b.status !== 'pending') {
         throw new TRPCError({ code: 'BAD_REQUEST', message: 'Booking already responded.' });
       }
+      // AUDIT L6: remove the delayed auto-decline job so it doesn't fire later
+      // and no-op against a non-pending row.
+      await bookingsQueue.remove(`auto_decline:${b.id}`).catch((err) => {
+        // Benign: job may have already fired or be gone.
+        void err;
+      });
       if (input.decision === 'accept') {
-        await prisma.booking.update({
-          where: { id: b.id },
+        // AUDIT H2: optimistic-lock update — if auto-decline raced between the
+        // read above and this write, count === 0 and we bail instead of
+        // silently flipping `declined` back to `confirmed` with no PI.
+        const res = await prisma.booking.updateMany({
+          where: { id: b.id, status: 'pending' },
           data: { status: 'confirmed', respondedAt: new Date() },
         });
+        if (res.count !== 1) {
+          throw new TRPCError({
+            code: 'CONFLICT',
+            message: 'Booking was already resolved (likely auto-declined).',
+          });
+        }
         if (b.chatThread) {
           await prisma.chatMessage.create({
             data: {
@@ -128,17 +155,30 @@ export const bookingRouter = router({
           bookingId: b.id,
         });
       } else {
-        if (b.stripePaymentIntentId) {
-          await stripe().paymentIntents.cancel(b.stripePaymentIntentId);
-        }
-        await prisma.booking.update({
-          where: { id: b.id },
+        // AUDIT H2: optimistic-lock on decline as well.
+        const res = await prisma.booking.updateMany({
+          where: { id: b.id, status: 'pending' },
           data: {
             status: 'declined',
             respondedAt: new Date(),
             declineReason: input.reason,
           },
         });
+        if (res.count !== 1) {
+          throw new TRPCError({
+            code: 'CONFLICT',
+            message: 'Booking was already resolved.',
+          });
+        }
+        if (b.stripePaymentIntentId) {
+          // AUDIT C3: idempotency key scoped per-booking so a retry doesn't
+          // surface a noisy "already canceled" error.
+          await stripe().paymentIntents.cancel(
+            b.stripePaymentIntentId,
+            undefined,
+            { idempotencyKey: `cancel:${b.id}` },
+          );
+        }
         if (b.chatThread) {
           await prisma.chatMessage.create({
             data: {
@@ -165,7 +205,18 @@ export const bookingRouter = router({
         throw new TRPCError({ code: 'BAD_REQUEST', message: 'Cannot cancel this booking.' });
       }
       if (b.stripePaymentIntentId) {
-        await stripe().paymentIntents.cancel(b.stripePaymentIntentId).catch(() => {});
+        // AUDIT (was silent-swallow): log failures so we can alert on PI
+        // cancel errors instead of dropping them.
+        try {
+          await stripe().paymentIntents.cancel(
+            b.stripePaymentIntentId,
+            undefined,
+            { idempotencyKey: `cancel:${b.id}` },
+          );
+        } catch (err) {
+          logger.warn({ err, bookingId: b.id }, 'stripe cancel failed on booking cancel');
+          Sentry.captureException(err);
+        }
       }
       return prisma.booking.update({
         where: { id: b.id },
@@ -257,7 +308,6 @@ export const bookingRouter = router({
 
 // Schedule the 30-min auto-decline job; pulled up here to keep requestBooking readable.
 async function bookingsQueueSchedule(bookingId: string, delay: number) {
-  const { bookingsQueue } = await import('../lib/queues.js');
   await bookingsQueue.add(
     'auto_decline',
     { bookingId },

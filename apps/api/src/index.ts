@@ -27,6 +27,10 @@ async function main() {
     return { fired: true };
   });
 
+  // AUDIT C2/L3: registerStripeWebhooks registers as an encapsulated Fastify
+  // plugin so its raw-body content-type parser is scoped to its own routes.
+  // Order is not significant with encapsulation — tRPC below parses JSON
+  // normally regardless of how Stripe's plugin configures parsing internally.
   await registerStripeWebhooks(app);
 
   await app.register(fastifyTRPCPlugin, {

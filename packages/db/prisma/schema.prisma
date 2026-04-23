@@ -298,7 +298,8 @@ model Review {
 model Payout {
   id             String   @id @default(uuid()) @db.Uuid
   hostId         String   @db.Uuid
-  bookingId      String   @db.Uuid
+  /// AUDIT H9: unique per booking — settle_session is idempotent via upsert.
+  bookingId      String   @unique @db.Uuid
   grossCents     Int
   platformFeeCents Int
   netCents       Int
@@ -310,4 +311,14 @@ model Payout {
   booking        Booking  @relation(fields: [bookingId], references: [id])
 
   @@index([hostId, status])
+}
+
+/// AUDIT H8: Stripe webhook event de-duplication. Insert-on-receive; unique
+/// violation → already processed.
+model StripeWebhookEvent {
+  id         String   @id
+  type       String
+  receivedAt DateTime @default(now())
+
+  @@index([type])
 }

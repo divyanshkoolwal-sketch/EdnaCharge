@@ -16,7 +16,41 @@ async function assertHost(userId: string) {
 export const chargerRouter = router({
   nearby: protectedProcedure.input(NearbyInputZ).query(async ({ input }) => {
     const { lat, lng, radiusMeters, filters } = input;
-    // PostGIS radius query returning published chargers with computed distance.
+    // AUDIT C1: all filter values are bound as positional parameters — no string
+    // interpolation of user input into raw SQL. connectorType is enum-validated
+    // by zod upstream, but parameterizing it removes the injection surface even
+    // if validation is relaxed later.
+    const params: unknown[] = [lat, lng, radiusMeters];
+    const conds: string[] = [
+      `published = true`,
+      `st_dwithin(location, st_setsrid(st_makepoint($2,$1),4326)::geography, $3)`,
+    ];
+    if (filters.connectorType) {
+      params.push(filters.connectorType);
+      conds.push(`"connectorType"::text = $${params.length}`);
+    }
+    if (typeof filters.minPowerKw === 'number') {
+      params.push(filters.minPowerKw);
+      conds.push(`"powerKw" >= $${params.length}`);
+    }
+    if (filters.availableNow) {
+      conds.push(`status = 'available'`);
+    }
+    if (typeof filters.maxPriceCents === 'number') {
+      params.push(filters.maxPriceCents);
+      conds.push(
+        `("pricePerKwhCents" is null or "pricePerKwhCents" <= $${params.length})`,
+      );
+    }
+    const sql = `
+      select id, title, "photoUrl", lat, lng, "connectorType", "powerKw",
+             "pricePerKwhCents", "pricePerHourCents", status,
+             st_distance(location, st_setsrid(st_makepoint($2,$1),4326)::geography) as "distanceM"
+      from "Charger"
+      where ${conds.join(' and ')}
+      order by "distanceM" asc
+      limit 500
+    `;
     const rows = await prisma.$queryRawUnsafe<
       Array<{
         id: string;
@@ -31,29 +65,7 @@ export const chargerRouter = router({
         status: string;
         distanceM: number;
       }>
-    >(
-      `
-      select id, title, "photoUrl", lat, lng, "connectorType", "powerKw",
-             "pricePerKwhCents", "pricePerHourCents", status,
-             st_distance(location, st_setsrid(st_makepoint($2,$1),4326)::geography) as "distanceM"
-      from "Charger"
-      where published = true
-        and st_dwithin(location, st_setsrid(st_makepoint($2,$1),4326)::geography, $3)
-        ${filters.connectorType ? `and "connectorType" = '${filters.connectorType}'` : ''}
-        ${filters.minPowerKw ? `and "powerKw" >= ${filters.minPowerKw}` : ''}
-        ${filters.availableNow ? `and status = 'available'` : ''}
-        ${
-          filters.maxPriceCents
-            ? `and ("pricePerKwhCents" is null or "pricePerKwhCents" <= ${filters.maxPriceCents})`
-            : ''
-        }
-      order by "distanceM" asc
-      limit 500
-      `,
-      lat,
-      lng,
-      radiusMeters,
-    );
+    >(sql, ...params);
     return rows;
   }),
 
@@ -106,11 +118,17 @@ export const chargerRouter = router({
   update: protectedProcedure
     .input(ChargerUpdateInputZ)
     .mutation(async ({ ctx, input }) => {
-      const existing = await prisma.charger.findUniqueOrThrow({ where: { id: input.id } });
-      if (existing.hostId !== ctx.userId) {
-        throw new TRPCError({ code: 'FORBIDDEN' });
+      // AUDIT H5: collapse TOCTOU check into a single updateMany guarded on
+      // hostId. If ownership changed between read and write, count === 0 and
+      // we report NOT_FOUND (rather than an out-of-date FORBIDDEN).
+      const res = await prisma.charger.updateMany({
+        where: { id: input.id, hostId: ctx.userId },
+        data: input.patch,
+      });
+      if (res.count !== 1) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Charger not found or not owned.' });
       }
-      return prisma.charger.update({ where: { id: input.id }, data: input.patch });
+      return prisma.charger.findUniqueOrThrow({ where: { id: input.id } });
     }),
 
   ocppCredentials: protectedProcedure
