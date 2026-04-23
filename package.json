@@ -15,6 +15,7 @@
     "demo:loop": "tsx scripts/demo-loop.ts",
     "sentry:smoke": "tsx scripts/sentry-smoke.ts",
     "sim": "pnpm -F @edna/ocpp-simulator start --",
+    "chaos": "tsx scripts/chaos.ts",
     "format": "prettier --write ."
   },
   "devDependencies": {

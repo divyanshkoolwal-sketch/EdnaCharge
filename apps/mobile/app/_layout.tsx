@@ -5,10 +5,13 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { StripeProvider } from '@stripe/stripe-react-native';
 import { trpc, trpcClientConfig } from '../src/lib/trpc';
 import { initSentry } from '../src/lib/sentry';
+import { initAnalytics } from '../src/lib/analytics';
+import { registerPushToken } from '../src/lib/push';
 import { bootstrapAuthListener } from '../src/state/auth';
 import { useRole } from '../src/state/role';
 
 initSentry();
+initAnalytics();
 
 export default function RootLayout() {
   const [queryClient] = useState(() => new QueryClient());
@@ -18,6 +21,7 @@ export default function RootLayout() {
   useEffect(() => {
     bootstrapAuthListener();
     void hydrateRole();
+    void registerPushToken();
   }, [hydrateRole]);
 
   const stripeKey = process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY ?? '';

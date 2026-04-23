@@ -147,3 +147,6 @@ pnpm chaos   # runs the happy path 5× clean; must exit 0
 - **Supabase local ports** — studio 54323, API 54321, DB 54322, inbucket (test email) 54324. If you have other services on those ports, Supabase CLI will fail.
 - **Stripe Connect Express** requires your Stripe account to have Connect enabled (free in test mode).
 - **Realtime channels** — PRD §16 lists 4 channels. All are standard Supabase Realtime on Postgres CDC + presence. No extra config beyond `SUPABASE_*` env.
+- **Expo push token persistence** — `apps/mobile/src/lib/push.ts` grabs the token on boot. A dedicated `auth.registerExpoPushToken` tRPC mutation that writes to `User.expoPushToken` is not wired yet; without it pushes won't deliver. Add the mutation + call it from `push.ts` once you have push creds provisioned.
+- **Mobile `pnpm install` with Expo** — `expo install --check` may want to re-pin some SDK-51 deps; run it before the first `expo start`.
+- **ocpp-rpc v2 types** — a handful of server-client callbacks are typed via a structural `Client` shape (`apps/csms/src/handlers/index.ts`). If ocpp-rpc ships a `RPCServerClient` named export later, swap the alias in.

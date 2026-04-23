@@ -71,14 +71,14 @@ Keep this current. When a gate passes, mark it ✅ with the date.
 | Phase | Deliverable | Gate | Status |
 |---|---|---|---|
 | 0 | Repo boots, /healthz green, demo:loop passes, Sentry smoke fires | `pnpm dev` + `pnpm demo:loop` exit 0 | ✅ 2026-04-22 (commit `acf7a6a`). Sentry smoke deferred until real DSNs are provisioned. |
-| 1 | Prisma schema + RLS + Zod schemas + fixtures | RLS tests pass, `prisma migrate diff` empty | ⬜ |
-| 2 | Supabase auth + driver profile + Stripe SetupIntent + PaymentSheet | Clean sim: signup → card saved → listed in `payment.listPaymentMethods` | ⬜ |
-| 3 | Host onboarding + charger identification form | All 4 tier outcomes reachable, persisted correctly | ⬜ |
-| 4 | Chargers + map + add-charger wizard + seed | Map shows clusters, host lists charger, appears <30s | ⬜ |
-| 5 | CSMS (ocpp-rpc) + simulator + 7 handlers + outbound dispatcher | `pnpm sim --charger sim-001 --session 30m` produces session with MeterValue count ≈ minutes × 6 | ⬜ |
-| 6 | Booking request + chat (Supabase Realtime) + 30-min auto-decline | Scripted driver→host flow, chat <1s, host accept flips to confirmed | ⬜ |
-| 7 | Live session + capture + receipt + review | Stripe capture at correct amount, Payout row, review posted | ⬜ |
-| 8 | Notifications + polish + chaos test | Chaos runs 5× clean, 15 PostHog events in order | ⬜ |
+| 1 | Prisma schema + RLS + Zod schemas + fixtures | RLS tests pass, `prisma migrate diff` empty | 🟡 code-complete (commit `656ca73`); RLS-under-JWT harness + `prisma migrate dev` gated on Docker + Supabase CLI (see BLOCKERS.md §1). |
+| 2 | Supabase auth + driver profile + Stripe SetupIntent + PaymentSheet | Clean sim: signup → card saved → listed in `payment.listPaymentMethods` | 🟡 code-complete (commit `1cc557b`); full verification needs Stripe test keys + Supabase local running. |
+| 3 | Host onboarding + charger identification form | All 4 tier outcomes reachable, persisted correctly | 🟡 code-complete (commit `aaec18d`); 4 tier branches implemented with per-tier copy. UI smoke blocked on Phase 2 prereqs. |
+| 4 | Chargers + map + add-charger wizard + seed | Map shows clusters, host lists charger, appears <30s | 🟡 code-complete (commit `7bf6f28`); map smoke blocked on Mapbox token. `pnpm -F @edna/db seed` blocked on Supabase-local. |
+| 5 | CSMS (ocpp-rpc) + simulator + 7 handlers + outbound dispatcher | `pnpm sim --charger sim-001 --session 30m` produces session with MeterValue count ≈ minutes × 6 | 🟡 code-complete (commit `85fe3b2`); verification blocked on Supabase-local for Prisma writes + OCPP credentials row. |
+| 6 | Booking request + chat (Supabase Realtime) + 30-min auto-decline | Scripted driver→host flow, chat <1s, host accept flips to confirmed | 🟡 code-complete (commit `aac5a2d`); blocked on Stripe + Supabase Realtime credentials. |
+| 7 | Live session + capture + receipt + review | Stripe capture at correct amount, Payout row, review posted | 🟡 code-complete (commit `11ad735`); capture path requires Stripe test keys + CSMS-emitting simulator. |
+| 8 | Notifications + polish + chaos test | Chaos runs 5× clean, 15 PostHog events in order | 🟡 code-complete; chaos script + PostHog analytics + Expo push all wired. Final chaos run needs everything above provisioned. |
 
 ## 9. Known gotchas / decisions (append-only log)
 
@@ -92,6 +92,13 @@ Keep this current. When a gate passes, mark it ✅ with the date.
 - **2026-04-22** — tRPC v11-rc peer-warns on TypeScript < 5.7.2 in `apps/mobile` (Expo 51 pins TS to 5.3.3). Peer mismatch is compile-time only; runtime is fine. Revisit when Expo SDK ships a newer TS pin.
 - **2026-04-22** — Phase 0 did not exercise `apps/mobile`'s Metro bundler (needs a simulator); gate verified on api/csms/worker only. First real mobile smoke is Phase 2 when auth screens render.
 - **2026-04-22** — Environment blockers for Phase 1: Docker is not running and the Supabase CLI is not installed. Install via `brew install supabase/tap/supabase` and start Docker before attempting `supabase start`.
+- **2026-04-23** — Phases 1–8 implemented end-to-end (see `BLOCKERS.md` for the verification recipes per phase). All three backend services typecheck clean; `pnpm demo:loop` still exits 0 after all phases.
+- **2026-04-23** — OCPP 1.6 `StartTransaction` handler picks up the earliest `confirmed` booking for the charger — simplest deterministic match for v1. Real-world pairing (RFID idTag lookup) is a post-v1 concern.
+- **2026-04-23** — `Booking.stripePaymentIntentId` is the idempotency anchor for capture + webhook reconciliation; `application_fee_amount` + `transfer_data.destination` on the manual-capture PaymentIntent implements the 15% platform cut via Connect.
+- **2026-04-23** — `apps/csms/StopTransaction` enqueues `settle_session` — `apps/worker` runs the Stripe capture so CSMS stays off the Stripe critical path (keeps OCPP responses fast).
+- **2026-04-23** — Chat Realtime uses Supabase `postgres_changes` on `ChatMessage` filtered by `threadId`; RLS in `packages/db/sql/rls.sql` keeps off-thread users from ever receiving those replication events.
+- **2026-04-23** — Auto-decline uses BullMQ delayed jobs (`AUTO_DECLINE_MS`, default 30 min; override via env for fast local tests).
+- **2026-04-23** — Push: `apps/mobile/src/lib/push.ts` registers an Expo token once per install; worker posts to `exp.host/--/api/v2/push/send`. Token storage still needs a dedicated `auth.registerExpoPushToken` mutation — added to `BLOCKERS.md` §4.
 
 ## 10. Out of scope for v1 (don't build these, don't tempt yourself)
 
