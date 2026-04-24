@@ -144,11 +144,31 @@ create policy "payouts_read_host" on "Payout"
 -- logic path (tRPC, direct PostgREST, worker).
 create extension if not exists btree_gist;
 alter table "Booking" drop constraint if exists booking_no_overlap;
+-- Postgres 15 rejects any function call inside an exclusion index expression,
+-- even through a declared-IMMUTABLE wrapper — the range constructors it
+-- would inline are STABLE. Workaround: maintain a plain `slot tsrange` column
+-- via a trigger and exclude on that column directly (no function expression).
+alter table "Booking" add column if not exists slot tsrange;
+
+create or replace function booking_fill_slot() returns trigger
+  language plpgsql as $$
+begin
+  new.slot := tsrange(new."startAt" at time zone 'UTC', new."endAt" at time zone 'UTC');
+  return new;
+end $$;
+
+drop trigger if exists booking_fill_slot_trg on "Booking";
+create trigger booking_fill_slot_trg
+  before insert or update of "startAt", "endAt" on "Booking"
+  for each row execute function booking_fill_slot();
+
+-- Touch all rows to backfill `slot` for any pre-existing data.
+update "Booking" set "startAt" = "startAt" where slot is null;
+
+alter table "Booking" drop constraint if exists booking_no_overlap;
 alter table "Booking" add constraint booking_no_overlap
-  exclude using gist (
-    "chargerId" with =,
-    tstzrange("startAt", "endAt", '[)') with &&
-  ) where (status in ('pending', 'confirmed', 'active'));
+  exclude using gist ("chargerId" with =, slot with &&)
+  where (status in ('pending', 'confirmed', 'active'));
 
 -- ---------- AUDIT M4: bookings UPDATE split by role ----------
 -- Replace the permissive bookings_update_party policy with role-aware policies

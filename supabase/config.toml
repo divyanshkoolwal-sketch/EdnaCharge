@@ -34,7 +34,6 @@ secure_password_change = false
 [auth.sms]
 enable_signup = true
 enable_confirmations = true
-otp_length = 6
 
 [realtime]
 enabled = true
