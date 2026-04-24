@@ -1,3 +1,5 @@
+import '@edna/config';
+
 // 10-minute chaos test: runs the scripted happy path 5× against the real api/csms/worker.
 // Each loop drives the full booking → chat → accept → start → stop → review flow via
 // tRPC + a simulator charger session. Exits 0 when all 5 loops complete cleanly.

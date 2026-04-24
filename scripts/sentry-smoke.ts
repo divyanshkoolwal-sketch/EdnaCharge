@@ -1,3 +1,5 @@
+import '@edna/config';
+
 // Fires /_sentry-test on each running service. Each service calls Sentry.captureException
 // and flushes before responding, so a 200 here means the event was sent (or the DSN was
 // missing — in which case the service logs a warning at boot and we fail here).

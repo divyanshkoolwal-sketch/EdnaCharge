@@ -1,6 +1,8 @@
 // Phase 0 demo loop: verify /healthz on api, csms, worker.
 // Expanded in later phases (Phase 6+) to run a full scripted booking flow.
 
+import '@edna/config'; // ensures .env is loaded from repo root
+
 type Check = { name: string; url: string };
 
 const checks: Check[] = [

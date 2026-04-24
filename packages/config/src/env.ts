@@ -1,4 +1,25 @@
 import { z } from 'zod';
+import { config as loadDotenv } from 'dotenv';
+import { existsSync } from 'node:fs';
+import { resolve } from 'node:path';
+
+// Walk up from cwd to find the first `.env`. Works for every workspace package
+// (apps/api, apps/csms, apps/worker, scripts/*), and is a no-op if none exists —
+// which is the right behaviour in prod where env is injected by the platform.
+function autoloadEnv(): void {
+  let dir = process.cwd();
+  for (let i = 0; i < 6; i++) {
+    const candidate = resolve(dir, '.env');
+    if (existsSync(candidate)) {
+      loadDotenv({ path: candidate, override: false });
+      return;
+    }
+    const parent = resolve(dir, '..');
+    if (parent === dir) break;
+    dir = parent;
+  }
+}
+autoloadEnv();
 
 const EnvSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
