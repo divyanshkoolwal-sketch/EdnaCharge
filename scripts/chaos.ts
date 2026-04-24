@@ -1,4 +1,8 @@
-import '@edna/config';
+import { existsSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { config as loadDotenv } from 'dotenv';
+const rootEnv = resolve(import.meta.dirname ?? '.', '..', '.env');
+if (existsSync(rootEnv)) loadDotenv({ path: rootEnv, override: false });
 
 // 10-minute chaos test: runs the scripted happy path 5× against the real api/csms/worker.
 // Each loop drives the full booking → chat → accept → start → stop → review flow via

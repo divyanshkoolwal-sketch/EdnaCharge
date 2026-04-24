@@ -1,4 +1,8 @@
-import '@edna/config';
+import { existsSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { config as loadDotenv } from 'dotenv';
+const rootEnv = resolve(import.meta.dirname ?? '.', '..', '.env');
+if (existsSync(rootEnv)) loadDotenv({ path: rootEnv, override: false });
 
 // Fires /_sentry-test on each running service. Each service calls Sentry.captureException
 // and flushes before responding, so a 200 here means the event was sent (or the DSN was
