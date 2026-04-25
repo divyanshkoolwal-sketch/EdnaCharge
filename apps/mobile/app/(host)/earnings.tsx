@@ -3,7 +3,10 @@ import { trpc } from '../../src/lib/trpc';
 
 export default function Earnings() {
   const q = trpc.booking.list.useQuery({ role: 'host', status: 'completed' });
-  const total = (q.data?.rows ?? []).reduce((sum, b) => sum + (b.capturedAmountCents ?? 0), 0);
+  const total = (q.data?.rows ?? []).reduce(
+    (sum: number, b: { capturedAmountCents: number | null }) => sum + (b.capturedAmountCents ?? 0),
+    0,
+  );
   return (
     <View className="flex-1 bg-white pt-20 px-6">
       <Text className="text-3xl font-bold mb-6">Earnings</Text>

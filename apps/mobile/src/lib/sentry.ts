@@ -9,7 +9,8 @@ export function initSentry(): void {
   Sentry.init({
     dsn,
     tracesSampleRate: 0.1,
-    enableNativeFramesTracking: true,
+    // enableNativeFramesTracking was removed from Sentry React Native ≥5.21;
+    // native-frame tracking is now on by default. No flag needed.
   });
 }
 

@@ -101,23 +101,27 @@ d(`chat router ${skip ?? ''}`, () => {
   });
 
   it('markRead only affects counterparty messages', async () => {
-    // Driver calls markRead — only host-sent rows should get a readAt.
-    const driverOwn = await prisma.chatMessage.findFirstOrThrow({
-      where: { threadId, senderId: driverId },
+    // Mobile passes the latest message it rendered as upToMessageId — typically
+    // the counterparty's most recent message. markRead must mark counterparty
+    // messages <= that timestamp as read, and leave the caller's own messages
+    // alone (per AUDIT M3 — upToMessageId is honoured to avoid marking
+    // unseen later-arriving messages).
+    const hostMsg = await prisma.chatMessage.findFirstOrThrow({
+      where: { threadId, senderId: hostId },
+      orderBy: { createdAt: 'desc' },
     });
     await trpc('chat.markRead', driverToken, {
       threadId,
-      upToMessageId: driverOwn.id,
+      upToMessageId: hostMsg.id,
     });
-    const stillUnread = await prisma.chatMessage.findMany({
+    const driverUnread = await prisma.chatMessage.findMany({
       where: { threadId, senderId: driverId, readAt: null },
     });
-    // Driver's own message must not have been marked by the driver.
-    expect(stillUnread.length).toBeGreaterThan(0);
-    const hostMsgRead = await prisma.chatMessage.findFirstOrThrow({
-      where: { threadId, senderId: hostId },
+    expect(driverUnread.length).toBeGreaterThan(0); // driver's own untouched
+    const reread = await prisma.chatMessage.findUniqueOrThrow({
+      where: { id: hostMsg.id },
     });
-    expect(hostMsgRead.readAt).not.toBeNull();
+    expect(reread.readAt).not.toBeNull();
   });
 
   it('closed threads reject sends', async () => {

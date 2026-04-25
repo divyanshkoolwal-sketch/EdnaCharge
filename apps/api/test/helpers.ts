@@ -43,9 +43,13 @@ export async function trpc(
   input: unknown,
   kind: 'query' | 'mutation' = 'mutation',
 ): Promise<unknown> {
+  // The api uses tRPC v11 with NO transformer (no superjson), so the wire
+  // format is the bare input — neither query strings nor mutation bodies
+  // wrap in `{ json: ... }`. The earlier `{ json: input }` wrapper here was
+  // wrong and made every test mutation appear to send `undefined` fields.
   const base = `${API_URL}/trpc/${path}`;
   const url = kind === 'query' && input !== undefined
-    ? `${base}?input=${encodeURIComponent(JSON.stringify({ json: input }))}`
+    ? `${base}?input=${encodeURIComponent(JSON.stringify(input))}`
     : base;
   const res = await fetch(url, {
     method: kind === 'mutation' ? 'POST' : 'GET',
@@ -53,10 +57,10 @@ export async function trpc(
       'content-type': 'application/json',
       authorization: `Bearer ${token}`,
     },
-    body: kind === 'mutation' ? JSON.stringify({ json: input }) : undefined,
+    body: kind === 'mutation' ? JSON.stringify(input) : undefined,
   });
   const body = (await res.json()) as {
-    result?: { data?: { json?: unknown } };
+    result?: { data?: unknown };
     error?: unknown;
   };
   if (!res.ok || body.error) {
@@ -64,7 +68,8 @@ export async function trpc(
       `tRPC ${path} ${kind} failed: ${res.status} ${JSON.stringify(body.error ?? body)}`,
     );
   }
-  return body.result?.data?.json;
+  // No transformer ⇒ payload sits directly on result.data.
+  return body.result?.data;
 }
 
 export async function createSupabaseUser(email: string, password: string): Promise<string> {

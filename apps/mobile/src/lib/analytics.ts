@@ -31,10 +31,18 @@ export type EventName =
   | 'session.stopped'
   | 'review.submitted';
 
+// PostHog's PostHogEventProperties type is internal and tightly typed
+// (JsonType-only); coerce at the boundary. Values we pass in are JSON-safe
+// in practice — strings/numbers/booleans/objects.
+type PostHogProps = Parameters<PostHog['capture']>[1];
+
 export function track(event: EventName, props: Record<string, unknown> = {}): void {
-  _client?.capture(event, props);
+  _client?.capture(event, props as unknown as PostHogProps);
 }
 
-export function identify(userId: string, props: { role: 'driver' | 'host' } & Record<string, unknown>): void {
-  _client?.identify(userId, props);
+export function identify(
+  userId: string,
+  props: { role: 'driver' | 'host' } & Record<string, unknown>,
+): void {
+  _client?.identify(userId, props as unknown as PostHogProps);
 }

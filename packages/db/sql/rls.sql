@@ -153,7 +153,13 @@ alter table "Booking" add column if not exists slot tsrange;
 create or replace function booking_fill_slot() returns trigger
   language plpgsql as $$
 begin
-  new.slot := tsrange(new."startAt" at time zone 'UTC', new."endAt" at time zone 'UTC');
+  -- `at time zone 'UTC'` produces a `timestamp` (no tz), and tsrange's only
+  -- 2-arg signature is (timestamp, timestamp). The explicit cast keeps the
+  -- function resolution unambiguous so inserts don't throw 42883.
+  new.slot := tsrange(
+    (new."startAt" at time zone 'UTC')::timestamp,
+    (new."endAt" at time zone 'UTC')::timestamp
+  );
   return new;
 end $$;
 

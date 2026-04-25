@@ -39,7 +39,7 @@ export default function ChargerDetail() {
         {c.hostReviews.length === 0 ? (
           <Text className="text-gray-500">No reviews yet.</Text>
         ) : (
-          c.hostReviews.map((r) => (
+          c.hostReviews.map((r: { id: string; stars: number; text: string | null }) => (
             <View key={r.id} className="mb-2">
               <Text>⭐️ {r.stars} — {r.text ?? ''}</Text>
             </View>

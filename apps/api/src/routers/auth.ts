@@ -11,21 +11,13 @@ import {
 import { setHardwareSetup } from '../lib/hardwareSetup.js';
 
 export const authRouter = router({
+  // protectedProcedure middleware guarantees the User row exists by the time
+  // this resolver runs (see apps/api/src/trpc.ts), so a single read is enough.
   getSession: protectedProcedure.query(async ({ ctx }) => {
-    const user = await prisma.user.findUnique({
+    return prisma.user.findUniqueOrThrow({
       where: { id: ctx.userId },
       include: { driverProfile: true, hostProfile: true },
     });
-    if (!user) {
-      // first call after signup — bootstrap the User row.
-      const fallbackName = ctx.email.split('@')[0] || 'user';
-      const created = await prisma.user.create({
-        data: { id: ctx.userId, email: ctx.email, fullName: fallbackName },
-        include: { driverProfile: true, hostProfile: true },
-      });
-      return created;
-    }
-    return user;
   }),
 
   completeDriverProfile: protectedProcedure

@@ -27,7 +27,15 @@ async function main() {
 
   const url = `${csms}/ocpp/v1.6/${cpId}`;
   console.log(`[sim] connecting ${url} (session ${sessionMs / 1000}s)`);
-  const client = new RPCClient({ endpoint: url, identity: cpId, password, protocols: ['ocpp1.6'] });
+  // ocpp-rpc v2's RPC_ClientOptions declares many required fields. The runtime
+  // applies sensible defaults — cast through unknown so the typecheck doesn't
+  // demand we pass every knob.
+  const client = new RPCClient({
+    endpoint: url,
+    identity: cpId,
+    password,
+    protocols: ['ocpp1.6'],
+  } as unknown as ConstructorParameters<typeof RPCClient>[0]);
 
   await client.connect();
   console.log('[sim] connected');
