@@ -6,11 +6,16 @@
   "scripts": {
     "dev": "expo start",
     "start": "expo start",
-    "ios": "expo start --ios",
-    "android": "expo start --android",
+    "ios": "expo run:ios",
+    "android": "expo run:android",
     "typecheck": "tsc --noEmit",
     "lint": "echo \"(no lint yet)\"",
     "test": "echo \"(no tests yet)\""
+  },
+  "expo": {
+    "autolinking": {
+      "exclude": ["react-native-worklets"]
+    }
   },
   "dependencies": {
     "@edna/schemas": "workspace:*",
