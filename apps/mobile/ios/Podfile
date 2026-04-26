@@ -77,6 +77,22 @@ target 'EdnaCharge' do
         end
       end
     end
+
+    # Sentry-Cocoa 8.x's profiling code uses `std::vector<const T>` which
+    # Xcode 26's libc++ rejects (allocator can't deal with const value types).
+    # Disable Sentry profiling at the preprocessor level — error reporting
+    # still works; only the iOS native profiler is off. See
+    # https://github.com/getsentry/sentry-cocoa/issues/4400 .
+    installer.pods_project.targets.each do |target|
+      if target.name == 'Sentry'
+        target.build_configurations.each do |config|
+          existing = config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] || ['$(inherited)']
+          existing = [existing] unless existing.is_a?(Array)
+          config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] =
+            existing + ['SENTRY_TARGET_PROFILING_SUPPORTED=0']
+        end
+      end
+    end
   end
 
   post_integrate do |installer|
