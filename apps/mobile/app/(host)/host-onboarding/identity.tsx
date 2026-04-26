@@ -1,15 +1,25 @@
 import { useState } from 'react';
-import { View, Text, TextInput, Pressable, ScrollView, Alert } from 'react-native';
+import { View, Pressable, ScrollView, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
+import {
+  Screen,
+  Input,
+  Button,
+  CTABar,
+  H1,
+  Muted,
+  Stepper,
+} from '../../../src/components/ui';
+import { ChevronLeft } from '../../../src/components/icons/Icon';
 import { trpc } from '../../../src/lib/trpc';
 
 export default function Identity() {
   const router = useRouter();
   const [legalName, setName] = useState('');
-  const [dob, setDob] = useState(''); // YYYY-MM-DD
+  const [dob, setDob] = useState('');
   const [addressLine1, setA1] = useState('');
   const [city, setCity] = useState('');
-  const [state, setState] = useState('');
+  const [stateAbbr, setStateAbbr] = useState('');
   const [postalCode, setZip] = useState('');
 
   const mut = trpc.auth.submitHostIdentity.useMutation({
@@ -18,7 +28,7 @@ export default function Identity() {
   });
 
   const submit = () => {
-    if (!legalName || !dob || !addressLine1 || !city || !state || !postalCode) {
+    if (!legalName || !dob || !addressLine1 || !city || !stateAbbr || !postalCode) {
       return Alert.alert('Missing info', 'Fill in every field.');
     }
     mut.mutate({
@@ -26,58 +36,64 @@ export default function Identity() {
       dob: new Date(`${dob}T00:00:00Z`).toISOString(),
       addressLine1,
       city,
-      state,
+      state: stateAbbr,
       postalCode,
       country: 'US',
     });
   };
 
   return (
-    <ScrollView className="flex-1 bg-white" contentContainerStyle={{ padding: 24, paddingTop: 80 }}>
-      <Text className="text-3xl font-bold mb-2">Identity</Text>
-      <Text className="text-gray-600 mb-6">Required for Stripe Connect payouts.</Text>
-      <Field label="Legal full name">
-        <TextInput value={legalName} onChangeText={setName} className={inputCls} />
-      </Field>
-      <Field label="Date of birth (YYYY-MM-DD)">
-        <TextInput value={dob} onChangeText={setDob} placeholder="1990-05-21" className={inputCls} />
-      </Field>
-      <Field label="Street">
-        <TextInput value={addressLine1} onChangeText={setA1} className={inputCls} />
-      </Field>
-      <View className="flex-row gap-3">
-        <View className="flex-1">
-          <Field label="City">
-            <TextInput value={city} onChangeText={setCity} className={inputCls} />
-          </Field>
-        </View>
-        <View style={{ width: 90 }}>
-          <Field label="State">
-            <TextInput value={state} onChangeText={setState} autoCapitalize="characters" className={inputCls} />
-          </Field>
-        </View>
-      </View>
-      <Field label="ZIP">
-        <TextInput value={postalCode} onChangeText={setZip} keyboardType="number-pad" className={inputCls} />
-      </Field>
-
-      <Pressable
-        disabled={mut.isPending}
-        onPress={submit}
-        className={`mt-4 rounded-full py-4 items-center ${mut.isPending ? 'bg-gray-300' : 'bg-black'}`}
-      >
-        <Text className="text-white font-semibold">{mut.isPending ? 'Saving…' : 'Continue'}</Text>
+    <Screen keyboardAvoiding>
+      <Pressable onPress={() => router.back()} style={{ paddingTop: 8 }}>
+        <ChevronLeft />
       </Pressable>
-    </ScrollView>
-  );
-}
-
-const inputCls = 'border border-gray-300 rounded-lg px-4 py-3 text-base';
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <View className="mb-4">
-      <Text className="text-sm text-gray-600 mb-2">{label}</Text>
-      {children}
-    </View>
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingBottom: 130 }}
+      >
+        <View style={{ marginTop: 12 }}>
+          <Stepper count={4} current={0} label="STEP 1 OF 4" />
+        </View>
+        <H1 style={{ marginTop: 14 }}>Identity</H1>
+        <Muted style={{ marginTop: 6, fontSize: 13 }}>
+          Required for Stripe Connect payouts.
+        </Muted>
+        <View style={{ marginTop: 18, gap: 10 }}>
+          <Input value={legalName} onChangeText={setName} placeholder="Legal full name" />
+          <Input
+            value={dob}
+            onChangeText={setDob}
+            placeholder="Date of birth (YYYY-MM-DD)"
+            keyboardType="numbers-and-punctuation"
+          />
+          <Input value={addressLine1} onChangeText={setA1} placeholder="Street address" />
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <View style={{ flex: 2 }}>
+              <Input value={city} onChangeText={setCity} placeholder="City" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Input
+                value={stateAbbr}
+                onChangeText={setStateAbbr}
+                placeholder="ST"
+                autoCapitalize="characters"
+                maxLength={2}
+              />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Input
+                value={postalCode}
+                onChangeText={setZip}
+                placeholder="ZIP"
+                keyboardType="number-pad"
+              />
+            </View>
+          </View>
+        </View>
+      </ScrollView>
+      <CTABar>
+        <Button label="Continue" loading={mut.isPending} onPress={submit} />
+      </CTABar>
+    </Screen>
   );
 }

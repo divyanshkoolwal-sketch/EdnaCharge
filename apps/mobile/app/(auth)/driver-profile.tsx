@@ -1,6 +1,16 @@
 import { useState } from 'react';
-import { View, Text, TextInput, Pressable, ScrollView, Alert } from 'react-native';
+import { Pressable, View, ScrollView, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
+import {
+  Screen,
+  Input,
+  Button,
+  CTABar,
+  H1,
+  Chip,
+  Label,
+} from '../../src/components/ui';
+import { ChevronLeft } from '../../src/components/icons/Icon';
 import { trpc } from '../../src/lib/trpc';
 import type { ConnectorType } from '@edna/schemas';
 
@@ -27,73 +37,72 @@ export default function DriverProfile() {
   });
 
   return (
-    <ScrollView className="flex-1 bg-white" contentContainerStyle={{ padding: 24, paddingTop: 80 }}>
-      <Text className="text-3xl font-bold mb-6">Tell us about your ride</Text>
-
-      <Field label="Your name">
-        <TextInput value={fullName} onChangeText={setFullName} className={inputCls} />
-      </Field>
-      <Field label="Make">
-        <TextInput value={vehicleMake} onChangeText={setMake} className={inputCls} />
-      </Field>
-      <Field label="Model">
-        <TextInput value={vehicleModel} onChangeText={setModel} className={inputCls} />
-      </Field>
-      <Field label="Year">
-        <TextInput
-          value={vehicleYear}
-          onChangeText={setYear}
-          keyboardType="number-pad"
-          className={inputCls}
-        />
-      </Field>
-      <Field label="Connector">
-        <View className="flex-row flex-wrap gap-2">
-          {CONNECTORS.map((c) => (
-            <Pressable
-              key={c.value}
-              onPress={() => setConnector(c.value)}
-              className={`px-4 py-2 rounded-full border ${
-                connector === c.value ? 'bg-black border-black' : 'border-gray-300'
-              }`}
-            >
-              <Text className={connector === c.value ? 'text-white' : 'text-black'}>{c.label}</Text>
-            </Pressable>
-          ))}
-        </View>
-      </Field>
-      <Field label="License plate (optional)">
-        <TextInput value={plate} onChangeText={setPlate} autoCapitalize="characters" className={inputCls} />
-      </Field>
-
-      <Pressable
-        disabled={!fullName || !vehicleMake || !vehicleModel || mut.isPending}
-        onPress={() =>
-          mut.mutate({
-            fullName,
-            vehicleMake,
-            vehicleModel,
-            vehicleYear: Number(vehicleYear) || 0,
-            connectorType: connector,
-            licensePlate: plate || undefined,
-          })
-        }
-        className={`mt-4 rounded-full py-4 items-center ${mut.isPending ? 'bg-gray-300' : 'bg-black'}`}
-      >
-        <Text className="text-white font-semibold">
-          {mut.isPending ? 'Saving…' : 'Continue to map'}
-        </Text>
+    <Screen keyboardAvoiding>
+      <Pressable onPress={() => router.back()} style={{ paddingTop: 8 }}>
+        <ChevronLeft />
       </Pressable>
-    </ScrollView>
-  );
-}
-
-const inputCls = 'border border-gray-300 rounded-lg px-4 py-3 text-base';
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <View className="mb-4">
-      <Text className="text-sm text-gray-600 mb-2">{label}</Text>
-      {children}
-    </View>
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingBottom: 130 }}
+      >
+        <View style={{ marginTop: 16 }}>
+          <H1>Tell us about{'\n'}your ride.</H1>
+        </View>
+        <View style={{ marginTop: 20, gap: 12 }}>
+          <Input value={fullName} onChangeText={setFullName} placeholder="Your name" />
+          <View style={{ flexDirection: 'row', gap: 10 }}>
+            <View style={{ flex: 1 }}>
+              <Input value={vehicleMake} onChangeText={setMake} placeholder="Make" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Input value={vehicleModel} onChangeText={setModel} placeholder="Model" />
+            </View>
+          </View>
+          <Input
+            value={vehicleYear}
+            onChangeText={setYear}
+            placeholder="Year"
+            keyboardType="number-pad"
+          />
+          <View>
+            <Label style={{ marginBottom: 8 }}>CONNECTOR TYPE</Label>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+              {CONNECTORS.map((c) => (
+                <Chip
+                  key={c.value}
+                  label={c.label}
+                  selected={connector === c.value}
+                  variant="outline"
+                  onPress={() => setConnector(c.value)}
+                />
+              ))}
+            </View>
+          </View>
+          <Input
+            value={plate}
+            onChangeText={setPlate}
+            placeholder="License plate (optional)"
+            autoCapitalize="characters"
+          />
+        </View>
+      </ScrollView>
+      <CTABar>
+        <Button
+          label="Continue to map"
+          onPress={() =>
+            mut.mutate({
+              fullName,
+              vehicleMake,
+              vehicleModel,
+              vehicleYear: Number(vehicleYear) || 0,
+              connectorType: connector,
+              licensePlate: plate || undefined,
+            })
+          }
+          loading={mut.isPending}
+          disabled={!fullName || !vehicleMake || !vehicleModel}
+        />
+      </CTABar>
+    </Screen>
   );
 }

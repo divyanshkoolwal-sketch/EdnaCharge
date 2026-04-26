@@ -1,15 +1,26 @@
-import { useState } from 'react';
-import { View, Text, TextInput, Pressable, Alert } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import { Pressable, View, Text, TextInput, Alert } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { Screen, Button, CTABar, H1, Muted } from '../../src/components/ui';
+import { ChevronLeft } from '../../src/components/icons/Icon';
+import { useTheme } from '../../src/theme/useTheme';
 import { supabase } from '../../src/lib/supabase';
 import { trpc } from '../../src/lib/trpc';
 
 export default function Otp() {
   const { email } = useLocalSearchParams<{ email: string }>();
   const router = useRouter();
+  const { c, radius } = useTheme();
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
+  const [resendIn, setResendIn] = useState(30);
   const utils = trpc.useUtils();
+  const inputRef = useRef<TextInput>(null);
+
+  useEffect(() => {
+    const t = setInterval(() => setResendIn((r) => Math.max(0, r - 1)), 1000);
+    return () => clearInterval(t);
+  }, []);
 
   const verify = async () => {
     if (!email || code.length !== 6) return;
@@ -20,7 +31,6 @@ export default function Otp() {
       Alert.alert('Bad code', error.message);
       return;
     }
-    // Warm the cache for getSession so the profile router decides what to show next.
     const session = await utils.auth.getSession.fetch();
     if (!session.driverProfile) {
       router.replace('/(auth)/driver-profile');
@@ -30,23 +40,81 @@ export default function Otp() {
   };
 
   return (
-    <View className="flex-1 bg-white px-6 pt-20">
-      <Text className="text-3xl font-bold mb-2">Enter the code</Text>
-      <Text className="text-gray-600 mb-6">Sent to {email}.</Text>
+    <Screen keyboardAvoiding>
+      <Pressable onPress={() => router.back()} style={{ paddingTop: 8 }}>
+        <ChevronLeft />
+      </Pressable>
+      <View style={{ marginTop: 24 }}>
+        <H1>Enter the code</H1>
+        <Muted style={{ marginTop: 8, fontSize: 14 }}>
+          Sent to <Text style={{ color: c.ink, fontWeight: '700' }}>{email}</Text>
+        </Muted>
+      </View>
+
+      <Pressable onPress={() => inputRef.current?.focus()}>
+        <View style={{ marginTop: 32, flexDirection: 'row', gap: 8 }}>
+          {Array.from({ length: 6 }).map((_, i) => {
+            const filled = i < code.length;
+            const active = i === code.length;
+            return (
+              <View
+                key={i}
+                style={{
+                  flex: 1,
+                  height: 56,
+                  borderRadius: radius.input,
+                  borderWidth: 1.5,
+                  borderColor: filled || active ? c.ink : c.line2,
+                  backgroundColor: filled ? c.card : 'transparent',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <Text
+                  style={{
+                    fontSize: 22,
+                    fontWeight: '700',
+                    color: filled ? c.ink : c.muted2,
+                  }}
+                >
+                  {code[i] ?? ''}
+                </Text>
+              </View>
+            );
+          })}
+        </View>
+      </Pressable>
+      {/* The actual editable buffer — visually hidden but receives input. */}
       <TextInput
+        ref={inputRef}
         value={code}
         onChangeText={(t) => setCode(t.replace(/\D/g, '').slice(0, 6))}
         keyboardType="number-pad"
-        placeholder="123456"
-        className="border border-gray-300 rounded-lg px-4 py-3 text-2xl tracking-widest text-center"
+        autoFocus
+        maxLength={6}
+        style={{ position: 'absolute', opacity: 0, height: 1, width: 1 }}
       />
-      <Pressable
-        disabled={code.length !== 6 || busy}
-        onPress={verify}
-        className={`mt-6 rounded-full py-4 items-center ${busy || code.length !== 6 ? 'bg-gray-300' : 'bg-black'}`}
-      >
-        <Text className="text-white font-semibold">{busy ? 'Verifying…' : 'Continue'}</Text>
-      </Pressable>
-    </View>
+
+      <View style={{ marginTop: 20, alignItems: 'center' }}>
+        {resendIn > 0 ? (
+          <Muted style={{ fontSize: 13 }}>
+            Resend in <Text style={{ color: c.ink, fontWeight: '700' }}>{resendIn}s</Text>
+          </Muted>
+        ) : (
+          <Pressable
+            onPress={async () => {
+              if (!email) return;
+              await supabase.auth.signInWithOtp({ email });
+              setResendIn(30);
+            }}
+          >
+            <Text style={{ color: c.ink, fontWeight: '700', fontSize: 13 }}>Resend code</Text>
+          </Pressable>
+        )}
+      </View>
+      <CTABar>
+        <Button label="Continue" onPress={verify} loading={busy} disabled={code.length !== 6} />
+      </CTABar>
+    </Screen>
   );
 }

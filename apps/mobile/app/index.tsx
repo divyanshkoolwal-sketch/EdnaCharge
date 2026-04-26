@@ -1,5 +1,6 @@
 import { Redirect } from 'expo-router';
-import { View, ActivityIndicator } from 'react-native';
+import { ActivityIndicator } from 'react-native';
+import { Screen } from '../src/components/ui';
 import { useAuth } from '../src/state/auth';
 import { useRole } from '../src/state/role';
 
@@ -9,9 +10,9 @@ export default function Index() {
 
   if (loading) {
     return (
-      <View className="flex-1 items-center justify-center bg-white">
+      <Screen style={{ alignItems: 'center', justifyContent: 'center' }}>
         <ActivityIndicator />
-      </View>
+      </Screen>
     );
   }
   if (!session) return <Redirect href="/(auth)/welcome" />;

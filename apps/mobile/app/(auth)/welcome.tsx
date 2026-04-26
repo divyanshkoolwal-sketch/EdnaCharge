@@ -1,27 +1,47 @@
-import { View, Text, Pressable } from 'react-native';
+import { View } from 'react-native';
 import { useRouter } from 'expo-router';
+import { Screen, Button, H1Lg, Body, Label, Muted, Row, StatusDot } from '../../src/components/ui';
+import { HomeChargerIllo } from '../../src/components/illustrations/HomeCharger';
+import { useTheme } from '../../src/theme/useTheme';
 
 export default function Welcome() {
   const router = useRouter();
+  const { c } = useTheme();
+
   return (
-    <View className="flex-1 bg-white px-6 justify-between pt-24 pb-12">
+    <Screen style={{ paddingHorizontal: 24, paddingBottom: 30 }}>
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingTop: 30 }}>
+        <HomeChargerIllo size={220} />
+      </View>
       <View>
-        <Text className="text-4xl font-bold">Charge where you live.</Text>
-        <Text className="text-lg text-gray-600 mt-3">
+        <Label style={{ marginBottom: 6 }}>EDNACHARGE</Label>
+        <H1Lg style={{ marginBottom: 10 }}>Charge where{'\n'}you live.</H1Lg>
+        <Body style={{ marginBottom: 20 }}>
           Find, book, and pay for EV charging at homes near you.
-        </Text>
-      </View>
-      <View className="gap-3">
-        <Pressable
+        </Body>
+        <View style={{ gap: 10 }}>
+          <Row>
+            <StatusDot />
+            <Muted>Verified hosts</Muted>
+          </Row>
+          <Row>
+            <StatusDot />
+            <Muted>Pay only for what you use</Muted>
+          </Row>
+          <Row>
+            <StatusDot />
+            <Muted>Book in seconds</Muted>
+          </Row>
+        </View>
+        <Button
+          label="Continue with email"
           onPress={() => router.push('/(auth)/sign-in')}
-          className="bg-black rounded-full py-4 items-center"
-        >
-          <Text className="text-white font-semibold text-base">Continue with email</Text>
-        </Pressable>
-        <Text className="text-center text-gray-500 text-sm">
-          By continuing you agree to our terms & privacy policy.
-        </Text>
+          style={{ marginTop: 20 }}
+        />
+        <Muted style={{ textAlign: 'center', marginTop: 12, fontSize: 11, color: c.muted2 }}>
+          By continuing you agree to terms & privacy.
+        </Muted>
       </View>
-    </View>
+    </Screen>
   );
 }

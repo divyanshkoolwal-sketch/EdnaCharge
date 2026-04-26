@@ -1,11 +1,39 @@
 import { useState } from 'react';
-import { View, Text, Pressable, ScrollView, TextInput, Alert, ActivityIndicator } from 'react-native';
+import { View, Pressable, ActivityIndicator, Alert, ScrollView } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import {
+  Screen,
+  Card,
+  FrameSoft,
+  Chip,
+  Button,
+  CTABar,
+  H1,
+  Muted,
+  Body,
+  SectionHeader,
+  Row,
+  Avatar,
+  Divider,
+  Input,
+} from '../../../src/components/ui';
+import { ChevronLeft } from '../../../src/components/icons/Icon';
+import { useTheme } from '../../../src/theme/useTheme';
 import { trpc } from '../../../src/lib/trpc';
+
+const DURATIONS: { label: string; hours: number }[] = [
+  { label: '0.5h', hours: 0.5 },
+  { label: '1h', hours: 1 },
+  { label: '2h', hours: 2 },
+  { label: '3h', hours: 3 },
+  { label: '4h', hours: 4 },
+  { label: '8h', hours: 8 },
+];
 
 export default function RequestBooking() {
   const { chargerId } = useLocalSearchParams<{ chargerId: string }>();
   const router = useRouter();
+  const { c } = useTheme();
   const charger = trpc.charger.get.useQuery({ id: chargerId! }, { enabled: !!chargerId });
 
   const [hours, setHours] = useState(1);
@@ -17,79 +45,103 @@ export default function RequestBooking() {
     onError: (e) => Alert.alert('Oops', e.message),
   });
 
-  const submit = () => {
-    const start = new Date();
-    const end = new Date(start.getTime() + hours * 3_600_000);
-    mut.mutate({
-      chargerId: chargerId!,
-      startAt: start.toISOString(),
-      endAt: end.toISOString(),
-      message: msg || undefined,
-    });
-  };
-
-  if (!charger.data) return <Center><ActivityIndicator /></Center>;
-  const c = charger.data;
-  const estKwh = c.powerKw * hours;
-  const estCents = c.pricePerKwhCents ? c.pricePerKwhCents * estKwh : c.pricePerHourCents ? c.pricePerHourCents * hours : 0;
+  if (!charger.data) {
+    return (
+      <Screen style={{ alignItems: 'center', justifyContent: 'center' }}>
+        <ActivityIndicator />
+      </Screen>
+    );
+  }
+  const ch = charger.data;
+  const estKwh = ch.powerKw * hours;
+  const energyCents = ch.pricePerKwhCents
+    ? ch.pricePerKwhCents * estKwh
+    : ch.pricePerHourCents
+      ? ch.pricePerHourCents * hours
+      : 0;
+  const feeCents = energyCents * 0.15;
+  const totalCents = energyCents + feeCents;
 
   return (
-    <ScrollView className="flex-1 bg-white" contentContainerStyle={{ padding: 24, paddingTop: 60 }}>
-      <Text className="text-3xl font-bold mb-6">Request booking</Text>
-      <Text className="text-lg font-medium">{c.title}</Text>
-      <Text className="text-gray-500">
-        {c.connectorType.toUpperCase()} · {c.powerKw} kW
-      </Text>
-
-      <Text className="mt-6 mb-2 text-sm text-gray-600">Duration: {hours}h</Text>
-      <View className="flex-row gap-2 flex-wrap">
-        {[0.5, 1, 2, 3, 4, 8].map((h) => (
-          <Pressable
-            key={h}
-            onPress={() => setHours(h)}
-            className={`px-4 py-2 rounded-full border ${hours === h ? 'bg-black border-black' : 'border-gray-300'}`}
-          >
-            <Text className={hours === h ? 'text-white' : 'text-black'}>{h}h</Text>
-          </Pressable>
-        ))}
-      </View>
-
-      <Text className="mt-6 mb-2 text-sm text-gray-600">Message (optional)</Text>
-      <TextInput
-        value={msg}
-        onChangeText={setMsg}
-        multiline
-        placeholder="e.g. arriving at 3:15, blue Model 3"
-        className="border border-gray-300 rounded-xl px-4 py-3 min-h-[80px]"
-      />
-
-      <View className="mt-8 p-4 bg-gray-50 rounded-xl">
-        <Row label="Estimated energy" value={`${estKwh.toFixed(1)} kWh`} />
-        <Row label="Estimated cost" value={`$${(estCents / 100).toFixed(2)}`} />
-        <Row label="Pre-auth (incl. 15% fee)" value={`$${((estCents * 1.15) / 100).toFixed(2)}`} />
-      </View>
-
-      <Pressable
-        disabled={mut.isPending}
-        onPress={submit}
-        className={`mt-6 rounded-full py-4 items-center ${mut.isPending ? 'bg-gray-300' : 'bg-black'}`}
-      >
-        <Text className="text-white font-semibold">
-          {mut.isPending ? 'Submitting…' : 'Send request'}
-        </Text>
+    <Screen keyboardAvoiding>
+      <Pressable onPress={() => router.back()} style={{ paddingTop: 8 }}>
+        <ChevronLeft />
       </Pressable>
-    </ScrollView>
-  );
-}
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingBottom: 130 }}
+      >
+        <H1 style={{ marginTop: 14 }}>Request{'\n'}booking</H1>
 
-const Center = ({ children }: { children: React.ReactNode }) => (
-  <View className="flex-1 items-center justify-center bg-white">{children}</View>
-);
-function Row({ label, value }: { label: string; value: string }) {
-  return (
-    <View className="flex-row justify-between mb-1">
-      <Text className="text-gray-600">{label}</Text>
-      <Text>{value}</Text>
-    </View>
+        <FrameSoft style={{ marginTop: 16 }}>
+          <Row gap={10}>
+            <Avatar name={ch.host.fullName} size="sm" />
+            <Body style={{ fontWeight: '600' }}>{ch.title}</Body>
+          </Row>
+          <Muted style={{ marginTop: 4 }}>
+            {ch.connectorType.toUpperCase()} · {ch.powerKw} kW ·{' '}
+            {ch.pricePerKwhCents ? `$${(ch.pricePerKwhCents / 100).toFixed(2)}/kWh` : '—'}
+          </Muted>
+        </FrameSoft>
+
+        <SectionHeader>Duration</SectionHeader>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+          {DURATIONS.map((d) => (
+            <Chip
+              key={d.label}
+              label={d.label}
+              variant="outline"
+              selected={hours === d.hours}
+              onPress={() => setHours(d.hours)}
+            />
+          ))}
+        </View>
+
+        <SectionHeader>Message to host</SectionHeader>
+        <Input
+          value={msg}
+          onChangeText={setMsg}
+          placeholder="e.g. arriving at 3:15, blue Model 3"
+          multiline
+          style={{ minHeight: 80, paddingTop: 14, paddingBottom: 14, height: undefined }}
+        />
+
+        <SectionHeader>Estimated cost</SectionHeader>
+        <Card padding={14}>
+          <Row between style={{ marginBottom: 6 }}>
+            <Muted>Energy (~{estKwh.toFixed(1)} kWh)</Muted>
+            <Body>${(energyCents / 100).toFixed(2)}</Body>
+          </Row>
+          <Row between style={{ marginBottom: 6 }}>
+            <Muted>Platform fee (15%)</Muted>
+            <Body>${(feeCents / 100).toFixed(2)}</Body>
+          </Row>
+          <Divider />
+          <Row between>
+            <Body style={{ fontWeight: '700' }}>Pre-auth on your card</Body>
+            <Body style={{ fontWeight: '700' }}>${(totalCents / 100).toFixed(2)}</Body>
+          </Row>
+          <Muted style={{ fontSize: 11, marginTop: 6, color: c.muted2 }}>
+            Your card is held — you'll only be charged for what you actually use.
+          </Muted>
+        </Card>
+      </ScrollView>
+      <CTABar>
+        <Button
+          label="Send request"
+          loading={mut.isPending}
+          onPress={() => {
+            const start = new Date();
+            const end = new Date(start.getTime() + hours * 3_600_000);
+            mut.mutate({
+              chargerId: chargerId!,
+              startAt: start.toISOString(),
+              endAt: end.toISOString(),
+              message: msg || undefined,
+            });
+          }}
+        />
+      </CTABar>
+    </Screen>
   );
 }

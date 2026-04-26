@@ -1,6 +1,8 @@
 import { useState } from 'react';
-import { View, Text, TextInput, Pressable, Alert } from 'react-native';
+import { Pressable, View, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
+import { Screen, Input, Button, CTABar, H1, Muted } from '../../src/components/ui';
+import { ChevronLeft } from '../../src/components/icons/Icon';
 import { supabase } from '../../src/lib/supabase';
 
 export default function SignIn() {
@@ -23,25 +25,34 @@ export default function SignIn() {
   };
 
   return (
-    <View className="flex-1 bg-white px-6 pt-20">
-      <Text className="text-3xl font-bold mb-2">Your email</Text>
-      <Text className="text-gray-600 mb-6">We'll send you a 6-digit code.</Text>
-      <TextInput
-        value={email}
-        onChangeText={setEmail}
-        placeholder="you@example.com"
-        autoCapitalize="none"
-        autoComplete="email"
-        keyboardType="email-address"
-        className="border border-gray-300 rounded-lg px-4 py-3 text-base"
-      />
-      <Pressable
-        disabled={!email || busy}
-        onPress={submit}
-        className={`mt-6 rounded-full py-4 items-center ${busy || !email ? 'bg-gray-300' : 'bg-black'}`}
-      >
-        <Text className="text-white font-semibold">{busy ? 'Sending…' : 'Send code'}</Text>
+    <Screen keyboardAvoiding>
+      <Pressable onPress={() => router.back()} style={{ paddingTop: 8 }}>
+        <ChevronLeft />
       </Pressable>
-    </View>
+      <View style={{ marginTop: 24 }}>
+        <H1>Your email</H1>
+        <Muted style={{ marginTop: 8, fontSize: 14 }}>
+          We'll send you a 6-digit code.
+        </Muted>
+      </View>
+      <View style={{ marginTop: 32 }}>
+        <Input
+          value={email}
+          onChangeText={setEmail}
+          placeholder="you@example.com"
+          autoCapitalize="none"
+          autoComplete="email"
+          keyboardType="email-address"
+        />
+      </View>
+      <CTABar>
+        <Button
+          label="Send code"
+          loading={busy}
+          disabled={!email}
+          onPress={submit}
+        />
+      </CTABar>
+    </Screen>
   );
 }

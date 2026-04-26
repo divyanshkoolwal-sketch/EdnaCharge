@@ -1,73 +1,142 @@
-import { View, Text, Pressable, ScrollView, ActivityIndicator } from 'react-native';
+import { View, ActivityIndicator, ScrollView, Image, Pressable } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { trpc } from '../../../src/lib/trpc';
+import { useTheme } from '../../../src/theme/useTheme';
+import {
+  Screen,
+  H1,
+  H2,
+  Body,
+  Muted,
+  SectionHeader,
+  Row,
+  Chip,
+  StatusDot,
+  TierBadge,
+  Avatar,
+  FrameSoft,
+  Button,
+  CTABar,
+} from '../../../src/components/ui';
+import { ChevronLeft, Star, Bolt } from '../../../src/components/icons/Icon';
+import { ChargerIllo } from '../../../src/components/illustrations/HomeCharger';
 
 export default function ChargerDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
+  const { c } = useTheme();
   const q = trpc.charger.get.useQuery({ id: id! }, { enabled: !!id });
 
-  if (q.isLoading) return <Center><ActivityIndicator /></Center>;
-  if (q.error) return <Center><Text>{q.error.message}</Text></Center>;
-  const c = q.data!;
-
-  const pricing = c.pricePerKwhCents
-    ? `$${(c.pricePerKwhCents / 100).toFixed(2)}/kWh`
-    : c.pricePerHourCents
-      ? `$${(c.pricePerHourCents / 100).toFixed(2)}/hr`
+  if (q.isLoading) {
+    return (
+      <Screen style={{ alignItems: 'center', justifyContent: 'center' }}>
+        <ActivityIndicator />
+      </Screen>
+    );
+  }
+  if (q.error || !q.data) {
+    return (
+      <Screen style={{ alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+        <Body>{q.error?.message ?? 'Not found'}</Body>
+      </Screen>
+    );
+  }
+  const ch = q.data;
+  const priceMain = ch.pricePerKwhCents
+    ? `$${(ch.pricePerKwhCents / 100).toFixed(2)}`
+    : ch.pricePerHourCents
+      ? `$${(ch.pricePerHourCents / 100).toFixed(2)}`
       : '—';
+  const priceUnit = ch.pricePerKwhCents ? '/kWh' : ch.pricePerHourCents ? '/hour' : '';
 
   return (
-    <ScrollView className="flex-1 bg-white" contentContainerStyle={{ padding: 24, paddingTop: 60 }}>
-      <Text className="text-3xl font-bold">{c.title}</Text>
-      <Text className="text-gray-600 mt-1">
-        Host: {c.host.fullName} · {c.connectorType.toUpperCase()} · {c.powerKw} kW
-      </Text>
-      <Text className="mt-2">{pricing}</Text>
-
-      <Section title="Availability">
-        <Text>{c.status === 'available' ? 'Available now' : c.status}</Text>
-      </Section>
-
-      {c.houseRules ? (
-        <Section title="House rules">
-          <Text>{c.houseRules}</Text>
-        </Section>
-      ) : null}
-
-      <Section title="Recent reviews">
-        {c.hostReviews.length === 0 ? (
-          <Text className="text-gray-500">No reviews yet.</Text>
-        ) : (
-          c.hostReviews.map((r: { id: string; stars: number; text: string | null }) => (
-            <View key={r.id} className="mb-2">
-              <Text>⭐️ {r.stars} — {r.text ?? ''}</Text>
-            </View>
-          ))
-        )}
-      </Section>
-
-      <Pressable
-        onPress={() =>
-          router.push({ pathname: '/(driver)/request/[chargerId]', params: { chargerId: c.id } })
-        }
-        className="mt-6 bg-black rounded-full py-4 items-center"
-      >
-        <Text className="text-white font-semibold">Request booking</Text>
+    <Screen>
+      <Pressable onPress={() => router.back()} style={{ paddingTop: 8 }}>
+        <ChevronLeft />
       </Pressable>
-    </ScrollView>
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 130 }}>
+        {ch.photoUrl ? (
+          <Image
+            source={{ uri: ch.photoUrl }}
+            style={{ width: '100%', height: 180, borderRadius: 18, marginTop: 14 }}
+          />
+        ) : (
+          <View style={{ marginTop: 14 }}>
+            <ChargerIllo height={180} />
+          </View>
+        )}
+
+        <View style={{ marginTop: 14 }}>
+          <Row between>
+            <H1 style={{ fontSize: 22 }}>{ch.title}</H1>
+            <TierBadge tier={tierForCharger(ch.hardwareTier)} />
+          </Row>
+          <Row gap={10} style={{ marginTop: 8 }}>
+            <Avatar name={ch.host.fullName} size="sm" />
+            <Body>Hosted by {ch.host.fullName.split(' ')[0]}</Body>
+            <Muted>·</Muted>
+            <Star size={12} />
+            <Body>4.9</Body>
+          </Row>
+        </View>
+
+        <Row gap={6} style={{ marginTop: 12, flexWrap: 'wrap' }}>
+          <Chip label={ch.connectorType.toUpperCase()} />
+          <Chip label={`${ch.powerKw} kW`} />
+          {ch.status === 'available' ? (
+            <Chip label="Available now" variant="green" iconLeft={<StatusDot />} />
+          ) : (
+            <Chip label={ch.status} variant="outline" />
+          )}
+        </Row>
+
+        <View style={{ marginTop: 16, flexDirection: 'row', alignItems: 'baseline', gap: 4 }}>
+          <H1 style={{ fontSize: 32 }}>{priceMain}</H1>
+          <Muted>{priceUnit}</Muted>
+        </View>
+
+        {ch.houseRules ? (
+          <>
+            <SectionHeader>House rules</SectionHeader>
+            <Body>{ch.houseRules}</Body>
+          </>
+        ) : null}
+
+        <SectionHeader>Recent reviews</SectionHeader>
+        {ch.hostReviews.length === 0 ? (
+          <Muted>No reviews yet — be the first.</Muted>
+        ) : (
+          <View style={{ gap: 10 }}>
+            {ch.hostReviews.map(
+              (r: { id: string; stars: number; text: string | null }) => (
+                <FrameSoft key={r.id}>
+                  <Row gap={4} style={{ marginBottom: 4 }}>
+                    {Array.from({ length: r.stars }).map((_, i) => (
+                      <Star key={i} size={11} />
+                    ))}
+                  </Row>
+                  <Body>{r.text ?? ''}</Body>
+                </FrameSoft>
+              ),
+            )}
+          </View>
+        )}
+      </ScrollView>
+      <CTABar>
+        <Button
+          label="Request booking"
+          iconLeft={<Bolt size={16} color={c.bg} />}
+          onPress={() =>
+            router.push({ pathname: '/(driver)/request/[chargerId]', params: { chargerId: ch.id } })
+          }
+        />
+      </CTABar>
+    </Screen>
   );
 }
 
-const Center = ({ children }: { children: React.ReactNode }) => (
-  <View className="flex-1 items-center justify-center bg-white">{children}</View>
-);
-
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <View className="mt-6">
-      <Text className="text-sm text-gray-500 mb-2">{title}</Text>
-      {children}
-    </View>
-  );
+function tierForCharger(t: string): string {
+  // tier_3_native → '3', tier_4_unmetered → '4'
+  const m = /tier_(\d)/.exec(t);
+  return m ? m[1]! : '?';
 }

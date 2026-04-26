@@ -1,11 +1,27 @@
 import { useState } from 'react';
-import { View, Text, Pressable, TextInput, Alert, ScrollView } from 'react-native';
+import { View, Pressable, Alert } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import {
+  Screen,
+  Card,
+  Button,
+  CTABar,
+  H1Lg,
+  Body,
+  Muted,
+  SectionHeader,
+  Row,
+  Divider,
+  Input,
+} from '../../../src/components/ui';
+import { Close, Star } from '../../../src/components/icons/Icon';
+import { useTheme } from '../../../src/theme/useTheme';
 import { trpc } from '../../../src/lib/trpc';
 
 export default function Receipt() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
+  const { c } = useTheme();
   const q = trpc.booking.get.useQuery({ id: id! }, { enabled: !!id, refetchInterval: 3000 });
   const review = trpc.review.create.useMutation({
     onSuccess: () => router.replace('/(driver)/bookings'),
@@ -14,7 +30,7 @@ export default function Receipt() {
   const [stars, setStars] = useState(5);
   const [text, setText] = useState('');
 
-  if (!q.data) return <View className="flex-1 bg-white" />;
+  if (!q.data) return <Screen><View /></Screen>;
   const b = q.data;
   const captured = b.capturedAmountCents ?? null;
   const kwh = b.session?.finalKwh ?? 0;
@@ -22,51 +38,86 @@ export default function Receipt() {
   const fee = b.platformFeeCents;
 
   return (
-    <ScrollView className="flex-1 bg-white" contentContainerStyle={{ padding: 24, paddingTop: 60 }}>
-      <Text className="text-3xl font-bold mb-2">Session complete</Text>
-      <Text className="text-5xl font-bold mt-6">{kwh.toFixed(2)} kWh</Text>
-      <View className="mt-6 p-4 bg-gray-50 rounded-xl">
-        <Row label="Energy" value={`$${(energy / 100).toFixed(2)}`} />
-        <Row label="Platform fee (15%)" value={`$${(fee / 100).toFixed(2)}`} />
-        <Row
-          label={captured != null ? 'Charged' : 'Settling…'}
-          value={captured != null ? `$${(captured / 100).toFixed(2)}` : '—'}
+    <Screen scroll contentStyle={{ paddingBottom: 160 }}>
+      <Row between style={{ paddingTop: 8 }}>
+        <Pressable onPress={() => router.back()}>
+          <Close />
+        </Pressable>
+        <Muted>Receipt</Muted>
+        <View style={{ width: 22 }} />
+      </Row>
+
+      <View style={{ alignItems: 'center', marginTop: 18 }}>
+        <Body style={{ fontWeight: '600', fontSize: 14 }}>Session complete</Body>
+        <H1Lg style={{ marginTop: 8, fontSize: 56, letterSpacing: -1 }}>
+          {kwh.toFixed(2)}
+        </H1Lg>
+        <Muted style={{ fontSize: 14, marginTop: 4 }}>kWh</Muted>
+      </View>
+
+      <Card padding={14} style={{ marginTop: 18 }}>
+        <Row between style={{ marginBottom: 8 }}>
+          <Muted>Energy</Muted>
+          <Body>${(energy / 100).toFixed(2)}</Body>
+        </Row>
+        <Row between style={{ marginBottom: 8 }}>
+          <Muted>Platform fee (15%)</Muted>
+          <Body>${(fee / 100).toFixed(2)}</Body>
+        </Row>
+        <Divider />
+        <Row between>
+          <Body style={{ fontWeight: '700', fontSize: 17 }}>Total charged</Body>
+          <Body style={{ fontWeight: '700', fontSize: 17 }}>
+            {captured != null ? `$${(captured / 100).toFixed(2)}` : 'Settling…'}
+          </Body>
+        </Row>
+        <Muted style={{ fontSize: 11, marginTop: 8 }}>
+          Pre-auth of ${(b.preauthAmountCents / 100).toFixed(2)} was released; we only captured what
+          you used.
+        </Muted>
+      </Card>
+
+      <SectionHeader>Rate your host</SectionHeader>
+      <Card padding={14}>
+        <Row gap={6} style={{ justifyContent: 'center' }}>
+          {[1, 2, 3, 4, 5].map((n) => (
+            <Pressable key={n} onPress={() => setStars(n)}>
+              <Star size={28} color={n <= stars ? '#F2A66A' : c.line2} />
+            </Pressable>
+          ))}
+        </Row>
+        <View style={{ marginTop: 12 }}>
+          <Input
+            value={text}
+            onChangeText={setText}
+            multiline
+            placeholder="Add a comment (optional)"
+            style={{ minHeight: 60, height: undefined, paddingTop: 14, paddingBottom: 14 }}
+          />
+        </View>
+      </Card>
+
+      <CTABar>
+        <Button
+          label={
+            b.status !== 'completed'
+              ? 'Waiting for settlement…'
+              : review.isPending
+                ? 'Submitting…'
+                : 'Submit review'
+          }
+          onPress={() => review.mutate({ bookingId: b.id, stars, text: text || undefined })}
+          loading={review.isPending}
+          disabled={review.isPending || b.status !== 'completed'}
         />
-      </View>
-
-      <Text className="mt-8 text-lg font-semibold">Rate your host</Text>
-      <View className="flex-row gap-2 mt-2">
-        {[1, 2, 3, 4, 5].map((n) => (
-          <Pressable key={n} onPress={() => setStars(n)}>
-            <Text className="text-3xl">{n <= stars ? '⭐️' : '☆'}</Text>
-          </Pressable>
-        ))}
-      </View>
-      <TextInput
-        value={text}
-        onChangeText={setText}
-        multiline
-        placeholder="Anything you'd like to add?"
-        className="mt-3 border border-gray-300 rounded-xl px-4 py-3 min-h-[80px]"
-      />
-      <Pressable
-        onPress={() => review.mutate({ bookingId: b.id, stars, text: text || undefined })}
-        disabled={review.isPending || b.status !== 'completed'}
-        className={`mt-6 rounded-full py-4 items-center ${review.isPending || b.status !== 'completed' ? 'bg-gray-300' : 'bg-black'}`}
-      >
-        <Text className="text-white font-semibold">
-          {b.status !== 'completed' ? 'Waiting for settlement…' : review.isPending ? 'Submitting…' : 'Submit review'}
-        </Text>
-      </Pressable>
-    </ScrollView>
-  );
-}
-
-function Row({ label, value }: { label: string; value: string }) {
-  return (
-    <View className="flex-row justify-between py-1">
-      <Text className="text-gray-600">{label}</Text>
-      <Text>{value}</Text>
-    </View>
+        <Button
+          label="Done"
+          variant="secondary"
+          height={44}
+          fontSize={14}
+          onPress={() => router.replace('/(driver)/bookings')}
+        />
+      </CTABar>
+    </Screen>
   );
 }

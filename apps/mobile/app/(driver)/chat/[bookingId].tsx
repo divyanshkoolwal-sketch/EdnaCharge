@@ -1,12 +1,29 @@
 import { useEffect, useRef, useState } from 'react';
-import { View, Text, TextInput, Pressable, FlatList, KeyboardAvoidingView, Platform } from 'react-native';
-import { useLocalSearchParams } from 'expo-router';
+import {
+  View,
+  Text,
+  TextInput,
+  Pressable,
+  FlatList,
+  KeyboardAvoidingView,
+  Platform,
+} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { StatusBar } from 'expo-status-bar';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useTheme } from '../../../src/theme/useTheme';
+import { Avatar, Chip } from '../../../src/components/ui';
+import { ChevronLeft, Plus, Send } from '../../../src/components/icons/Icon';
 import { trpc } from '../../../src/lib/trpc';
 import { supabase } from '../../../src/lib/supabase';
 import { useAuth } from '../../../src/state/auth';
 
+const QUICK_REPLIES = ['On my way ✓', 'Pull right', 'Gate 1234'];
+
 export default function ChatThread() {
   const { bookingId } = useLocalSearchParams<{ bookingId: string }>();
+  const router = useRouter();
+  const { c, isDark } = useTheme();
   const session = useAuth((s) => s.session);
   const me = session?.user.id;
   const q = trpc.chat.getThread.useQuery({ bookingId: bookingId! }, { enabled: !!bookingId });
@@ -21,14 +38,18 @@ export default function ChatThread() {
   const [draft, setDraft] = useState('');
   const listRef = useRef<FlatList>(null);
 
-  // Realtime subscription on the thread's messages table.
   useEffect(() => {
     if (!q.data?.id) return;
     const channel = supabase
       .channel(`chat:${q.data.id}`)
       .on(
         'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'ChatMessage', filter: `threadId=eq.${q.data.id}` },
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'ChatMessage',
+          filter: `threadId=eq.${q.data.id}`,
+        },
         () => utils.chat.getThread.invalidate({ bookingId: bookingId! }),
       )
       .subscribe();
@@ -47,58 +68,160 @@ export default function ChatThread() {
   }, [q.data?.messages.length]);
 
   return (
-    <KeyboardAvoidingView
-      className="flex-1 bg-white"
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      keyboardVerticalOffset={60}
-    >
-      <View className="pt-16 px-4 pb-2 border-b border-gray-100">
-        <Text className="text-lg font-semibold">
-          {q.data?.booking.charger.title ?? 'Chat'}
-        </Text>
-        <Text className="text-xs text-gray-500">{q.data?.booking.status}</Text>
-      </View>
-      <FlatList
-        ref={listRef}
-        data={q.data?.messages ?? []}
-        keyExtractor={(m) => m.id}
-        contentContainerStyle={{ padding: 12 }}
-        renderItem={({ item }) => {
-          if (item.kind === 'system') {
+    <SafeAreaView style={{ flex: 1, backgroundColor: c.bg }} edges={['top']}>
+      <StatusBar style={isDark ? 'light' : 'dark'} />
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
+        {/* Header */}
+        <View
+          style={{
+            paddingHorizontal: 16,
+            paddingTop: 8,
+            paddingBottom: 14,
+            borderBottomWidth: 1,
+            borderBottomColor: c.line,
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 12,
+          }}
+        >
+          <Pressable onPress={() => router.back()}>
+            <ChevronLeft />
+          </Pressable>
+          <Avatar name={q.data?.booking.charger.title ?? 'EC'} size="sm" />
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontSize: 14, fontWeight: '700', color: c.ink }}>
+              {q.data?.booking.charger.title ?? 'Chat'}
+            </Text>
+            <Text style={{ fontSize: 11, color: c.muted }}>
+              {q.data?.booking.status ?? '—'}
+            </Text>
+          </View>
+          <Pressable
+            onPress={() =>
+              router.push({ pathname: '/(driver)/booking/[id]', params: { id: bookingId! } })
+            }
+          >
+            <Text style={{ fontSize: 12, color: c.ink, fontWeight: '600' }}>View booking</Text>
+          </Pressable>
+        </View>
+
+        {/* Messages */}
+        <FlatList
+          ref={listRef}
+          data={q.data?.messages ?? []}
+          keyExtractor={(m) => m.id}
+          contentContainerStyle={{ padding: 16, gap: 10 }}
+          renderItem={({ item }) => {
+            if (item.kind === 'system') {
+              return (
+                <View style={{ alignItems: 'center', marginVertical: 4 }}>
+                  <Text style={{ fontSize: 11, color: c.muted }}>{item.body}</Text>
+                </View>
+              );
+            }
+            const mine = item.senderId === me;
             return (
-              <View className="items-center my-2">
-                <Text className="text-xs text-gray-500">{item.body}</Text>
+              <View>
+                <View
+                  style={{
+                    alignSelf: mine ? 'flex-end' : 'flex-start',
+                    maxWidth: '78%',
+                    backgroundColor: mine ? c.ink : c.chip,
+                    paddingVertical: 10,
+                    paddingHorizontal: 14,
+                    borderRadius: 16,
+                    borderBottomRightRadius: mine ? 4 : 16,
+                    borderBottomLeftRadius: mine ? 16 : 4,
+                  }}
+                >
+                  <Text style={{ color: mine ? c.bg : c.ink, fontSize: 14 }}>{item.body}</Text>
+                </View>
+                {mine && item.readAt ? (
+                  <Text
+                    style={{
+                      fontSize: 10,
+                      color: c.muted2,
+                      alignSelf: 'flex-end',
+                      marginTop: 2,
+                    }}
+                  >
+                    Seen
+                  </Text>
+                ) : null}
               </View>
             );
-          }
-          const mine = item.senderId === me;
-          return (
-            <View className={`my-1 ${mine ? 'self-end' : 'self-start'}`}>
-              <View className={`rounded-2xl px-4 py-2 max-w-[80%] ${mine ? 'bg-black' : 'bg-gray-100'}`}>
-                <Text className={mine ? 'text-white' : 'text-black'}>{item.body}</Text>
-              </View>
-              {mine && item.readAt ? (
-                <Text className="text-[10px] text-gray-400 text-right mt-1">Seen</Text>
-              ) : null}
-            </View>
-          );
-        }}
-      />
-      <View className="p-3 border-t border-gray-100 flex-row gap-2">
-        <TextInput
-          value={draft}
-          onChangeText={setDraft}
-          placeholder="Message…"
-          className="flex-1 border border-gray-300 rounded-full px-4 py-2"
-          multiline
+          }}
         />
-        <Pressable
-          onPress={() => q.data?.id && draft.trim() && send.mutate({ threadId: q.data.id, body: draft.trim() })}
-          className="bg-black rounded-full px-4 justify-center"
+
+        {/* Quick replies */}
+        <View style={{ paddingHorizontal: 16, paddingVertical: 8, flexDirection: 'row', gap: 6 }}>
+          {QUICK_REPLIES.map((r) => (
+            <Chip key={r} label={r} variant="outline" onPress={() => setDraft(r)} />
+          ))}
+        </View>
+
+        {/* Composer */}
+        <View
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 8,
+            paddingHorizontal: 16,
+            paddingTop: 8,
+            paddingBottom: 18,
+          }}
         >
-          <Text className="text-white">Send</Text>
-        </Pressable>
-      </View>
-    </KeyboardAvoidingView>
+          <View
+            style={{
+              width: 36,
+              height: 36,
+              borderRadius: 18,
+              backgroundColor: c.chip,
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <Plus size={16} color={c.ink} />
+          </View>
+          <TextInput
+            value={draft}
+            onChangeText={setDraft}
+            placeholder="Message…"
+            placeholderTextColor={c.muted2}
+            multiline
+            style={{
+              flex: 1,
+              minHeight: 40,
+              maxHeight: 120,
+              borderRadius: 20,
+              backgroundColor: c.chip,
+              paddingHorizontal: 14,
+              paddingTop: 10,
+              paddingBottom: 10,
+              color: c.ink,
+              fontSize: 14,
+            }}
+          />
+          <Pressable
+            onPress={() =>
+              q.data?.id && draft.trim() && send.mutate({ threadId: q.data.id, body: draft.trim() })
+            }
+            style={{
+              width: 36,
+              height: 36,
+              borderRadius: 18,
+              backgroundColor: c.ink,
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <Send size={16} color={c.bg} />
+          </Pressable>
+        </View>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }

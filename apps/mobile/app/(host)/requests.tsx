@@ -1,32 +1,102 @@
-import { View, Text, FlatList, Pressable } from 'react-native';
+import { View, FlatList, Pressable } from 'react-native';
 import { useRouter } from 'expo-router';
+import {
+  Screen,
+  H1,
+  Card,
+  Body,
+  Muted,
+  Row,
+  Avatar,
+  Chip,
+  StatusPill,
+} from '../../src/components/ui';
+import { ChevronRight, Star } from '../../src/components/icons/Icon';
+import { useTheme } from '../../src/theme/useTheme';
 import { trpc } from '../../src/lib/trpc';
 
 export default function Requests() {
   const router = useRouter();
+  const { c } = useTheme();
   const q = trpc.booking.list.useQuery({ role: 'host', status: 'pending' });
+  const count = q.data?.rows.length ?? 0;
+
   return (
-    <View className="flex-1 bg-white pt-20 px-6">
-      <Text className="text-3xl font-bold mb-6">Requests</Text>
+    <Screen flush>
+      <View style={{ paddingHorizontal: 24, paddingTop: 8 }}>
+        <Row between style={{ marginTop: 14 }}>
+          <H1>Requests</H1>
+          {count > 0 ? (
+            <View
+              style={{
+                backgroundColor: c.red,
+                height: 28,
+                paddingHorizontal: 12,
+                borderRadius: 999,
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <Body style={{ color: '#FFFFFF', fontWeight: '700', fontSize: 12 }}>
+                {count}
+              </Body>
+            </View>
+          ) : null}
+        </Row>
+      </View>
       <FlatList
         data={q.data?.rows ?? []}
         keyExtractor={(b) => b.id}
-        renderItem={({ item }) => (
-          <Pressable
-            onPress={() => router.push({ pathname: '/(host)/request/[id]', params: { id: item.id } })}
-            className="border border-gray-200 rounded-xl p-4 mb-2"
-          >
-            <Text className="font-medium">{item.charger.title}</Text>
-            <Text className="text-gray-500 text-sm">
-              {new Date(item.startAt).toLocaleString()} · pending
-            </Text>
-            <Text className="text-gray-500 text-sm">
-              ${(item.preauthAmountCents / 100).toFixed(2)} pre-auth
-            </Text>
-          </Pressable>
-        )}
-        ListEmptyComponent={<Text className="text-gray-500">No pending requests.</Text>}
+        contentContainerStyle={{ padding: 24, paddingTop: 16, gap: 10 }}
+        ListEmptyComponent={
+          <Muted style={{ textAlign: 'center', marginTop: 40 }}>
+            {q.isLoading ? 'Loading…' : 'No pending requests.'}
+          </Muted>
+        }
+        renderItem={({ item }) => {
+          const remainingMs =
+            new Date(item.autoDeclineAt).getTime() - Date.now();
+          const remaining = Math.max(0, Math.floor(remainingMs / 60_000));
+          const urgent = remainingMs < 30 * 60_000;
+          return (
+            <Pressable
+              onPress={() =>
+                router.push({ pathname: '/(host)/request/[id]', params: { id: item.id } })
+              }
+            >
+              <Card padding={14}>
+                <Row gap={10}>
+                  <Avatar name={item.charger.title} size="sm" />
+                  <View style={{ flex: 1 }}>
+                    <Body style={{ fontWeight: '700', fontSize: 14 }}>
+                      {item.charger.title}
+                    </Body>
+                    <Row gap={4}>
+                      <Star size={10} />
+                      <Muted style={{ fontSize: 11 }}>4.7</Muted>
+                    </Row>
+                  </View>
+                  <ChevronRight color={c.muted2} />
+                </Row>
+                <Body style={{ marginTop: 10, fontSize: 13 }}>
+                  {new Date(item.startAt).toLocaleString()}
+                </Body>
+                <Muted style={{ fontSize: 12 }}>
+                  ~{item.estimatedKwh.toFixed(1)} kWh · $
+                  {((item.estimatedCostCents - item.platformFeeCents) / 100).toFixed(2)}
+                </Muted>
+                <Row between style={{ marginTop: 10 }}>
+                  <Chip
+                    label={`⏱ ${remaining}m left`}
+                    variant={urgent ? 'red' : 'outline'}
+                  />
+                  <StatusPill status="pending" />
+                </Row>
+              </Card>
+            </Pressable>
+          );
+        }}
       />
-    </View>
+    </Screen>
   );
 }

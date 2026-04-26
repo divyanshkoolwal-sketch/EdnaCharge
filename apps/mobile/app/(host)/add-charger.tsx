@@ -1,6 +1,21 @@
 import { useEffect, useState } from 'react';
-import { View, Text, TextInput, Pressable, Alert, ScrollView } from 'react-native';
+import { View, Pressable, ScrollView, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
+import {
+  Screen,
+  Card,
+  Input,
+  Button,
+  CTABar,
+  H1,
+  Muted,
+  Label,
+  Stepper,
+  Chip,
+  Row,
+} from '../../src/components/ui';
+import { ChevronLeft } from '../../src/components/icons/Icon';
+import { useTheme } from '../../src/theme/useTheme';
 import { trpc } from '../../src/lib/trpc';
 import type { ConnectorType, HardwareTier } from '@edna/schemas';
 
@@ -8,10 +23,11 @@ const CONNECTORS: ConnectorType[] = ['j1772', 'nacs', 'tesla', 'ccs1', 'chademo'
 
 export default function AddCharger() {
   const router = useRouter();
+  const { c } = useTheme();
   const session = trpc.auth.getSession.useQuery();
   const create = trpc.charger.create.useMutation({
-    onSuccess: (c) =>
-      router.replace({ pathname: '/(host)/charger/[id]', params: { id: c.id } }),
+    onSuccess: (ch) =>
+      router.replace({ pathname: '/(host)/charger/[id]', params: { id: ch.id } }),
     onError: (e) => Alert.alert('Oops', e.message),
   });
 
@@ -59,75 +75,121 @@ export default function AddCharger() {
   };
 
   return (
-    <ScrollView className="flex-1 bg-white" contentContainerStyle={{ padding: 24, paddingTop: 60 }}>
-      <Text className="text-3xl font-bold mb-6">Add charger</Text>
-      <Label>Title</Label>
-      <TextInput value={title} onChangeText={setTitle} className={inputCls} />
-      <Label>Address</Label>
-      <TextInput value={addr} onChangeText={setAddr} className={inputCls} />
-      <View className="flex-row gap-2">
-        <View className="flex-1">
-          <Label>City</Label>
-          <TextInput value={city} onChangeText={setCity} className={inputCls} />
-        </View>
-        <View style={{ width: 80 }}>
-          <Label>State</Label>
-          <TextInput value={stateAbbr} onChangeText={setStateAbbr} className={inputCls} />
-        </View>
-        <View style={{ width: 90 }}>
-          <Label>ZIP</Label>
-          <TextInput value={zip} onChangeText={setZip} className={inputCls} />
-        </View>
-      </View>
-      <View className="flex-row gap-2">
-        <View className="flex-1">
-          <Label>Lat</Label>
-          <TextInput value={lat} onChangeText={setLat} className={inputCls} />
-        </View>
-        <View className="flex-1">
-          <Label>Lng</Label>
-          <TextInput value={lng} onChangeText={setLng} className={inputCls} />
-        </View>
-      </View>
-      <Label>Connector</Label>
-      <View className="flex-row flex-wrap gap-2 mb-2">
-        {CONNECTORS.map((c) => (
-          <Pressable
-            key={c}
-            onPress={() => setConn(c)}
-            className={`px-4 py-2 rounded-full border ${
-              connector === c ? 'bg-black border-black' : 'border-gray-300'
-            }`}
-          >
-            <Text className={connector === c ? 'text-white' : 'text-black'}>{c.toUpperCase()}</Text>
-          </Pressable>
-        ))}
-      </View>
-      <Label>Power (kW)</Label>
-      <TextInput value={powerKw} onChangeText={setPower} keyboardType="decimal-pad" className={inputCls} />
-      <Label>
-        Pricing (
-        {tier === 'tier_4_unmetered' ? '$/hour cents' : '$/kWh cents'})
-      </Label>
-      {tier === 'tier_4_unmetered' ? (
-        <TextInput value={pricePerHour} onChangeText={setPHour} keyboardType="number-pad" className={inputCls} />
-      ) : (
-        <TextInput value={pricePerKwh} onChangeText={setPKwh} keyboardType="number-pad" className={inputCls} />
-      )}
-      <Pressable
-        disabled={create.isPending}
-        onPress={submit}
-        className={`mt-6 rounded-full py-4 items-center ${create.isPending ? 'bg-gray-300' : 'bg-black'}`}
-      >
-        <Text className="text-white font-semibold">
-          {create.isPending ? 'Publishing…' : 'Publish charger'}
-        </Text>
+    <Screen keyboardAvoiding>
+      <Pressable onPress={() => router.back()} style={{ paddingTop: 8 }}>
+        <ChevronLeft />
       </Pressable>
-    </ScrollView>
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 130 }}>
+        <View style={{ marginTop: 12 }}>
+          <Stepper count={5} current={3} label="STEP 4 OF 5" />
+        </View>
+        <H1 style={{ marginTop: 14 }}>Set your price</H1>
+        <Row gap={6} style={{ marginTop: 14 }}>
+          <Chip
+            label="$/kWh"
+            selected={tier !== 'tier_4_unmetered'}
+            variant="outline"
+            onPress={() => setTier('tier_3_native')}
+          />
+          <Chip
+            label="$/hour"
+            selected={tier === 'tier_4_unmetered'}
+            variant="outline"
+            onPress={() => setTier('tier_4_unmetered')}
+          />
+        </Row>
+
+        <Card padding={18} style={{ marginTop: 16, alignItems: 'center' }}>
+          <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 4 }}>
+            <Muted>$</Muted>
+            <H1 style={{ fontSize: 56, fontWeight: '800', letterSpacing: -2 }}>
+              {tier === 'tier_4_unmetered'
+                ? (Number(pricePerHour) / 100).toFixed(2)
+                : (Number(pricePerKwh) / 100).toFixed(2)}
+            </H1>
+            <Muted>/{tier === 'tier_4_unmetered' ? 'hour' : 'kWh'}</Muted>
+          </View>
+          <View style={{ marginTop: 14, width: '100%' }}>
+            {tier === 'tier_4_unmetered' ? (
+              <Input
+                value={pricePerHour}
+                onChangeText={setPHour}
+                placeholder="500 (cents)"
+                keyboardType="number-pad"
+              />
+            ) : (
+              <Input
+                value={pricePerKwh}
+                onChangeText={setPKwh}
+                placeholder="28 (cents)"
+                keyboardType="number-pad"
+              />
+            )}
+          </View>
+        </Card>
+        <Muted style={{ fontSize: 12, marginTop: 12 }}>
+          Drivers near you pay around $0.28/kWh on average.
+        </Muted>
+
+        <View style={{ marginTop: 24, gap: 12 }}>
+          <View>
+            <Label style={{ marginBottom: 8 }}>TITLE</Label>
+            <Input value={title} onChangeText={setTitle} />
+          </View>
+          <View>
+            <Label style={{ marginBottom: 8 }}>ADDRESS</Label>
+            <Input value={addr} onChangeText={setAddr} placeholder="14 Maple St" />
+          </View>
+          <Row gap={8}>
+            <View style={{ flex: 2 }}>
+              <Input value={city} onChangeText={setCity} placeholder="City" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Input value={stateAbbr} onChangeText={setStateAbbr} placeholder="ST" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Input value={zip} onChangeText={setZip} placeholder="ZIP" />
+            </View>
+          </Row>
+          <View>
+            <Label style={{ marginBottom: 8 }}>CONNECTOR</Label>
+            <Row gap={6} style={{ flexWrap: 'wrap' }}>
+              {CONNECTORS.map((cn) => (
+                <Chip
+                  key={cn}
+                  label={cn.toUpperCase()}
+                  variant="outline"
+                  selected={connector === cn}
+                  onPress={() => setConn(cn)}
+                />
+              ))}
+            </Row>
+          </View>
+          <View>
+            <Label style={{ marginBottom: 8 }}>POWER (kW)</Label>
+            <Input
+              value={powerKw}
+              onChangeText={setPower}
+              keyboardType="decimal-pad"
+              placeholder="7.2"
+            />
+          </View>
+          <View>
+            <Label style={{ marginBottom: 8 }}>COORDINATES</Label>
+            <Row gap={8}>
+              <View style={{ flex: 1 }}>
+                <Input value={lat} onChangeText={setLat} placeholder="lat" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Input value={lng} onChangeText={setLng} placeholder="lng" />
+              </View>
+            </Row>
+          </View>
+        </View>
+      </ScrollView>
+      <CTABar>
+        <Button label="Publish charger" loading={create.isPending} onPress={submit} />
+      </CTABar>
+    </Screen>
   );
 }
-
-const inputCls = 'border border-gray-300 rounded-lg px-4 py-3 mb-3';
-const Label = ({ children }: { children: React.ReactNode }) => (
-  <Text className="text-sm text-gray-600 mt-3 mb-2">{children}</Text>
-);

@@ -1,5 +1,7 @@
+// Driver map — Mapbox-rendered with the design's overlay chrome (search bar,
+// search-this-area pill, recenter FAB).
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
-import { View, Text, Pressable, ActivityIndicator, Alert, useColorScheme } from 'react-native';
+import { View, Text, ActivityIndicator, Alert, useColorScheme } from 'react-native';
 import { useRouter } from 'expo-router';
 import * as Location from 'expo-location';
 import Mapbox, {
@@ -14,12 +16,14 @@ import Mapbox, {
 import type { CameraRef } from '@rnmapbox/maps/lib/typescript/src/components/Camera';
 import type { FeatureCollection, Feature, Point, Geometry } from 'geojson';
 import { trpc } from '../../src/lib/trpc';
+import { useTheme } from '../../src/theme/useTheme';
+import { Search, Recenter, Bolt } from '../../src/components/icons/Icon';
+import { IconCircle } from '../../src/components/ui';
 
 const MAPBOX_TOKEN = process.env.EXPO_PUBLIC_MAPBOX_TOKEN ?? '';
 
-// One-time SDK init — must run before the first render of MapView.
 Mapbox.setAccessToken(MAPBOX_TOKEN);
-Mapbox.setTelemetryEnabled(false); // privacy-first; opt-in only
+Mapbox.setTelemetryEnabled(false);
 
 type Charger = {
   id: string;
@@ -35,7 +39,7 @@ type Charger = {
   distanceM: number;
 };
 
-const TRI_VALLEY: [number, number] = [-121.8747, 37.6819]; // [lng, lat]
+const TRI_VALLEY: [number, number] = [-121.8747, 37.6819];
 const STYLES = {
   light: 'mapbox://styles/mapbox/streets-v12',
   dark: 'mapbox://styles/mapbox/dark-v11',
@@ -44,6 +48,7 @@ const STYLES = {
 export default function Map() {
   const router = useRouter();
   const scheme = useColorScheme();
+  const theme = useTheme();
   const cameraRef = useRef<CameraRef>(null);
   const sourceRef = useRef<ShapeSource | null>(null);
 
@@ -52,9 +57,8 @@ export default function Map() {
   const [viewCenter, setViewCenter] = useState<[number, number]>(TRI_VALLEY);
   const [showSearchHere, setShowSearchHere] = useState(false);
   const [styleLoaded, setStyleLoaded] = useState(false);
+  const [locationLabel, setLocationLabel] = useState('Tri-Valley');
 
-  // Foreground location permission. We ask once; failure leaves the camera
-  // at the Tri-Valley default rather than blocking the screen.
   useEffect(() => {
     (async () => {
       const { status } = await Location.requestForegroundPermissionsAsync();
@@ -71,8 +75,19 @@ export default function Map() {
           zoomLevel: 13,
           animationDuration: 600,
         });
+        // Best-effort reverse geocode label for the search bar.
+        try {
+          const res = await Location.reverseGeocodeAsync({
+            latitude: c[1],
+            longitude: c[0],
+          });
+          const place = res[0];
+          if (place?.city) setLocationLabel(`${place.city}${place.region ? `, ${place.region}` : ''}`);
+        } catch {
+          /* ignore */
+        }
       } catch {
-        // GPS off / fix not yet — Tri-Valley default is fine.
+        /* GPS off — fine */
       }
     })();
   }, []);
@@ -106,11 +121,9 @@ export default function Map() {
       const c = state.properties.center as [number, number] | undefined;
       if (!c) return;
       setViewCenter(c);
-      // Show "Search this area" when the camera has drifted >1km from the last
-      // search center. Avoids flicker on tiny pans.
       const dx = c[0] - searchCenter[0];
       const dy = c[1] - searchCenter[1];
-      const km = Math.sqrt(dx * dx + dy * dy) * 111; // rough deg→km
+      const km = Math.sqrt(dx * dx + dy * dy) * 111;
       setShowSearchHere(km > 1);
     },
     [searchCenter],
@@ -121,7 +134,6 @@ export default function Map() {
       const f = e.features[0];
       if (!f || f.geometry.type !== 'Point') return;
       const props = (f.properties ?? {}) as Record<string, unknown>;
-      // Cluster: zoom in to expand it.
       if (props.cluster) {
         const cluster = f as Feature<Point> & {
           properties: { cluster_id: number; point_count: number };
@@ -135,7 +147,7 @@ export default function Map() {
             animationDuration: 350,
           });
         } catch {
-          // best-effort; ignore
+          /* ignore */
         }
         return;
       }
@@ -147,10 +159,7 @@ export default function Map() {
 
   const recenter = useCallback(() => {
     if (!userPos) {
-      Alert.alert(
-        'Location off',
-        'Turn on location in Settings to recenter the map on you.',
-      );
+      Alert.alert('Location off', 'Turn on location in Settings to recenter.');
       return;
     }
     cameraRef.current?.setCamera({
@@ -169,8 +178,8 @@ export default function Map() {
 
   if (!MAPBOX_TOKEN) {
     return (
-      <View className="flex-1 items-center justify-center bg-white">
-        <Text className="text-center text-gray-700 px-8">
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.c.bg, padding: 32 }}>
+        <Text style={{ textAlign: 'center', color: theme.c.muted }}>
           Map is misconfigured: EXPO_PUBLIC_MAPBOX_TOKEN is missing.
         </Text>
       </View>
@@ -178,11 +187,11 @@ export default function Map() {
   }
 
   return (
-    <View className="flex-1">
+    <View style={{ flex: 1, backgroundColor: theme.c.bg }}>
       <MapView
         style={{ flex: 1 }}
         styleURL={scheme === 'dark' ? STYLES.dark : STYLES.light}
-        compassEnabled
+        compassEnabled={false}
         scaleBarEnabled={false}
         attributionPosition={{ bottom: 8, right: 8 }}
         logoEnabled
@@ -194,9 +203,7 @@ export default function Map() {
           defaultSettings={{ centerCoordinate: TRI_VALLEY, zoomLevel: 11 }}
           animationDuration={0}
         />
-        {userPos ? (
-          <UserLocation visible androidRenderMode="normal" showsUserHeadingIndicator />
-        ) : null}
+        {userPos ? <UserLocation visible androidRenderMode="normal" showsUserHeadingIndicator /> : null}
         {styleLoaded ? (
           <ShapeSource
             ref={(r) => {
@@ -209,13 +216,12 @@ export default function Map() {
             shape={features}
             onPress={onPressFeature}
           >
-            {/* Cluster bubbles */}
             <CircleLayer
               id="charger-clusters"
               filter={['has', 'point_count']}
               style={{
-                circleColor: scheme === 'dark' ? '#0EA5E9' : '#000000',
-                circleStrokeColor: '#FFFFFF',
+                circleColor: theme.c.ink,
+                circleStrokeColor: theme.c.bg,
                 circleStrokeWidth: 2,
                 circleRadius: ['step', ['get', 'point_count'], 18, 10, 24, 25, 30, 50, 36],
                 circleOpacity: 0.95,
@@ -226,14 +232,13 @@ export default function Map() {
               filter={['has', 'point_count']}
               style={{
                 textField: ['get', 'point_count_abbreviated'],
-                textColor: '#FFFFFF',
+                textColor: theme.c.bg,
                 textSize: 14,
                 textFont: ['Open Sans Bold', 'Arial Unicode MS Bold'],
                 textAllowOverlap: true,
                 textIgnorePlacement: true,
               }}
             />
-            {/* Individual pins */}
             <CircleLayer
               id="charger-pin-bg"
               filter={['!', ['has', 'point_count']]}
@@ -241,11 +246,11 @@ export default function Map() {
                 circleColor: [
                   'case',
                   ['==', ['get', 'available'], true],
-                  '#10B981', // emerald — available
-                  '#9CA3AF', // gray — unavailable
+                  theme.c.greenPill,
+                  '#D4D2CB',
                 ],
-                circleRadius: 16,
-                circleStrokeColor: '#FFFFFF',
+                circleRadius: 18,
+                circleStrokeColor: theme.c.bg,
                 circleStrokeWidth: 3,
               }}
             />
@@ -254,7 +259,7 @@ export default function Map() {
               filter={['!', ['has', 'point_count']]}
               style={{
                 textField: '⚡',
-                textColor: '#FFFFFF',
+                textColor: theme.c.green2,
                 textSize: 14,
                 textAllowOverlap: true,
                 textIgnorePlacement: true,
@@ -264,34 +269,96 @@ export default function Map() {
         ) : null}
       </MapView>
 
-      {nearby.isFetching && (
-        <View className="absolute top-16 right-4 bg-white/90 rounded-full p-2 shadow">
-          <ActivityIndicator />
-        </View>
-      )}
-
-      <Pressable
-        onPress={recenter}
-        accessibilityLabel="Recenter map on me"
-        className="absolute bottom-32 right-4 bg-white rounded-full w-12 h-12 items-center justify-center shadow-md"
+      {/* Top floating search bar */}
+      <View
+        style={{
+          position: 'absolute',
+          top: 60,
+          left: 20,
+          right: 20,
+          flexDirection: 'row',
+          gap: 8,
+        }}
       >
-        <Text style={{ fontSize: 22 }}>📍</Text>
-      </Pressable>
-
-      {showSearchHere && (
-        <Pressable
-          onPress={searchHere}
-          className="absolute bottom-8 self-center bg-black rounded-full px-6 py-3 shadow-lg"
+        <View
+          style={{
+            flex: 1,
+            height: 44,
+            borderRadius: 22,
+            backgroundColor: theme.c.card,
+            ...theme.shadow.cardLight,
+            paddingHorizontal: 14,
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 8,
+          }}
         >
-          <Text className="text-white font-medium">Search this area</Text>
-        </Pressable>
-      )}
-
-      {styleLoaded && !nearby.isFetching && (nearby.data?.length ?? 0) === 0 && (
-        <View className="absolute top-1/2 self-center bg-white/95 rounded-2xl px-5 py-3 shadow">
-          <Text className="text-gray-700">No chargers in this area.</Text>
+          <Search size={16} color={theme.c.muted} />
+          <Text style={{ color: theme.c.muted, fontSize: 13 }}>{locationLabel}</Text>
         </View>
-      )}
+        <IconCircle size={44}>
+          <Bolt size={18} color={theme.c.ink} />
+        </IconCircle>
+      </View>
+
+      {/* Search this area */}
+      {showSearchHere ? (
+        <View
+          style={{
+            position: 'absolute',
+            top: 116,
+            alignSelf: 'center',
+            left: 0,
+            right: 0,
+            alignItems: 'center',
+          }}
+        >
+          <View
+            style={{
+              backgroundColor: theme.c.ink,
+              paddingHorizontal: 14,
+              height: 32,
+              borderRadius: 16,
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 6,
+              ...theme.shadow.pillFloat,
+            }}
+          >
+            <Search size={12} color={theme.c.bg} />
+            <Text
+              onPress={searchHere}
+              style={{ color: theme.c.bg, fontWeight: '600', fontSize: 12 }}
+            >
+              Search this area
+            </Text>
+          </View>
+        </View>
+      ) : null}
+
+      {/* Loading badge */}
+      {nearby.isFetching ? (
+        <View
+          style={{
+            position: 'absolute',
+            top: 116,
+            right: 20,
+            backgroundColor: theme.c.card,
+            borderRadius: 999,
+            padding: 8,
+            ...theme.shadow.cardLight,
+          }}
+        >
+          <ActivityIndicator size="small" />
+        </View>
+      ) : null}
+
+      {/* Recenter FAB */}
+      <View style={{ position: 'absolute', right: 16, bottom: 24 }}>
+        <IconCircle size={48} onPress={recenter}>
+          <Recenter size={18} color={theme.c.ink} />
+        </IconCircle>
+      </View>
     </View>
   );
 }

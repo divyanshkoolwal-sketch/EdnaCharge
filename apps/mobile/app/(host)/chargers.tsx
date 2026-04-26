@@ -1,31 +1,76 @@
-import { View, Text, FlatList, Pressable } from 'react-native';
+import { View, FlatList, Pressable } from 'react-native';
 import { useRouter } from 'expo-router';
+import {
+  Screen,
+  H1,
+  Card,
+  Body,
+  Muted,
+  StatusPill,
+  type Status,
+  Row,
+  Button,
+} from '../../src/components/ui';
+import { ChevronRight } from '../../src/components/icons/Icon';
+import { ChargerIllo } from '../../src/components/illustrations/HomeCharger';
+import { useTheme } from '../../src/theme/useTheme';
 import { trpc } from '../../src/lib/trpc';
 
 export default function HostChargers() {
   const router = useRouter();
+  const { c } = useTheme();
   const q = trpc.charger.myChargers.useQuery();
+
   return (
-    <View className="flex-1 bg-white pt-20 px-6">
-      <Text className="text-3xl font-bold mb-6">Your chargers</Text>
+    <Screen flush>
+      <View style={{ paddingHorizontal: 24, paddingTop: 8 }}>
+        <H1 style={{ marginTop: 14 }}>Your chargers</H1>
+      </View>
       <FlatList
         data={q.data ?? []}
         keyExtractor={(c) => c.id}
+        contentContainerStyle={{ padding: 24, paddingTop: 16, gap: 10, paddingBottom: 100 }}
+        ListEmptyComponent={
+          <Muted style={{ textAlign: 'center', marginTop: 40 }}>
+            {q.isLoading ? 'Loading…' : 'No chargers yet.'}
+          </Muted>
+        }
         renderItem={({ item }) => (
           <Pressable
-            onPress={() => router.push({ pathname: '/(host)/charger/[id]', params: { id: item.id } })}
-            className="border border-gray-200 rounded-xl p-4 mb-2"
+            onPress={() =>
+              router.push({ pathname: '/(host)/charger/[id]', params: { id: item.id } })
+            }
           >
-            <Text className="font-medium">{item.title}</Text>
-            <Text className="text-gray-500 text-sm">
-              {item.connectorType.toUpperCase()} · {item.powerKw} kW · {item.status}
-            </Text>
+            <Card padding={14}>
+              <Row gap={12}>
+                <View style={{ width: 64 }}>
+                  <ChargerIllo height={64} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Body style={{ fontWeight: '700', fontSize: 14 }}>{item.title}</Body>
+                  <Muted style={{ fontSize: 11, marginTop: 2 }}>
+                    {item.addressLine1}, {item.city}
+                  </Muted>
+                  <Muted style={{ fontSize: 11 }}>
+                    {item.connectorType.toUpperCase()} · {item.powerKw} kW
+                  </Muted>
+                  <View style={{ marginTop: 6 }}>
+                    <StatusPill status={item.status as Status} />
+                  </View>
+                </View>
+                <ChevronRight color={c.muted2} />
+              </Row>
+            </Card>
           </Pressable>
         )}
+        ListFooterComponent={
+          <Button
+            label="+ Add another charger"
+            onPress={() => router.push('/(host)/add-charger')}
+            style={{ marginTop: 18 }}
+          />
+        }
       />
-      <Pressable onPress={() => router.push('/(host)/add-charger')} className="mt-4 bg-black rounded-full py-4 items-center">
-        <Text className="text-white font-semibold">Add another</Text>
-      </Pressable>
-    </View>
+    </Screen>
   );
 }
