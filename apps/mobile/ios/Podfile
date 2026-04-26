@@ -80,18 +80,25 @@ target 'EdnaCharge' do
 
     # Sentry-Cocoa 8.x's profiling code uses `std::vector<const T>` which
     # Xcode 26's libc++ rejects (allocator can't deal with const value types).
-    # Disable Sentry profiling at the preprocessor level — error reporting
-    # still works; only the iOS native profiler is off. See
+    # The xcconfig preprocessor macro alone doesn't override the in-file
+    # `#define SENTRY_TARGET_PROFILING_SUPPORTED 1` in the conditionals
+    # header, so we patch the header itself. Error reporting still works;
+    # only the iOS native profiler is disabled. See
     # https://github.com/getsentry/sentry-cocoa/issues/4400 .
-    installer.pods_project.targets.each do |target|
-      if target.name == 'Sentry'
-        target.build_configurations.each do |config|
-          existing = config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] || ['$(inherited)']
-          existing = [existing] unless existing.is_a?(Array)
-          config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] =
-            existing + ['SENTRY_TARGET_PROFILING_SUPPORTED=0']
-        end
-      end
+    sentry_conditionals = [
+      'Pods/Sentry/Sources/Sentry/Public/SentryProfilingConditionals.h',
+      'Pods/Headers/Public/Sentry/SentryProfilingConditionals.h',
+      'Pods/Headers/Private/Sentry/SentryProfilingConditionals.h',
+    ]
+    sentry_conditionals.each do |rel|
+      path = File.join(__dir__, rel)
+      next unless File.exist?(path)
+      contents = File.read(path)
+      patched = contents.gsub(/#\s*define\s+SENTRY_TARGET_PROFILING_SUPPORTED\s+1/,
+                              '#define SENTRY_TARGET_PROFILING_SUPPORTED 0')
+      next if patched == contents
+      File.write(path, patched)
+      Pod::UI.puts "  → Patched #{rel} to disable Sentry profiling".yellow
     end
   end
 
