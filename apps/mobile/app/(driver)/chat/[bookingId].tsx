@@ -17,6 +17,7 @@ import { ChevronLeft, Plus, Send } from '../../../src/components/icons/Icon';
 import { trpc } from '../../../src/lib/trpc';
 import { supabase } from '../../../src/lib/supabase';
 import { useAuth } from '../../../src/state/auth';
+import { handleError } from '../../../src/lib/errors';
 
 const QUICK_REPLIES = ['On my way ✓', 'Pull right', 'Gate 1234'];
 
@@ -32,7 +33,9 @@ export default function ChatThread() {
     onSuccess: () => {
       setDraft('');
       utils.chat.getThread.invalidate({ bookingId: bookingId! });
+      utils.chat.listThreads.invalidate();
     },
+    onError: (e) => handleError(e, { feature: 'Chat' }),
   });
   const markRead = trpc.chat.markRead.useMutation();
   const [draft, setDraft] = useState('');

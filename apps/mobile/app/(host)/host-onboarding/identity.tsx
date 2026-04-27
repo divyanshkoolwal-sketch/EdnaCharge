@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { View, Pressable, ScrollView, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
+import { handleError } from '../../../src/lib/errors';
 import {
   Screen,
   Input,
@@ -22,9 +23,13 @@ export default function Identity() {
   const [stateAbbr, setStateAbbr] = useState('');
   const [postalCode, setZip] = useState('');
 
+  const utils = trpc.useUtils();
   const mut = trpc.auth.submitHostIdentity.useMutation({
-    onSuccess: () => router.push('/(host)/host-onboarding/charger-identification'),
-    onError: (e) => Alert.alert('Oops', e.message),
+    onSuccess: () => {
+      utils.auth.getSession.invalidate();
+      router.push('/(host)/host-onboarding/charger-identification');
+    },
+    onError: (e) => handleError(e, { feature: 'Identity' }),
   });
 
   const submit = () => {

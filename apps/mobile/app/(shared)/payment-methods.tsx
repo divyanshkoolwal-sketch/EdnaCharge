@@ -15,6 +15,7 @@ import {
 import { ChevronLeft } from '../../src/components/icons/Icon';
 import { useTheme } from '../../src/theme/useTheme';
 import { trpc } from '../../src/lib/trpc';
+import { handleError } from '../../src/lib/errors';
 
 export default function PaymentMethods() {
   const router = useRouter();
@@ -22,15 +23,30 @@ export default function PaymentMethods() {
   const list = trpc.payment.listPaymentMethods.useQuery();
   const setup = trpc.payment.setupIntent.useMutation();
   const setDefault = trpc.payment.setDefault.useMutation({
-    onSuccess: () => list.refetch(),
+    onSuccess: () => {
+      list.refetch();
+      // defaultPaymentMethodId lives on the User row; refetch session so any
+      // screen that reads it (e.g. booking precondition) sees the new value.
+      utils.auth.getSession.invalidate();
+    },
+    onError: (e) => handleError(e, { feature: 'Payment methods' }),
   });
   const { initPaymentSheet, presentPaymentSheet } = useStripe();
   const utils = trpc.useUtils();
+  const isDevBypass = list.data?.devBypass ?? false;
 
   const addCard = async () => {
     try {
-      const { setupIntentClientSecret, customerId, ephemeralKey, publishableKey } =
-        await setup.mutateAsync();
+      const result = await setup.mutateAsync();
+      if (result.devBypass) {
+        Alert.alert(
+          'Dev mode',
+          "Card storage is disabled because Stripe keys aren't configured. We'll use a placeholder card for the demo.",
+        );
+        await utils.payment.listPaymentMethods.invalidate();
+        return;
+      }
+      const { setupIntentClientSecret, customerId, ephemeralKey, publishableKey } = result;
       if (!publishableKey) {
         Alert.alert('Stripe not configured', 'Set EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY in .env');
         return;
@@ -42,14 +58,18 @@ export default function PaymentMethods() {
         merchantDisplayName: 'EdnaCharge',
         allowsDelayedPaymentMethods: false,
       });
-      if (init.error) return Alert.alert('Init failed', init.error.message);
+      if (init.error) {
+        handleError(init.error, { feature: 'Payment methods', title: 'Init failed' });
+        return;
+      }
       const present = await presentPaymentSheet();
       if (present.error && present.error.code !== 'Canceled') {
-        return Alert.alert('Failed', present.error.message);
+        handleError(present.error, { feature: 'Payment methods' });
+        return;
       }
       await utils.payment.listPaymentMethods.invalidate();
     } catch (err) {
-      Alert.alert('Card storage unavailable', (err as Error).message);
+      handleError(err, { feature: 'Payment methods' });
     }
   };
 
@@ -59,6 +79,25 @@ export default function PaymentMethods() {
         <ChevronLeft />
       </Pressable>
       <H1 style={{ marginTop: 14 }}>Payment methods</H1>
+      {isDevBypass ? (
+        <View
+          style={{
+            marginTop: 14,
+            padding: 12,
+            borderRadius: 12,
+            backgroundColor: c.greenPill,
+          }}
+        >
+          <Body style={{ fontSize: 12, color: c.green2, fontWeight: '700' }}>
+            DEV MODE
+          </Body>
+          <Muted style={{ fontSize: 12, marginTop: 4 }}>
+            Stripe keys aren't configured. A placeholder card is in use so the
+            demo flow works end-to-end. Real card storage will activate when
+            keys are dropped into .env.
+          </Muted>
+        </View>
+      ) : null}
       <FlatList
         data={list.data?.paymentMethods ?? []}
         keyExtractor={(pm) => pm.id}
@@ -71,7 +110,13 @@ export default function PaymentMethods() {
         renderItem={({ item }) => {
           const isDefault = list.data?.defaultPaymentMethodId === item.id;
           return (
-            <Pressable onPress={() => setDefault.mutate({ paymentMethodId: item.id })}>
+            <Pressable
+              onPress={() =>
+                isDevBypass
+                  ? undefined
+                  : setDefault.mutate({ paymentMethodId: item.id })
+              }
+            >
               <Card padding={14}>
                 <Row gap={12}>
                   <View
@@ -104,7 +149,12 @@ export default function PaymentMethods() {
         }}
       />
       <CTABar>
-        <Button label="+ Add card" onPress={addCard} loading={setup.isPending} />
+        <Button
+          label={isDevBypass ? '+ Add card (disabled)' : '+ Add card'}
+          onPress={addCard}
+          loading={setup.isPending}
+          disabled={isDevBypass}
+        />
       </CTABar>
     </Screen>
   );

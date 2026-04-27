@@ -2,7 +2,7 @@ import { TRPCError } from '@trpc/server';
 import { z } from 'zod';
 import { router, protectedProcedure } from '../trpc.js';
 import { prisma } from '@edna/db';
-import { stripe } from '../lib/stripe.js';
+import { stripe, devBypassStripe } from '../lib/stripe.js';
 import {
   DriverProfileInputZ,
   ChargerIdentificationInputZ,
@@ -66,6 +66,26 @@ export const authRouter = router({
     if (!profile) {
       throw new TRPCError({ code: 'PRECONDITION_FAILED', message: 'Submit host identity first.' });
     }
+    // Dev bypass: stamp dev placeholders + flip role so the rest of the host
+    // surface (Add charger, Requests, Earnings) becomes reachable without a
+    // real Stripe Connect account. The mobile screen sees devBypass=true and
+    // routes straight to the Done screen.
+    if (devBypassStripe()) {
+      const devAccount = `acct_dev_${ctx.userId.slice(0, 8)}`;
+      await prisma.hostProfile.update({
+        where: { userId: ctx.userId },
+        data: { stripeAccountId: devAccount, stripeOnboardingComplete: true },
+      });
+      await prisma.user.update({
+        where: { id: ctx.userId },
+        data: { roles: { set: ['driver', 'host'] } },
+      });
+      return {
+        url: 'edna-dev://stripe-skip',
+        accountId: devAccount,
+        devBypass: true as const,
+      };
+    }
     const s = stripe();
     let accountId = profile.stripeAccountId;
     if (!accountId) {
@@ -88,7 +108,7 @@ export const authRouter = router({
       return_url: `${baseUrl}/stripe/onboarding/return`,
       type: 'account_onboarding',
     });
-    return { url: link.url, accountId };
+    return { url: link.url, accountId, devBypass: false as const };
   }),
 
   // AUDIT L5: persist the Expo push token on the User row so the worker's
@@ -107,6 +127,17 @@ export const authRouter = router({
   hostOnboardingStatus: protectedProcedure.query(async ({ ctx }) => {
     const profile = await prisma.hostProfile.findUnique({ where: { userId: ctx.userId } });
     if (!profile?.stripeAccountId) return { status: 'not_started' as const };
+    // Dev bypass: trust the row, don't call Stripe.
+    if (devBypassStripe()) {
+      return {
+        status: profile.stripeOnboardingComplete
+          ? ('complete' as const)
+          : ('pending' as const),
+        detailsSubmitted: true,
+        chargesEnabled: true,
+        payoutsEnabled: true,
+      };
+    }
     const s = stripe();
     const account = await s.accounts.retrieve(profile.stripeAccountId);
     const complete = account.details_submitted && account.charges_enabled && account.payouts_enabled;

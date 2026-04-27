@@ -2,6 +2,8 @@ import { View, ActivityIndicator, ScrollView, Image, Pressable } from 'react-nat
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { trpc } from '../../../src/lib/trpc';
 import { useTheme } from '../../../src/theme/useTheme';
+import { useUserLocation } from '../../../src/state/userLocation';
+import { haversineKm, formatDistanceAndDriveTime } from '../../../src/lib/distance';
 import {
   Screen,
   H1,
@@ -26,6 +28,21 @@ export default function ChargerDetail() {
   const router = useRouter();
   const { c } = useTheme();
   const q = trpc.charger.get.useQuery({ id: id! }, { enabled: !!id });
+  const userCoords = useUserLocation((s) => s.coords);
+
+  // Compute distance + a rough drive time using a 30 km/h heuristic (fine for
+  // v1; an accurate ETA would need Mapbox Directions API). We render this on
+  // the same row as the host name so the user can scan it instantly.
+  const distanceLabel = (() => {
+    if (!userCoords || !q.data) return null;
+    const km = haversineKm(
+      userCoords.lat,
+      userCoords.lng,
+      q.data.lat,
+      q.data.lng,
+    );
+    return formatDistanceAndDriveTime(km);
+  })();
 
   if (q.isLoading) {
     return (
@@ -78,6 +95,9 @@ export default function ChargerDetail() {
             <Star size={12} />
             <Body>4.9</Body>
           </Row>
+          {distanceLabel ? (
+            <Body style={{ marginTop: 6, color: c.muted }}>{distanceLabel}</Body>
+          ) : null}
         </View>
 
         <Row gap={6} style={{ marginTop: 12, flexWrap: 'wrap' }}>

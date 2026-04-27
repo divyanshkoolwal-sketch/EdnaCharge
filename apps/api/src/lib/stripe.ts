@@ -29,6 +29,14 @@ export function isStripeConfigured(): boolean {
   return isUsable(process.env.STRIPE_SECRET_KEY);
 }
 
+// In non-production environments, when the operator hasn't dropped real Stripe
+// keys yet, fake the entire Stripe surface so demos can complete the host
+// onboarding and booking flows. Production NEVER takes this branch — even with
+// missing keys, prod returns SERVICE_UNAVAILABLE instead of fabricating data.
+export function devBypassStripe(): boolean {
+  return process.env.NODE_ENV !== 'production' && !isStripeConfigured();
+}
+
 export const PLATFORM_FEE_BPS = 1500; // 15% per PRD §1
 
 export function platformFeeCents(amountCents: number): number {

@@ -1,4 +1,4 @@
-import { View, Pressable } from 'react-native';
+import { Alert, View, Pressable } from 'react-native';
 import { useRouter } from 'expo-router';
 import {
   Screen,
@@ -19,7 +19,30 @@ export default function Settings() {
   const router = useRouter();
   const { c } = useTheme();
   const session = useAuth((s) => s.session);
+  const signOut = useAuth((s) => s.signOut);
   const email = session?.user.email ?? '';
+
+  // Server-side row deletion isn't implemented yet (it would cascade through
+  // bookings, reviews, payouts) — for now offer a sign-out + clear-local-data
+  // action with the right destructive confirmation. We'll wire a real
+  // `auth.deleteAccount` mutation when the legal/retention policy is set.
+  const onDeleteAccount = () => {
+    Alert.alert(
+      'Sign out & clear this device?',
+      'Account deletion is coming soon. For now this signs you out and clears the cached session.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Sign out',
+          style: 'destructive',
+          onPress: async () => {
+            await signOut();
+            router.replace('/(auth)/welcome');
+          },
+        },
+      ],
+    );
+  };
 
   const items = [
     'Edit profile photo',
@@ -97,7 +120,11 @@ export default function Settings() {
       </Card>
 
       <SectionHeader>Danger zone</SectionHeader>
-      <Button label="Delete account" variant="destructive-outline" />
+      <Button
+        label="Delete account"
+        variant="destructive-outline"
+        onPress={onDeleteAccount}
+      />
     </Screen>
   );
 }

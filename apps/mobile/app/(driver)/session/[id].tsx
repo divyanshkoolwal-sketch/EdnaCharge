@@ -1,7 +1,7 @@
 // Live session — full-dark wow screen. Bypasses Screen+SafeAreaView wrapper so
 // the background extends edge-to-edge regardless of system theme.
 import { useEffect, useState } from 'react';
-import { View, Text, Pressable, ActivityIndicator, Alert } from 'react-native';
+import { View, Text, Pressable, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -10,6 +10,7 @@ import { darkColors } from '../../../src/theme/tokens';
 import { trpc } from '../../../src/lib/trpc';
 import { supabase } from '../../../src/lib/supabase';
 import { Close, Sparkline } from '../../../src/components/icons/Icon';
+import { handleError } from '../../../src/lib/errors';
 
 type MeterSample = { energyWh: number; powerW: number; ts: string };
 
@@ -20,6 +21,14 @@ export default function LiveSession() {
   const [stopping, setStopping] = useState(false);
   const [elapsed, setElapsed] = useState(0);
   const c = darkColors;
+  const utils = trpc.useUtils();
+
+  // Pull the booking + charger so we can render the real per-kWh price and the
+  // host name. Without this we used to multiply by a hard-coded $0.28.
+  const sessionInfo = trpc.booking.bySessionId.useQuery(
+    { sessionId: id! },
+    { enabled: !!id },
+  );
 
   useEffect(() => {
     if (!id) return;
@@ -41,6 +50,8 @@ export default function LiveSession() {
 
   const stop = trpc.booking.stopSession.useMutation({
     onSuccess: () => {
+      utils.booking.list.invalidate();
+      utils.booking.bySessionId.invalidate({ sessionId: id! });
       setTimeout(
         () => router.replace({ pathname: '/(driver)/receipt/[id]', params: { id: id! } }),
         1500,
@@ -48,13 +59,22 @@ export default function LiveSession() {
     },
     onError: (e) => {
       setStopping(false);
-      Alert.alert('Oops', e.message);
+      handleError(e, { feature: 'Session' });
     },
   });
 
   const kwh = latest ? latest.energyWh / 1000 : 0;
   const kw = latest ? latest.powerW / 1000 : 0;
-  const cost = kwh * 0.28;
+  // Real running cost: prefer per-kWh, fall back to per-hour pro-rated by elapsed.
+  const charger = sessionInfo.data?.booking.charger;
+  const pricePerKwh = charger?.pricePerKwhCents ?? 0;
+  const pricePerHour = charger?.pricePerHourCents ?? 0;
+  const cost = pricePerKwh
+    ? (kwh * pricePerKwh) / 100
+    : pricePerHour
+      ? ((elapsed / 3600) * pricePerHour) / 100
+      : 0;
+  const title = charger?.title ?? '';
 
   return (
     <View style={{ flex: 1, backgroundColor: c.bg }}>
@@ -73,8 +93,11 @@ export default function LiveSession() {
           </Pressable>
           <View style={{ alignItems: 'center' }}>
             <Text style={{ fontSize: 11, color: c.muted, letterSpacing: 1 }}>CHARGING</Text>
-            <Text style={{ color: c.ink, fontSize: 13, fontWeight: '600', marginTop: 2 }}>
-              Session live
+            <Text
+              style={{ color: c.ink, fontSize: 13, fontWeight: '600', marginTop: 2 }}
+              numberOfLines={1}
+            >
+              {title || 'Session live'}
             </Text>
           </View>
           <View style={{ width: 22 }} />

@@ -10,7 +10,8 @@ import {
   StartSessionInputZ,
   StopSessionInputZ,
 } from '@edna/schemas';
-import { stripe } from '../lib/stripe.js';
+import { stripe, devBypassStripe } from '../lib/stripe.js';
+import { randomBytes } from 'crypto';
 import { estimateBooking } from '../lib/pricing.js';
 import { ocppCommandsQueue, notificationsQueue, bookingsQueue } from '../lib/queues.js';
 import { logger } from '../logger.js';
@@ -35,11 +36,25 @@ export const bookingRouter = router({
     .mutation(async ({ ctx, input }) => {
       const charger = await prisma.charger.findUniqueOrThrow({ where: { id: input.chargerId } });
       const host = await prisma.hostProfile.findUniqueOrThrow({ where: { userId: charger.hostId } });
-      if (!host.stripeAccountId || !host.stripeOnboardingComplete) {
+      const isDev = devBypassStripe();
+
+      if (!isDev && (!host.stripeAccountId || !host.stripeOnboardingComplete)) {
         throw new TRPCError({ code: 'PRECONDITION_FAILED', message: 'Host payouts not ready.' });
       }
       const driver = await prisma.user.findUniqueOrThrow({ where: { id: ctx.userId } });
-      if (!driver.stripeCustomerId || !driver.defaultPaymentMethodId) {
+
+      // Dev bypass: stamp placeholder customer + PM so the precondition
+      // passes without a real Stripe SetupIntent. Production keeps the
+      // hard requirement.
+      if (isDev && (!driver.stripeCustomerId || !driver.defaultPaymentMethodId)) {
+        await prisma.user.update({
+          where: { id: ctx.userId },
+          data: {
+            stripeCustomerId: driver.stripeCustomerId ?? `cus_dev_${ctx.userId.slice(0, 8)}`,
+            defaultPaymentMethodId: driver.defaultPaymentMethodId ?? 'pm_dev_card',
+          },
+        });
+      } else if (!isDev && (!driver.stripeCustomerId || !driver.defaultPaymentMethodId)) {
         throw new TRPCError({ code: 'PRECONDITION_FAILED', message: 'Save a card first.' });
       }
 
@@ -53,21 +68,28 @@ export const bookingRouter = router({
         .update(`booking:${ctx.userId}:${charger.id}:${start.toISOString()}:${end.toISOString()}`)
         .digest('hex');
 
-      const pi = await stripe().paymentIntents.create(
-        {
-          amount: est.totalCents,
-          currency: 'usd',
-          customer: driver.stripeCustomerId,
-          payment_method: driver.defaultPaymentMethodId,
-          capture_method: 'manual',
-          confirm: true,
-          off_session: true,
-          application_fee_amount: est.platformFeeCents,
-          transfer_data: { destination: host.stripeAccountId },
-          metadata: { ednaUserId: ctx.userId, chargerId: charger.id },
-        },
-        { idempotencyKey },
-      );
+      let stripePaymentIntentId: string;
+      if (isDev) {
+        // Synthetic PI id; nothing to authorise / capture.
+        stripePaymentIntentId = `pi_dev_${randomBytes(8).toString('hex')}`;
+      } else {
+        const pi = await stripe().paymentIntents.create(
+          {
+            amount: est.totalCents,
+            currency: 'usd',
+            customer: driver.stripeCustomerId!,
+            payment_method: driver.defaultPaymentMethodId!,
+            capture_method: 'manual',
+            confirm: true,
+            off_session: true,
+            application_fee_amount: est.platformFeeCents,
+            transfer_data: { destination: host.stripeAccountId! },
+            metadata: { ednaUserId: ctx.userId, chargerId: charger.id },
+          },
+          { idempotencyKey },
+        );
+        stripePaymentIntentId = pi.id;
+      }
 
       const booking = await prisma.booking.create({
         data: {
@@ -80,7 +102,7 @@ export const bookingRouter = router({
           platformFeeCents: est.platformFeeCents,
           preauthAmountCents: est.totalCents,
           driverMessage: input.message,
-          stripePaymentIntentId: pi.id,
+          stripePaymentIntentId,
           autoDeclineAt: new Date(Date.now() + AUTO_DECLINE_MS),
         },
       });
@@ -170,9 +192,9 @@ export const bookingRouter = router({
             message: 'Booking was already resolved.',
           });
         }
-        if (b.stripePaymentIntentId) {
+        if (b.stripePaymentIntentId && !b.stripePaymentIntentId.startsWith('pi_dev_')) {
           // AUDIT C3: idempotency key scoped per-booking so a retry doesn't
-          // surface a noisy "already canceled" error.
+          // surface a noisy "already canceled" error. Skip for dev-bypass PIs.
           await stripe().paymentIntents.cancel(
             b.stripePaymentIntentId,
             undefined,
@@ -204,9 +226,9 @@ export const bookingRouter = router({
       if (!['pending', 'confirmed'].includes(b.status)) {
         throw new TRPCError({ code: 'BAD_REQUEST', message: 'Cannot cancel this booking.' });
       }
-      if (b.stripePaymentIntentId) {
+      if (b.stripePaymentIntentId && !b.stripePaymentIntentId.startsWith('pi_dev_')) {
         // AUDIT (was silent-swallow): log failures so we can alert on PI
-        // cancel errors instead of dropping them.
+        // cancel errors instead of dropping them. Skip for dev-bypass PIs.
         try {
           await stripe().paymentIntents.cancel(
             b.stripePaymentIntentId,
@@ -303,6 +325,27 @@ export const bookingRouter = router({
         where: { id: b.id },
         include: { charger: true, session: true, chatThread: true },
       });
+    }),
+
+  // Session screen knows the session id from the route param but needs the
+  // booking + charger to render real price + title. Cheap join keyed on the
+  // unique session.bookingId.
+  bySessionId: protectedProcedure
+    .input(z.object({ sessionId: z.string().uuid() }))
+    .query(async ({ ctx, input }) => {
+      const session = await prisma.chargingSession.findUniqueOrThrow({
+        where: { id: input.sessionId },
+        include: {
+          booking: { include: { charger: true } },
+        },
+      });
+      if (
+        session.booking.driverId !== ctx.userId &&
+        session.booking.charger.hostId !== ctx.userId
+      ) {
+        throw new TRPCError({ code: 'FORBIDDEN' });
+      }
+      return session;
     }),
 });
 

@@ -1,6 +1,13 @@
-import { useEffect, useState } from 'react';
-import { View, Pressable, ScrollView, Alert } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import { View, Pressable, ScrollView, Alert, useColorScheme } from 'react-native';
 import { useRouter } from 'expo-router';
+import Mapbox, {
+  MapView,
+  Camera,
+  PointAnnotation,
+} from '@rnmapbox/maps';
+import type { CameraRef } from '@rnmapbox/maps/lib/typescript/src/components/Camera';
+import { handleError } from '../../src/lib/errors';
 import {
   Screen,
   Card,
@@ -16,19 +23,36 @@ import {
 } from '../../src/components/ui';
 import { ChevronLeft } from '../../src/components/icons/Icon';
 import { useTheme } from '../../src/theme/useTheme';
+import { useUserLocation } from '../../src/state/userLocation';
 import { trpc } from '../../src/lib/trpc';
 import type { ConnectorType, HardwareTier } from '@edna/schemas';
+
+const STYLES = {
+  light: 'mapbox://styles/mapbox/streets-v12',
+  dark: 'mapbox://styles/mapbox/dark-v11',
+};
 
 const CONNECTORS: ConnectorType[] = ['j1772', 'nacs', 'tesla', 'ccs1', 'chademo'];
 
 export default function AddCharger() {
   const router = useRouter();
   const { c } = useTheme();
+  const scheme = useColorScheme();
   const session = trpc.auth.getSession.useQuery();
+  const utils = trpc.useUtils();
+  const userCoords = useUserLocation((s) => s.coords);
+  const cameraRef = useRef<CameraRef>(null);
   const create = trpc.charger.create.useMutation({
-    onSuccess: (ch) =>
-      router.replace({ pathname: '/(host)/charger/[id]', params: { id: ch.id } }),
-    onError: (e) => Alert.alert('Oops', e.message),
+    onSuccess: (ch) => {
+      // Drive the user's headline ask: a published charger lights up on the
+      // driver map immediately. Invalidating both query keys ensures the next
+      // visit to the map (and the host's own list) refetches with the new pin.
+      utils.charger.nearby.invalidate();
+      utils.charger.myChargers.invalidate();
+      utils.auth.getSession.invalidate();
+      router.replace({ pathname: '/(host)/charger/[id]', params: { id: ch.id } });
+    },
+    onError: (e) => handleError(e, { feature: 'Add charger' }),
   });
 
   const [title, setTitle] = useState('My home charger');
@@ -36,8 +60,25 @@ export default function AddCharger() {
   const [city, setCity] = useState('Pleasanton');
   const [stateAbbr, setStateAbbr] = useState('CA');
   const [zip, setZip] = useState('94566');
-  const [lat, setLat] = useState('37.6624');
-  const [lng, setLng] = useState('-121.8747');
+  // Default the map pin to the user's current location if known, else
+  // Pleasanton. Numeric state — keeps Mapbox + Number() coercion clean.
+  const [lat, setLat] = useState<number>(userCoords?.lat ?? 37.6624);
+  const [lng, setLng] = useState<number>(userCoords?.lng ?? -121.8747);
+
+  useEffect(() => {
+    // If we get a real user location after mount and the host hasn't moved
+    // the pin yet (defaults still in place), recenter to them.
+    if (userCoords && lat === 37.6624 && lng === -121.8747) {
+      setLat(userCoords.lat);
+      setLng(userCoords.lng);
+      cameraRef.current?.setCamera({
+        centerCoordinate: [userCoords.lng, userCoords.lat],
+        zoomLevel: 15,
+        animationDuration: 400,
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userCoords]);
   const [connector, setConn] = useState<ConnectorType>('j1772');
   const [powerKw, setPower] = useState('7.2');
   const [tier, setTier] = useState<HardwareTier>('tier_3_native');
@@ -62,8 +103,8 @@ export default function AddCharger() {
       state: stateAbbr,
       postalCode: zip,
       country: 'US',
-      lat: Number(lat),
-      lng: Number(lng),
+      lat,
+      lng,
       connectorType: connector,
       powerKw: Number(powerKw),
       hardwareTier: tier,
@@ -175,15 +216,62 @@ export default function AddCharger() {
             />
           </View>
           <View>
-            <Label style={{ marginBottom: 8 }}>COORDINATES</Label>
-            <Row gap={8}>
-              <View style={{ flex: 1 }}>
-                <Input value={lat} onChangeText={setLat} placeholder="lat" />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Input value={lng} onChangeText={setLng} placeholder="lng" />
-              </View>
-            </Row>
+            <Label style={{ marginBottom: 8 }}>LOCATION</Label>
+            <Muted style={{ fontSize: 12, marginBottom: 8 }}>
+              Drag the map to position the pin where the charger actually is.
+            </Muted>
+            <View
+              style={{
+                height: 220,
+                borderRadius: 16,
+                overflow: 'hidden',
+                borderWidth: 1,
+                borderColor: c.line,
+              }}
+            >
+              <MapView
+                style={{ flex: 1 }}
+                styleURL={scheme === 'dark' ? STYLES.dark : STYLES.light}
+                onCameraChanged={(s) => {
+                  const center = s.properties.center as [number, number] | undefined;
+                  if (!center) return;
+                  setLng(center[0]);
+                  setLat(center[1]);
+                }}
+              >
+                <Camera
+                  ref={cameraRef}
+                  defaultSettings={{ centerCoordinate: [lng, lat], zoomLevel: 15 }}
+                  animationDuration={0}
+                />
+                <PointAnnotation id="charger-pin" coordinate={[lng, lat]}>
+                  <View
+                    style={{
+                      width: 28,
+                      height: 28,
+                      borderRadius: 14,
+                      backgroundColor: c.green2,
+                      borderWidth: 3,
+                      borderColor: c.bg,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    <View
+                      style={{
+                        width: 6,
+                        height: 6,
+                        borderRadius: 3,
+                        backgroundColor: c.bg,
+                      }}
+                    />
+                  </View>
+                </PointAnnotation>
+              </MapView>
+            </View>
+            <Muted style={{ fontSize: 11, marginTop: 6 }}>
+              {lat.toFixed(5)}, {lng.toFixed(5)}
+            </Muted>
           </View>
         </View>
       </ScrollView>

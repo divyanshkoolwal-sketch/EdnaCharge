@@ -1,4 +1,4 @@
-import { View, Pressable, Alert } from 'react-native';
+import { Alert, Pressable, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import {
   Screen,
@@ -18,6 +18,7 @@ import { ChevronLeft, Edit } from '../../../src/components/icons/Icon';
 import { ChargerIllo } from '../../../src/components/illustrations/HomeCharger';
 import { useTheme } from '../../../src/theme/useTheme';
 import { trpc } from '../../../src/lib/trpc';
+import { handleError } from '../../../src/lib/errors';
 
 function tierForCharger(t: string): string {
   const m = /tier_(\d)/.exec(t);
@@ -28,11 +29,26 @@ export default function HostChargerEdit() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const { c } = useTheme();
+  const utils = trpc.useUtils();
   const q = trpc.charger.get.useQuery({ id: id! }, { enabled: !!id });
+
   const ocpp = trpc.charger.ocppCredentials.useMutation();
+
+  // Soft-unlist via dedicated server procedure. We don't truly delete because
+  // completed bookings + receipts must remain referenceable.
+  const unlist = trpc.charger.unlist.useMutation({
+    onSuccess: () => {
+      utils.charger.myChargers.invalidate();
+      utils.charger.nearby.invalidate();
+      utils.charger.get.invalidate({ id: id! });
+      router.back();
+    },
+    onError: (e) => handleError(e, { feature: 'Unlist' }),
+  });
 
   if (!q.data) return <Screen><View /></Screen>;
   const ch = q.data;
+  const isUnlisted = !ch.published;
 
   const revealCreds = () => {
     ocpp.mutate(
@@ -43,8 +59,23 @@ export default function HostChargerEdit() {
             'OCPP credentials',
             `URL: ${d.wssUrl}\nID: ${d.chargePointId}\nPassword: ${d.password}\n\nPaste these into your charger's admin panel.`,
           ),
-        onError: (e) => Alert.alert('Oops', e.message),
+        onError: (e) => handleError(e, { feature: 'OCPP credentials' }),
       },
+    );
+  };
+
+  const confirmUnlist = () => {
+    Alert.alert(
+      'Unlist this charger?',
+      'Drivers won\'t see it on the map anymore. Existing bookings still complete normally.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Unlist',
+          style: 'destructive',
+          onPress: () => unlist.mutate({ id: id! }),
+        },
+      ],
     );
   };
 
@@ -106,7 +137,9 @@ export default function HostChargerEdit() {
         <Row gap={10}>
           <StatusPill status={ch.status as Status} />
           <View style={{ flex: 1 }} />
-          <Body style={{ fontSize: 12, fontWeight: '600' }}>Pause</Body>
+          <Body style={{ fontSize: 12, fontWeight: '600' }}>
+            {isUnlisted ? 'Unlisted' : 'Live'}
+          </Body>
         </Row>
       </Card>
 
@@ -122,11 +155,13 @@ export default function HostChargerEdit() {
         />
       ) : null}
       <Button
-        label="Delete this charger"
+        label={isUnlisted ? 'Already unlisted' : 'Unlist this charger'}
         variant="destructive-outline"
         height={44}
         fontSize={13}
-        onPress={() => Alert.alert('Coming soon')}
+        disabled={isUnlisted || unlist.isPending}
+        loading={unlist.isPending}
+        onPress={confirmUnlist}
         style={{ marginTop: 10 }}
       />
     </Screen>

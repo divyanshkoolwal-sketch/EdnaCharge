@@ -2,7 +2,7 @@
 // search-this-area pill, recenter FAB).
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { View, Text, ActivityIndicator, Alert, useColorScheme } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import * as Location from 'expo-location';
 import Mapbox, {
   MapView,
@@ -16,7 +16,9 @@ import Mapbox, {
 import type { CameraRef } from '@rnmapbox/maps/lib/typescript/src/components/Camera';
 import type { FeatureCollection, Feature, Point, Geometry } from 'geojson';
 import { trpc } from '../../src/lib/trpc';
+import { supabase } from '../../src/lib/supabase';
 import { useTheme } from '../../src/theme/useTheme';
+import { useUserLocation } from '../../src/state/userLocation';
 import { Search, Recenter, Bolt } from '../../src/components/icons/Icon';
 import { IconCircle } from '../../src/components/ui';
 
@@ -58,6 +60,8 @@ export default function Map() {
   const [showSearchHere, setShowSearchHere] = useState(false);
   const [styleLoaded, setStyleLoaded] = useState(false);
   const [locationLabel, setLocationLabel] = useState('Tri-Valley');
+  const setUserCoords = useUserLocation((s) => s.set);
+  const utils = trpc.useUtils();
 
   useEffect(() => {
     (async () => {
@@ -70,6 +74,8 @@ export default function Map() {
         const c: [number, number] = [pos.coords.longitude, pos.coords.latitude];
         setUserPos(c);
         setSearchCenter(c);
+        // Publish to the global store so charger detail can compute distance.
+        setUserCoords({ lng: c[0], lat: c[1] });
         cameraRef.current?.setCamera({
           centerCoordinate: c,
           zoomLevel: 13,
@@ -90,13 +96,55 @@ export default function Map() {
         /* GPS off — fine */
       }
     })();
-  }, []);
+  }, [setUserCoords]);
 
-  const nearby = trpc.charger.nearby.useQuery({
-    lat: searchCenter[1],
-    lng: searchCenter[0],
-    radiusMeters: 25_000,
-  });
+  const nearby = trpc.charger.nearby.useQuery(
+    {
+      lat: searchCenter[1],
+      lng: searchCenter[0],
+      radiusMeters: 25_000,
+    },
+    {
+      // Belt-and-braces: even if Realtime is unreachable we still pick up new
+      // chargers within a half-minute.
+      refetchInterval: 30_000,
+      refetchOnWindowFocus: true,
+    },
+  );
+
+  // Refetch whenever the user returns to the Map tab so a charger they (or
+  // another host) just published shows up without manual refresh.
+  useFocusEffect(
+    useCallback(() => {
+      utils.charger.nearby.invalidate();
+    }, [utils]),
+  );
+
+  // Realtime push: subscribe to inserts/updates on the Charger table. As soon
+  // as a host publishes via charger.create, every driver with the map open
+  // sees the new pin within ~1 second.
+  useEffect(() => {
+    const channel = supabase
+      .channel('public:charger-inserts')
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'Charger' },
+        () => {
+          utils.charger.nearby.invalidate();
+        },
+      )
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'Charger' },
+        () => {
+          utils.charger.nearby.invalidate();
+        },
+      )
+      .subscribe();
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [utils]);
 
   const features: FeatureCollection<Point> = useMemo(
     () => ({

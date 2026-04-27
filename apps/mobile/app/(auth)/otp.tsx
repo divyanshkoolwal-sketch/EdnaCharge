@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
-import { Pressable, View, Text, TextInput, Alert } from 'react-native';
+import { Pressable, View, Text, TextInput } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Screen, Button, CTABar, H1, Muted } from '../../src/components/ui';
 import { ChevronLeft } from '../../src/components/icons/Icon';
 import { useTheme } from '../../src/theme/useTheme';
 import { supabase } from '../../src/lib/supabase';
 import { trpc } from '../../src/lib/trpc';
+import { handleError } from '../../src/lib/errors';
 
 export default function Otp() {
   const { email } = useLocalSearchParams<{ email: string }>();
@@ -28,7 +29,7 @@ export default function Otp() {
     const { error } = await supabase.auth.verifyOtp({ email, token: code, type: 'email' });
     setBusy(false);
     if (error) {
-      Alert.alert('Bad code', error.message);
+      handleError(error, { title: 'Bad code' });
       return;
     }
     const session = await utils.auth.getSession.fetch();

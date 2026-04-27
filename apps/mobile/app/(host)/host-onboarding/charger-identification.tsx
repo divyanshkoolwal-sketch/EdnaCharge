@@ -1,6 +1,7 @@
-import { useState } from 'react';
-import { View, Pressable, ScrollView, Alert } from 'react-native';
+import { useEffect, useState } from 'react';
+import { View, Pressable, ScrollView } from 'react-native';
 import { useRouter } from 'expo-router';
+import { handleError } from '../../../src/lib/errors';
 import {
   Screen,
   Card,
@@ -73,10 +74,37 @@ export default function ChargerIdentification() {
   const [powerKw, setPowerKw] = useState<number | null>(null);
   const [tier, setTier] = useState<HardwareTier | null>(null);
 
+  const utils = trpc.useUtils();
   const mut = trpc.auth.submitChargerIdentification.useMutation({
-    onSuccess: () => setStep(7),
-    onError: (e) => Alert.alert('Oops', e.message),
+    onSuccess: () => {
+      utils.auth.getSession.invalidate();
+      setStep(7);
+    },
+    onError: (e) => handleError(e, { feature: 'Hardware setup' }),
   });
+
+  // Pre-fill from a previously-submitted hardwareSetup so "My setup" works as
+  // an edit flow rather than re-entry.
+  const session = trpc.auth.getSession.useQuery();
+  useEffect(() => {
+    const setup = session.data?.hostProfile?.hardwareSetup as
+      | {
+          chargerLocation?: Location;
+          chargerBrand?: string | null;
+          hasWifi?: boolean | null;
+          connectorType?: ConnectorType;
+          powerKw?: number;
+          hardwareTier?: HardwareTier;
+        }
+      | undefined;
+    if (!setup) return;
+    if (setup.chargerLocation) setLocation(setup.chargerLocation);
+    if (setup.chargerBrand) setBrand(setup.chargerBrand);
+    if (typeof setup.hasWifi === 'boolean') setHasWifi(setup.hasWifi);
+    if (setup.connectorType) setConnector(setup.connectorType);
+    if (typeof setup.powerKw === 'number') setPowerKw(setup.powerKw);
+    if (setup.hardwareTier) setTier(setup.hardwareTier);
+  }, [session.data]);
 
   const pickLocation = (l: Location) => {
     setLocation(l);

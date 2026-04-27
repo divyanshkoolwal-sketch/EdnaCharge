@@ -53,7 +53,11 @@ export async function settleSession(job: Job<{ sessionId: string }>) {
     data: { finalCostCents: energyCents },
   });
 
-  if (session.booking.stripePaymentIntentId && stripe && amountToCapture > 0) {
+  // Skip Stripe capture for dev-bypass synthetic PIs. We still settle the
+  // booking row + Payout below so the full demo flow ends in a "completed"
+  // state and the receipt screen renders normally.
+  const isDevPi = session.booking.stripePaymentIntentId?.startsWith('pi_dev_');
+  if (session.booking.stripePaymentIntentId && stripe && amountToCapture > 0 && !isDevPi) {
     // AUDIT H9: idempotency key so BullMQ retry after a partial failure doesn't
     // error with "already captured".
     await stripe.paymentIntents.capture(

@@ -1,5 +1,6 @@
-import { View, Pressable, ScrollView, Alert } from 'react-native';
+import { View, Pressable } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { handleError } from '../../../src/lib/errors';
 import {
   Screen,
   Card,
@@ -20,12 +21,22 @@ import { trpc } from '../../../src/lib/trpc';
 export default function BookingDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
+  const utils = trpc.useUtils();
   const q = trpc.booking.get.useQuery({ id: id! }, { enabled: !!id, refetchInterval: 4000 });
   const start = trpc.booking.startSession.useMutation({
-    onSuccess: () => q.refetch(),
-    onError: (e) => Alert.alert('Oops', e.message),
+    onSuccess: () => {
+      utils.booking.get.invalidate({ id: id! });
+      utils.booking.list.invalidate();
+    },
+    onError: (e) => handleError(e, { feature: 'Session' }),
   });
-  const cancel = trpc.booking.cancel.useMutation({ onSuccess: () => q.refetch() });
+  const cancel = trpc.booking.cancel.useMutation({
+    onSuccess: () => {
+      utils.booking.get.invalidate({ id: id! });
+      utils.booking.list.invalidate();
+    },
+    onError: (e) => handleError(e, { feature: 'Booking' }),
+  });
 
   if (!q.data) return <Screen><View /></Screen>;
   const b = q.data;

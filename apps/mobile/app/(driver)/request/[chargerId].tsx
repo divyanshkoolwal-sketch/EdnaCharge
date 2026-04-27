@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { View, Pressable, ActivityIndicator, Alert, ScrollView } from 'react-native';
+import { View, Pressable, ActivityIndicator, ScrollView } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { handleError } from '../../../src/lib/errors';
 import {
   Screen,
   Card,
@@ -39,10 +40,14 @@ export default function RequestBooking() {
   const [hours, setHours] = useState(1);
   const [msg, setMsg] = useState('');
 
+  const utils = trpc.useUtils();
   const mut = trpc.booking.requestBooking.useMutation({
-    onSuccess: (r) =>
-      router.replace({ pathname: '/(driver)/booking/[id]', params: { id: r.booking.id } }),
-    onError: (e) => Alert.alert('Oops', e.message),
+    onSuccess: (r) => {
+      utils.booking.list.invalidate();
+      utils.chat.listThreads.invalidate();
+      router.replace({ pathname: '/(driver)/booking/[id]', params: { id: r.booking.id } });
+    },
+    onError: (e) => handleError(e, { feature: 'Booking' }),
   });
 
   if (!charger.data) {

@@ -1,9 +1,10 @@
 import { useState } from 'react';
-import { Pressable, View, Alert } from 'react-native';
+import { Pressable, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Screen, Input, Button, CTABar, H1, Muted } from '../../src/components/ui';
 import { ChevronLeft } from '../../src/components/icons/Icon';
 import { supabase } from '../../src/lib/supabase';
+import { handleError } from '../../src/lib/errors';
 
 export default function SignIn() {
   const router = useRouter();
@@ -18,7 +19,7 @@ export default function SignIn() {
     });
     setBusy(false);
     if (error) {
-      Alert.alert('Oops', error.message);
+      handleError(error, { title: "Couldn't send code" });
       return;
     }
     router.push({ pathname: '/(auth)/otp', params: { email } });

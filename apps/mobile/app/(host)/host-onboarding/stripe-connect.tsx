@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
-import { View, Pressable, Alert, ActivityIndicator } from 'react-native';
+import { View, Pressable, ActivityIndicator } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { useRouter } from 'expo-router';
 import { Screen, Button, Body, Muted } from '../../../src/components/ui';
 import { ChevronLeft } from '../../../src/components/icons/Icon';
 import { useTheme } from '../../../src/theme/useTheme';
 import { trpc } from '../../../src/lib/trpc';
+import { handleError } from '../../../src/lib/errors';
 
 export default function StripeConnect() {
   const router = useRouter();
@@ -17,18 +18,31 @@ export default function StripeConnect() {
     refetchInterval: 3000,
   });
 
+  const utils = trpc.useUtils();
+
   useEffect(() => {
     start.mutate(undefined, {
-      onSuccess: (d) => setUrl(d.url),
-      onError: (e) => Alert.alert('Stripe error', e.message),
+      onSuccess: (d) => {
+        // Dev bypass: server already flipped the host role + onboarding flag.
+        // Skip the WebView entirely and let the user proceed.
+        if (d.devBypass) {
+          utils.auth.getSession.invalidate();
+          router.replace('/(host)/host-onboarding/done');
+          return;
+        }
+        setUrl(d.url);
+      },
+      onError: (e) => handleError(e, { feature: 'Stripe' }),
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
-    if (status.data?.status === 'complete')
+    if (status.data?.status === 'complete') {
+      utils.auth.getSession.invalidate();
       router.replace('/(host)/host-onboarding/done');
-  }, [status.data?.status, router]);
+    }
+  }, [status.data?.status, router, utils]);
 
   if (!url) {
     return (

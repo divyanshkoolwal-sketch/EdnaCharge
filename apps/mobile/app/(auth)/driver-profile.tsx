@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { Pressable, View, ScrollView, Alert } from 'react-native';
+import { Pressable, View, ScrollView } from 'react-native';
 import { useRouter } from 'expo-router';
+import { handleError } from '../../src/lib/errors';
 import {
   Screen,
   Input,
@@ -31,9 +32,13 @@ export default function DriverProfile() {
   const [connector, setConnector] = useState<ConnectorType>('nacs');
   const [plate, setPlate] = useState('');
 
+  const utils = trpc.useUtils();
   const mut = trpc.auth.completeDriverProfile.useMutation({
-    onSuccess: () => router.replace('/(driver)/map'),
-    onError: (e) => Alert.alert('Oops', e.message),
+    onSuccess: () => {
+      utils.auth.getSession.invalidate();
+      router.replace('/(driver)/map');
+    },
+    onError: (e) => handleError(e, { feature: 'Profile' }),
   });
 
   return (

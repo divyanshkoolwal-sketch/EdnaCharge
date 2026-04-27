@@ -1,5 +1,6 @@
-import { View, Pressable, Alert } from 'react-native';
+import { View, Pressable } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { handleError } from '../../../src/lib/errors';
 import {
   Screen,
   Card,
@@ -24,9 +25,15 @@ export default function HostRequestReview() {
   const router = useRouter();
   const { c } = useTheme();
   const q = trpc.booking.get.useQuery({ id: id! }, { enabled: !!id });
+  const utils = trpc.useUtils();
   const respond = trpc.booking.respond.useMutation({
-    onSuccess: () => router.back(),
-    onError: (e) => Alert.alert('Oops', e.message),
+    onSuccess: () => {
+      utils.booking.list.invalidate();
+      utils.booking.get.invalidate({ id: id! });
+      utils.chat.getThread.invalidate();
+      router.back();
+    },
+    onError: (e) => handleError(e, { feature: 'Booking' }),
   });
 
   if (!q.data) return <Screen><View /></Screen>;

@@ -131,6 +131,22 @@ export const chargerRouter = router({
       return prisma.charger.findUniqueOrThrow({ where: { id: input.id } });
     }),
 
+  // Soft-unlist: take the pin off the driver map without deleting the row
+  // (which would cascade-delete bookings + receipts). Only the host who owns
+  // the charger may unlist.
+  unlist: protectedProcedure
+    .input(z.object({ id: z.string().uuid() }))
+    .mutation(async ({ ctx, input }) => {
+      const res = await prisma.charger.updateMany({
+        where: { id: input.id, hostId: ctx.userId },
+        data: { published: false, status: 'offline' },
+      });
+      if (res.count !== 1) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Charger not found or not owned.' });
+      }
+      return prisma.charger.findUniqueOrThrow({ where: { id: input.id } });
+    }),
+
   ocppCredentials: protectedProcedure
     .input(z.object({ id: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {

@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { View, Pressable, Alert } from 'react-native';
+import { View, Pressable } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { handleError } from '../../../src/lib/errors';
 import {
   Screen,
   Card,
@@ -22,10 +23,15 @@ export default function Receipt() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const { c } = useTheme();
+  const utils = trpc.useUtils();
   const q = trpc.booking.get.useQuery({ id: id! }, { enabled: !!id, refetchInterval: 3000 });
   const review = trpc.review.create.useMutation({
-    onSuccess: () => router.replace('/(driver)/bookings'),
-    onError: (e) => Alert.alert('Oops', e.message),
+    onSuccess: () => {
+      utils.booking.list.invalidate();
+      utils.charger.get.invalidate();
+      router.replace('/(driver)/bookings');
+    },
+    onError: (e) => handleError(e, { feature: 'Review' }),
   });
   const [stars, setStars] = useState(5);
   const [text, setText] = useState('');

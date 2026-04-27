@@ -3,10 +3,12 @@ import { useRouter } from 'expo-router';
 import { Screen, Button, H1Lg, Body } from '../../../src/components/ui';
 import { SuccessCheckIllo } from '../../../src/components/illustrations/HomeCharger';
 import { useRole } from '../../../src/state/role';
+import { trpc } from '../../../src/lib/trpc';
 
 export default function Done() {
   const router = useRouter();
   const setRole = useRole((s) => s.setRole);
+  const utils = trpc.useUtils();
   return (
     <Screen style={{ paddingHorizontal: 24, paddingBottom: 30 }}>
       <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
@@ -16,8 +18,12 @@ export default function Done() {
       </View>
       <Button
         label="Add charger"
-        onPress={() => {
+        onPress={async () => {
           setRole('host');
+          // Force a fresh session read before the host tab bar mounts so the
+          // role flip is visible immediately (otherwise the user may see the
+          // old driver tabs for a tick).
+          await utils.auth.getSession.invalidate();
           router.replace('/(host)/add-charger');
         }}
       />
