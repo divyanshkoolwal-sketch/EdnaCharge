@@ -1,11 +1,13 @@
 import Fastify from 'fastify';
+import type { IncomingMessage } from 'node:http';
+import type { Socket } from 'node:net';
 import { RPCServer } from 'ocpp-rpc';
 import bcrypt from 'bcryptjs';
 import { loadEnv } from '@edna/config';
 import { prisma } from '@edna/db';
 import { initSentry, Sentry } from './sentry.js';
 import { logger } from './logger.js';
-import { bindHandlers } from './handlers/index.js';
+import { bindHandlers, type Client } from './handlers/index.js';
 import { register, unregister, size } from './lib/registry.js';
 import { startCommandConsumer } from './lib/ocpp-queue.js';
 
@@ -25,7 +27,7 @@ async function main() {
     accept({ cpId });
   });
 
-  rpc.on('client', (client: any) => {
+  rpc.on('client', (client: Client) => {
     const cpId = (client.session as { cpId?: string }).cpId ?? client.identity;
     if (!cpId) {
       client.close(4000, 'No identity');
@@ -58,7 +60,7 @@ async function main() {
   });
   await app.ready();
 
-  app.server.on('upgrade', (req: any, socket: any, head: any) => {
+  app.server.on('upgrade', (req: IncomingMessage, socket: Socket, head: Buffer) => {
     if (!req.url?.startsWith('/ocpp/v1.6/')) {
       socket.destroy();
       return;
@@ -73,7 +75,9 @@ async function main() {
   logger.info('ocpp-commands consumer started');
 
   const shutdown = async () => {
-    await (rpc as any).close({ code: 1001 });
+    await (rpc as RPCServer & { close: (opts: { code: number }) => Promise<void> }).close({
+      code: 1001,
+    });
     await app.close();
     process.exit(0);
   };

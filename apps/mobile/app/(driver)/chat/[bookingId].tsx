@@ -16,8 +16,6 @@ import { Avatar, Chip } from '../../../src/components/ui';
 import { ChevronLeft, Plus, Send } from '../../../src/components/icons/Icon';
 import { trpc } from '../../../src/lib/trpc';
 import { supabase } from '../../../src/lib/supabase';
-import { useAuth } from '../../../src/state/auth';
-import { handleError } from '../../../src/lib/errors';
 
 const QUICK_REPLIES = ['On my way ✓', 'Pull right', 'Gate 1234'];
 
@@ -25,25 +23,23 @@ export default function ChatThread() {
   const { bookingId } = useLocalSearchParams<{ bookingId: string }>();
   const router = useRouter();
   const { c, isDark } = useTheme();
-  const session = useAuth((s) => s.session);
-  const me = session?.user.id;
   const q = trpc.chat.getThread.useQuery({ bookingId: bookingId! }, { enabled: !!bookingId });
+  const me = trpc.auth.getSession.useQuery(undefined).data?.id;
   const utils = trpc.useUtils();
   const send = trpc.chat.sendMessage.useMutation({
     onSuccess: () => {
       setDraft('');
       utils.chat.getThread.invalidate({ bookingId: bookingId! });
-      utils.chat.listThreads.invalidate();
     },
-    onError: (e) => handleError(e, { feature: 'Chat' }),
   });
   const markRead = trpc.chat.markRead.useMutation();
   const [draft, setDraft] = useState('');
   const listRef = useRef<FlatList>(null);
 
   useEffect(() => {
-    if (!q.data?.id) return;
-    const channel = supabase
+    const client = supabase;
+    if (!q.data?.id || !client) return;
+    const channel = client
       .channel(`chat:${q.data.id}`)
       .on(
         'postgres_changes',
@@ -57,10 +53,10 @@ export default function ChatThread() {
       )
       .subscribe();
     return () => {
-      void supabase.removeChannel(channel);
+      void client.removeChannel(channel);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [q.data?.id]);
+  }, [q.data?.id, bookingId, utils.chat.getThread]);
 
   useEffect(() => {
     const msgs = q.data?.messages ?? [];

@@ -1,7 +1,7 @@
 // Driver map — Mapbox-rendered with the design's overlay chrome (search bar,
 // search-this-area pill, recenter FAB).
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
-import { View, Text, ActivityIndicator, Alert, useColorScheme } from 'react-native';
+import { View, Text, ActivityIndicator, Alert, Pressable, ScrollView, useColorScheme } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
 import * as Location from 'expo-location';
 import Mapbox, {
@@ -124,7 +124,9 @@ export default function Map() {
   // as a host publishes via charger.create, every driver with the map open
   // sees the new pin within ~1 second.
   useEffect(() => {
-    const channel = supabase
+    const client = supabase;
+    if (!client) return undefined;
+    const channel = client
       .channel('public:charger-inserts')
       .on(
         'postgres_changes',
@@ -142,7 +144,7 @@ export default function Map() {
       )
       .subscribe();
     return () => {
-      void supabase.removeChannel(channel);
+      void client.removeChannel(channel);
     };
   }, [utils]);
 
@@ -226,10 +228,44 @@ export default function Map() {
 
   if (!MAPBOX_TOKEN) {
     return (
-      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.c.bg, padding: 32 }}>
-        <Text style={{ textAlign: 'center', color: theme.c.muted }}>
-          Map is misconfigured: EXPO_PUBLIC_MAPBOX_TOKEN is missing.
+      <View style={{ flex: 1, backgroundColor: theme.c.bg, padding: 20, paddingTop: 64 }}>
+        <Text style={{ color: theme.c.ink, fontSize: 28, fontWeight: '800' }}>Nearby chargers</Text>
+        <Text style={{ color: theme.c.muted, fontSize: 14, marginTop: 8 }}>
+          Map view needs EXPO_PUBLIC_MAPBOX_TOKEN. Showing available chargers as a list for now.
         </Text>
+
+        {nearby.isLoading ? (
+          <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+            <ActivityIndicator />
+          </View>
+        ) : (
+          <ScrollView contentContainerStyle={{ gap: 10, paddingTop: 22, paddingBottom: 24 }}>
+            {(nearby.data ?? []).map((charger: Charger) => (
+              <Pressable
+                key={charger.id}
+                onPress={() => router.push({ pathname: '/(driver)/charger/[id]', params: { id: charger.id } })}
+                style={{
+                  backgroundColor: theme.c.card,
+                  borderRadius: 16,
+                  padding: 16,
+                  ...theme.shadow.cardLight,
+                }}
+              >
+                <Text style={{ color: theme.c.ink, fontSize: 16, fontWeight: '700' }}>
+                  {charger.title}
+                </Text>
+                <Text style={{ color: theme.c.muted, fontSize: 13, marginTop: 6 }}>
+                  {charger.connectorType} · {charger.powerKw} kW · {(charger.distanceM / 1609.34).toFixed(1)} mi
+                </Text>
+              </Pressable>
+            ))}
+            {!nearby.isLoading && (nearby.data ?? []).length === 0 ? (
+              <Text style={{ color: theme.c.muted, marginTop: 24, textAlign: 'center' }}>
+                No nearby chargers found.
+              </Text>
+            ) : null}
+          </ScrollView>
+        )}
       </View>
     );
   }

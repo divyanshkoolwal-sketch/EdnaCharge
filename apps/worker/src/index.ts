@@ -4,22 +4,38 @@ import { Worker, type Job } from 'bullmq';
 import { loadEnv } from '@edna/config';
 import { initSentry, Sentry } from './sentry.js';
 import { logger } from './logger.js';
-import { autoDecline } from './jobs/auto-decline.js';
-import { settleSession } from './jobs/settle-session.js';
-import { notify } from './jobs/notifications.js';
+import { autoDeclineById } from './jobs/auto-decline.js';
+import { settleSessionById } from './jobs/settle-session.js';
+import { notify, type NotificationJob } from './jobs/notifications.js';
 
 // AUDIT L2: discriminated union over BullMQ job payloads per queue so the
-// processor body is strongly typed and no `as any` is needed.
-type BookingsJob =
-  | { name: 'auto_decline'; data: { bookingId: string } }
-  | { name: 'settle_session'; data: { sessionId: string } }
-  | {
-      name: 'settle_session_by_txid';
-      data: { transactionId: number; meterStop?: number; timestamp?: string };
-    };
+// processor body is strongly typed.
+type AutoDeclinePayload = { bookingId: string };
+type SettleSessionPayload = { sessionId: string };
+type SettleByTxIdPayload = { transactionId: number; meterStop?: number; timestamp?: string };
+type BookingsPayload = AutoDeclinePayload | SettleSessionPayload | SettleByTxIdPayload;
+type BookingsName = 'auto_decline' | 'settle_session' | 'settle_session_by_txid';
 
-type NotifyJob = Parameters<typeof notify>[0];
-type NotifyPayload = NotifyJob extends Job<infer D> ? D : never;
+type NotifyPayload = NotificationJob['data'];
+type NotifyName = NotificationJob['name'];
+
+function hasStringProp<T extends string>(
+  payload: BookingsPayload,
+  prop: T,
+): payload is BookingsPayload & Record<T, string> {
+  return prop in payload && typeof payload[prop as keyof BookingsPayload] === 'string';
+}
+
+function hasNumberProp<T extends string>(
+  payload: BookingsPayload,
+  prop: T,
+): payload is BookingsPayload & Record<T, number> {
+  return prop in payload && typeof payload[prop as keyof BookingsPayload] === 'number';
+}
+
+function isSettleByTxIdPayload(payload: BookingsPayload): payload is SettleByTxIdPayload {
+  return hasNumberProp(payload, 'transactionId');
+}
 
 async function main() {
   const env = loadEnv();
@@ -29,24 +45,32 @@ async function main() {
   connection.on('error', (err) => logger.error({ err }, 'redis connection error'));
 
   const workers = [
-    new Worker<BookingsJob['data']>(
+    new Worker<BookingsPayload, void, BookingsName>(
       'bookings',
-      async (job: Job<BookingsJob['data']>) => {
+      async (job: Job<BookingsPayload, void, BookingsName>) => {
         if (job.name === 'auto_decline') {
-          return autoDecline(job as Job<{ bookingId: string }>);
+          if (!hasStringProp(job.data, 'bookingId')) {
+            logger.warn({ jobId: job.id }, 'auto_decline: invalid payload');
+            return;
+          }
+          return autoDeclineById(job.data.bookingId);
         }
         if (job.name === 'settle_session') {
-          return settleSession(job as Job<{ sessionId: string }>);
+          if (!hasStringProp(job.data, 'sessionId')) {
+            logger.warn({ jobId: job.id }, 'settle_session: invalid payload');
+            return;
+          }
+          return settleSessionById(job.data.sessionId);
         }
         if (job.name === 'settle_session_by_txid') {
           // Deferred settle — reconciler for the H3 late-StartTransaction path.
           // For now, re-look up by ocppTransactionId and settle via the normal
           // settleSession if found; otherwise drop with a warning.
-          const data = job.data as {
-            transactionId: number;
-            meterStop?: number;
-            timestamp?: string;
-          };
+          if (!isSettleByTxIdPayload(job.data)) {
+            logger.warn({ jobId: job.id }, 'settle_session_by_txid: invalid payload');
+            return;
+          }
+          const data = job.data;
           const { prisma } = await import('@edna/db');
           const session = await prisma.chargingSession.findUnique({
             where: { ocppTransactionId: data.transactionId },
@@ -59,8 +83,7 @@ async function main() {
             return;
           }
           if (!session.endedAt) {
-            const kwh =
-              data.meterStop != null ? (data.meterStop - session.meterStartWh) / 1000 : 0;
+            const kwh = data.meterStop != null ? (data.meterStop - session.meterStartWh) / 1000 : 0;
             await prisma.chargingSession.update({
               where: { id: session.id },
               data: {
@@ -70,20 +93,15 @@ async function main() {
               },
             });
           }
-          return settleSession({
-            ...job,
-            data: { sessionId: session.id },
-          } as unknown as Job<{ sessionId: string }>);
+          return settleSessionById(session.id);
         }
         logger.warn({ name: job.name }, 'bookings queue: unknown job name');
       },
       { connection },
     ),
-    new Worker<NotifyPayload>(
-      'notifications',
-      async (job) => notify(job as NotifyJob),
-      { connection },
-    ),
+    new Worker<NotifyPayload, void, NotifyName>('notifications', async (job) => notify(job), {
+      connection,
+    }),
   ];
 
   for (const w of workers) {

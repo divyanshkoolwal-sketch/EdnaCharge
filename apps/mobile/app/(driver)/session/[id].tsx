@@ -31,15 +31,16 @@ export default function LiveSession() {
   );
 
   useEffect(() => {
-    if (!id) return;
-    const ch = supabase
+    const client = supabase;
+    if (!id || !client) return;
+    const ch = client
       .channel(`session:${id}`)
       .on('broadcast', { event: 'meter_value' }, ({ payload }) => {
         setLatest(payload as MeterSample);
       })
       .subscribe();
     return () => {
-      void supabase.removeChannel(ch);
+      void client.removeChannel(ch);
     };
   }, [id]);
 

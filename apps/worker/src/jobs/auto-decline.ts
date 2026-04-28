@@ -9,7 +9,11 @@ const stripe = process.env.STRIPE_SECRET_KEY
   : null;
 
 export async function autoDecline(job: Job<{ bookingId: string }>) {
-  const b = await prisma.booking.findUnique({ where: { id: job.data.bookingId } });
+  return autoDeclineById(job.data.bookingId);
+}
+
+export async function autoDeclineById(bookingId: string) {
+  const b = await prisma.booking.findUnique({ where: { id: bookingId } });
   if (!b) return;
   // AUDIT H2: optimistic update — only flip pending→declined if the row is
   // still pending at write time. Otherwise the host already responded.
@@ -20,11 +24,9 @@ export async function autoDecline(job: Job<{ bookingId: string }>) {
   if (res.count !== 1) return; // already resolved; nothing to do.
   if (b.stripePaymentIntentId && stripe) {
     try {
-      await stripe.paymentIntents.cancel(
-        b.stripePaymentIntentId,
-        undefined,
-        { idempotencyKey: `cancel:${b.id}` },
-      );
+      await stripe.paymentIntents.cancel(b.stripePaymentIntentId, undefined, {
+        idempotencyKey: `cancel:${b.id}`,
+      });
     } catch (err) {
       // AUDIT (was silent-swallow): log + Sentry.
       logger.warn({ err, bookingId: b.id }, 'auto-decline: stripe cancel failed');

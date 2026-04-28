@@ -1,12 +1,80 @@
-import { View } from 'react-native';
+import { useState } from 'react';
+import { Alert, View } from 'react-native';
 import { useRouter } from 'expo-router';
+import * as Google from 'expo-auth-session/providers/google';
+import * as WebBrowser from 'expo-web-browser';
 import { Screen, Button, H1Lg, Body, Label, Muted, Row, StatusDot } from '../../src/components/ui';
 import { HomeChargerIllo } from '../../src/components/illustrations/HomeCharger';
 import { useTheme } from '../../src/theme/useTheme';
+import { trpc } from '../../src/lib/trpc';
+import { authErrorMessage, googleAuthConfig, isAuthCancel, useAuth } from '../../src/state/auth';
+
+WebBrowser.maybeCompleteAuthSession();
+
+type AuthProvider = 'google' | 'apple';
 
 export default function Welcome() {
   const router = useRouter();
   const { c } = useTheme();
+  const signInWithGoogleToken = useAuth((s) => s.signInWithGoogleToken);
+  const signInWithApple = useAuth((s) => s.signInWithApple);
+  const [busyProvider, setBusyProvider] = useState<AuthProvider | null>(null);
+  const utils = trpc.useUtils();
+  const [, , promptGoogle] = Google.useAuthRequest(
+    {
+      iosClientId: googleAuthConfig.iosClientId,
+      webClientId: googleAuthConfig.webClientId,
+      scopes: ['openid', 'profile', 'email'],
+      selectAccount: true,
+    },
+    {
+      native: `${googleAuthConfig.iosUrlScheme}:/oauthredirect`,
+    },
+  );
+
+  const finishAuth = async () => {
+    const session = await utils.auth.getSession.fetch();
+    router.replace(session.driverProfile ? '/' : '/(auth)/driver-profile');
+  };
+
+  const continueWithProvider = async (
+    provider: AuthProvider,
+    action: () => Promise<void>,
+    label: string
+  ) => {
+    try {
+      setBusyProvider(provider);
+      await action();
+      await finishAuth();
+    } catch (err) {
+      if (!isAuthCancel(err)) {
+        Alert.alert(`${label} failed`, authErrorMessage(err));
+      }
+    } finally {
+      setBusyProvider(null);
+    }
+  };
+
+  const continueWithGoogle = async () => {
+    try {
+      setBusyProvider('google');
+      const result = await promptGoogle();
+      if (result.type === 'cancel' || result.type === 'dismiss') return;
+      if (result.type !== 'success') {
+        throw new Error(result.type === 'error' ? result.error?.message ?? 'Google sign-in failed.' : 'Google sign-in was not completed.');
+      }
+      const idToken = result.params.id_token ?? result.authentication?.idToken;
+      if (!idToken) throw new Error('Google did not return an ID token.');
+      await signInWithGoogleToken(idToken);
+      await finishAuth();
+    } catch (err) {
+      if (!isAuthCancel(err)) {
+        Alert.alert('Google sign-in failed', authErrorMessage(err));
+      }
+    } finally {
+      setBusyProvider(null);
+    }
+  };
 
   return (
     <Screen style={{ paddingHorizontal: 24, paddingBottom: 30 }}>
@@ -34,9 +102,33 @@ export default function Welcome() {
           </Row>
         </View>
         <Button
-          label="Continue with email"
-          onPress={() => router.push('/(auth)/sign-in')}
+          label="Continue with Google"
+          loading={busyProvider === 'google'}
+          disabled={busyProvider !== null}
+          onPress={continueWithGoogle}
           style={{ marginTop: 20 }}
+        />
+        <Button
+          label="Continue with Apple"
+          variant="secondary"
+          loading={busyProvider === 'apple'}
+          disabled={busyProvider !== null}
+          onPress={() => continueWithProvider('apple', signInWithApple, 'Apple sign-in')}
+          style={{ marginTop: 10 }}
+        />
+        <Button
+          label="Continue with email"
+          variant="secondary"
+          disabled={busyProvider !== null}
+          onPress={() => router.push('/(auth)/sign-in')}
+          style={{ marginTop: 10 }}
+        />
+        <Button
+          label="Continue with phone"
+          variant="secondary"
+          disabled={busyProvider !== null}
+          onPress={() => router.push('/(auth)/phone' as never)}
+          style={{ marginTop: 10 }}
         />
         <Muted style={{ textAlign: 'center', marginTop: 12, fontSize: 11, color: c.muted2 }}>
           By continuing you agree to terms & privacy.

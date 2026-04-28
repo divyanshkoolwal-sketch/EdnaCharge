@@ -1,19 +1,22 @@
 import { initTRPC, TRPCError } from '@trpc/server';
 import type { CreateFastifyContextOptions } from '@trpc/server/adapters/fastify';
-import { verifyJwt } from './lib/supabase.js';
+import { verifyFirebaseIdToken, type VerifiedFirebaseUser } from './lib/firebase.js';
 import { prisma } from '@edna/db';
 
 export type Context = {
   userId: string | null;
   email: string | null;
+  firebaseUser: VerifiedFirebaseUser | null;
 };
 
 export async function createContext({ req }: CreateFastifyContextOptions): Promise<Context> {
   const auth = req.headers.authorization;
-  if (!auth?.startsWith('Bearer ')) return { userId: null, email: null };
+  if (!auth?.startsWith('Bearer ')) return { userId: null, email: null, firebaseUser: null };
   const token = auth.slice('Bearer '.length);
-  const v = await verifyJwt(token);
-  return v ? { userId: v.userId, email: v.email } : { userId: null, email: null };
+  const v = await verifyFirebaseIdToken(token);
+  return v
+    ? { userId: null, email: v.email, firebaseUser: v }
+    : { userId: null, email: null, firebaseUser: null };
 }
 
 const t = initTRPC.context<Context>().create({
@@ -40,27 +43,59 @@ export const publicProcedure = t.procedure;
 // runs before the mobile app happens to call `auth.getSession`. Cheap (one
 // indexed lookup) and idempotent.
 export const protectedProcedure = t.procedure.use(async ({ ctx, next }) => {
-  if (!ctx.userId) throw new TRPCError({ code: 'UNAUTHORIZED' });
-  // AUDIT L4: phone-only Supabase users have no email; fall back to a stable
-  // placeholder derived from the userId so downstream code (e.g. fullName
-  // bootstrap in auth.getSession) doesn't produce empty strings.
-  const email = ctx.email && ctx.email.length > 0 ? ctx.email : `user-${ctx.userId.slice(0, 8)}`;
+  if (!ctx.firebaseUser) throw new TRPCError({ code: 'UNAUTHORIZED' });
+  const authUser = ctx.firebaseUser;
+  const email =
+    authUser.email && authUser.email.length > 0
+      ? authUser.email.toLowerCase()
+      : `firebase-${authUser.firebaseUid}@ednacharge.local`;
+  const fullName = authUser.name?.trim() || email.split('@')[0] || 'user';
 
-  const exists = await prisma.user.findUnique({
-    where: { id: ctx.userId },
-    select: { id: true },
+  let user = await prisma.user.findFirst({
+    where: {
+      OR: [{ firebaseUid: authUser.firebaseUid }, { email }],
+    },
+    select: { id: true, firebaseUid: true, fullName: true, avatarUrl: true },
   });
-  if (!exists) {
-    const fallbackName = email.split('@')[0] || 'user';
-    // Race-safe: if a concurrent request created the row, swallow P2002.
-    await prisma.user
+
+  if (user) {
+    const shouldUpdate =
+      user.firebaseUid !== authUser.firebaseUid ||
+      (authUser.picture && user.avatarUrl !== authUser.picture) ||
+      (!user.fullName && fullName);
+
+    if (shouldUpdate) {
+      user = await prisma.user.update({
+        where: { id: user.id },
+        data: {
+          firebaseUid: authUser.firebaseUid,
+          avatarUrl: authUser.picture ?? user.avatarUrl,
+          fullName: user.fullName || fullName,
+        },
+        select: { id: true, firebaseUid: true, fullName: true, avatarUrl: true },
+      });
+    }
+  } else {
+    user = await prisma.user
       .create({
-        data: { id: ctx.userId, email, fullName: fallbackName },
+        data: {
+          firebaseUid: authUser.firebaseUid,
+          email,
+          fullName,
+          avatarUrl: authUser.picture,
+        },
+        select: { id: true, firebaseUid: true, fullName: true, avatarUrl: true },
       })
-      .catch((err: { code?: string }) => {
+      .catch(async (err: { code?: string }) => {
         if (err?.code !== 'P2002') throw err;
+        return prisma.user.findFirstOrThrow({
+          where: {
+            OR: [{ firebaseUid: authUser.firebaseUid }, { email }],
+          },
+          select: { id: true, firebaseUid: true, fullName: true, avatarUrl: true },
+        });
       });
   }
 
-  return next({ ctx: { userId: ctx.userId, email } });
+  return next({ ctx: { userId: user.id, email, firebaseUser: authUser } });
 });

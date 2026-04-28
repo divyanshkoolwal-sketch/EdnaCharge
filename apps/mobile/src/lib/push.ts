@@ -1,7 +1,7 @@
 import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
 import { Platform } from 'react-native';
-import { supabase } from './supabase';
+import { getAuthToken } from '../state/auth';
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -28,14 +28,9 @@ export async function registerPushToken(): Promise<void> {
     });
   }
   const token = (await Notifications.getExpoPushTokenAsync()).data;
-  await supabase.auth.updateUser({ data: { expoPushToken: token } });
-  // AUDIT L5: persist via the dedicated tRPC mutation so User.expoPushToken
-  // in Postgres is kept in sync (worker reads from there, not from Supabase
-  // auth metadata).
   try {
     const apiUrl = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000';
-    const { data } = await supabase.auth.getSession();
-    const accessToken = data.session?.access_token;
+    const accessToken = await getAuthToken();
     if (accessToken) {
       await fetch(`${apiUrl}/trpc/auth.registerExpoPushToken`, {
         method: 'POST',

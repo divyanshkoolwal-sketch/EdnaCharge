@@ -1,18 +1,17 @@
 /**
  * Shared e2e helpers. Tests are integration tests against a running api (+ csms +
- * worker) backed by local Postgres + Redis. We NEVER mock Stripe / Supabase —
+ * worker) backed by local Postgres + Redis. We NEVER mock Stripe —
  * tests that can't reach credentials mark themselves SKIP and the runner surfaces
  * that (per CLAUDE.md non-negotiable #2).
  */
-import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import { createHmac } from 'node:crypto';
 import { prisma } from '@edna/db';
 
 export const API_URL = process.env.E2E_API_URL ?? 'http://localhost:3000';
 export const CSMS_URL = process.env.E2E_CSMS_URL ?? 'http://localhost:3002';
 
-export const HAS_SUPABASE =
-  !!process.env.SUPABASE_URL && !!process.env.SUPABASE_ANON_KEY;
-export const HAS_SERVICE_ROLE = !!process.env.SUPABASE_SERVICE_ROLE_KEY;
+export const HAS_SUPABASE = process.env.E2E_LIVE === '1';
+export const HAS_SERVICE_ROLE = process.env.E2E_LIVE === '1';
 export const HAS_STRIPE = !!process.env.STRIPE_SECRET_KEY;
 
 /** True when a full live stack is expected. Lets test suites mark themselves
@@ -22,18 +21,6 @@ export const LIVE = process.env.E2E_LIVE === '1';
 export function skipReason(required: Array<[string, boolean]>): string | null {
   const missing = required.filter(([, ok]) => !ok).map(([n]) => n);
   return missing.length ? `[SKIP — missing ${missing.join(', ')}]` : null;
-}
-
-export function supabaseAnon(): SupabaseClient {
-  return createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_ANON_KEY!, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
-}
-
-export function supabaseService(): SupabaseClient {
-  return createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
 }
 
 /** Minimal tRPC-over-HTTP caller — avoids pulling in @trpc/client. */
@@ -73,20 +60,34 @@ export async function trpc(
 }
 
 export async function createSupabaseUser(email: string, password: string): Promise<string> {
-  const admin = supabaseService();
-  const { data, error } = await admin.auth.admin.createUser({
-    email,
-    password,
-    email_confirm: true,
+  void password;
+  const firebaseUid = `test-${email}`;
+  const user = await prisma.user.upsert({
+    where: { email },
+    create: {
+      firebaseUid,
+      email,
+      fullName: email.split('@')[0] || 'Test User',
+    },
+    update: { firebaseUid },
+    select: { id: true },
   });
-  if (error) throw error;
-  return data.user!.id;
+  return user.id;
 }
 
 export async function signIn(email: string, password: string): Promise<string> {
-  const { data, error } = await supabaseAnon().auth.signInWithPassword({ email, password });
-  if (error) throw error;
-  return data.session!.access_token;
+  void password;
+  const payload = Buffer.from(
+    JSON.stringify({
+      uid: `test-${email}`,
+      email,
+      name: email.split('@')[0] || 'Test User',
+      emailVerified: true,
+    }),
+  ).toString('base64url');
+  const secret = process.env.FIREBASE_AUTH_DEV_SECRET ?? 'ednacharge-test-firebase-auth';
+  const signature = createHmac('sha256', secret).update(payload).digest('base64url');
+  return `dev.${payload}.${signature}`;
 }
 
 export function uniqueEmail(prefix = 'e2e'): string {

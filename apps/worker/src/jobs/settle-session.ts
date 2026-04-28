@@ -11,8 +11,12 @@ const PLATFORM_FEE_BPS = 1500;
 const feeCents = (n: number) => Math.round((n * PLATFORM_FEE_BPS) / 10_000);
 
 export async function settleSession(job: Job<{ sessionId: string }>) {
+  return settleSessionById(job.data.sessionId);
+}
+
+export async function settleSessionById(sessionId: string) {
   const session = await prisma.chargingSession.findUniqueOrThrow({
-    where: { id: job.data.sessionId },
+    where: { id: sessionId },
     include: { booking: { include: { charger: true } } },
   });
   if (!session.endedAt) {

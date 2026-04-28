@@ -8,11 +8,13 @@ import { createDriver, createHost, createCharger, createBooking } from './fixtur
 // exercised by a Supabase integration harness that runs under a per-user JWT — this
 // file is the Prisma-level smoke.
 
-beforeAll(async () => {
-  await prisma.$connect();
-});
+const d = process.env.DATABASE_URL ? describe : describe.skip;
 
-describe('data model invariants', () => {
+d('data model invariants', () => {
+  beforeAll(async () => {
+    await prisma.$connect();
+  });
+
   it('allows driver + host roles to coexist on one user', async () => {
     const u = await createHost();
     expect(u.roles).toContain('driver');

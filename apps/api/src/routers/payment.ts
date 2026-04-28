@@ -1,3 +1,4 @@
+import { TRPCError } from '@trpc/server';
 import { router, protectedProcedure } from '../trpc.js';
 import { prisma } from '@edna/db';
 import { stripe, devBypassStripe } from '../lib/stripe.js';
@@ -111,6 +112,20 @@ export const paymentRouter = router({
   setDefault: protectedProcedure
     .input(SetDefaultPaymentMethodInputZ)
     .mutation(async ({ ctx, input }) => {
+      const user = await prisma.user.findUniqueOrThrow({ where: { id: ctx.userId } });
+      if (!user.stripeCustomerId) {
+        throw new TRPCError({ code: 'PRECONDITION_FAILED', message: 'Create a customer first.' });
+      }
+
+      const pm = await stripe().paymentMethods.retrieve(input.paymentMethodId);
+      const customerId = typeof pm.customer === 'string' ? pm.customer : pm.customer?.id;
+      if (customerId !== user.stripeCustomerId) {
+        throw new TRPCError({
+          code: 'FORBIDDEN',
+          message: 'Payment method is not attached to this customer.',
+        });
+      }
+
       await prisma.user.update({
         where: { id: ctx.userId },
         data: { defaultPaymentMethodId: input.paymentMethodId },

@@ -16,7 +16,7 @@ function bookingsQueue(): Queue {
 
 // ocpp-rpc v2 doesn't export a named server-client type. We type it structurally
 // to avoid a runtime-only `any`.
-type Client = {
+export type Client = {
   handle: (method: string, handler: (ctx: { params: unknown }) => Promise<unknown>) => void;
   on: (event: string, listener: (...args: unknown[]) => void) => void;
   close: (code?: number, reason?: string) => void;

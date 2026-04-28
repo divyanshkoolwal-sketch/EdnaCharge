@@ -5,7 +5,6 @@ let _client: PostHog | null = null;
 export function initAnalytics(): void {
   const key = process.env.EXPO_PUBLIC_POSTHOG_KEY;
   if (!key) {
-    console.warn('EXPO_PUBLIC_POSTHOG_KEY not set — analytics disabled');
     return;
   }
   _client = new PostHog(key, {

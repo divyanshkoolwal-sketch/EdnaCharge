@@ -71,6 +71,7 @@ enum PayoutStatus {
 
 model User {
   id              String   @id @default(uuid()) @db.Uuid
+  firebaseUid     String?  @unique
   email           String   @unique
   phone           String?  @unique
   fullName        String
@@ -92,6 +93,7 @@ model User {
   payouts         Payout[]
 
   @@index([email])
+  @@index([firebaseUid])
 }
 
 model DriverProfile {

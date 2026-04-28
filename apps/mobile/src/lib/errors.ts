@@ -66,7 +66,7 @@ export function handleError(err: unknown, opts: ErrorOptions = {}): void {
   //    Welcome. The tRPC fetch wrapper has already tried a refresh; if we got
   //    here the refresh also failed.
   if (code === 'UNAUTHORIZED' || /UNAUTHORIZED/i.test(rawMessage)) {
-    void supabase.auth.signOut().catch(() => {});
+    void supabase?.auth.signOut().catch(() => {});
     if (!opts.silent) {
       Alert.alert('Signed out', 'Your session expired. Please sign in again.');
     }
