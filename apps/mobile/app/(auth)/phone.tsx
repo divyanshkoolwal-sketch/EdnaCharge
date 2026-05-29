@@ -37,7 +37,15 @@ export default function PhoneSignIn() {
       setBusy(true);
       await confirmPhoneCode(confirmation, code);
       const session = await utils.auth.getSession.fetch();
-      router.replace(session.driverProfile ? '/' : '/(auth)/driver-profile');
+      if (!session.driverProfile && !session.hostProfile) {
+        router.replace('/(auth)/pick-role' as never);
+      } else if (session.driverProfile && !session.hostProfile) {
+        router.replace('/(driver)/map');
+      } else if (session.hostProfile && !session.driverProfile) {
+        router.replace('/(host)/home');
+      } else {
+        router.replace('/');
+      }
     } catch (err) {
       Alert.alert('Verification failed', authErrorMessage(err));
     } finally {

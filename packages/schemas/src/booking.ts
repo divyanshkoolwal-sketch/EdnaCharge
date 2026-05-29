@@ -24,6 +24,25 @@ export const RequestBookingInputZ = z
   );
 export type RequestBookingInput = z.infer<typeof RequestBookingInputZ>;
 
+// Driver edits the start/end window of a not-yet-responded booking. Same
+// duration / lead-time bounds as the original request.
+export const ModifyBookingInputZ = z
+  .object({
+    bookingId: z.string().uuid(),
+    startAt: z.string().datetime(),
+    endAt: z.string().datetime(),
+  })
+  .refine((b) => new Date(b.endAt) > new Date(b.startAt), { message: 'endAt must be after startAt' })
+  .refine(
+    (b) => new Date(b.endAt).getTime() - new Date(b.startAt).getTime() <= MAX_BOOKING_MS,
+    { message: 'Booking duration cannot exceed 24 hours.' },
+  )
+  .refine(
+    (b) => new Date(b.startAt).getTime() - Date.now() <= MAX_START_LEAD_MS,
+    { message: 'Booking start must be within 7 days.' },
+  );
+export type ModifyBookingInput = z.infer<typeof ModifyBookingInputZ>;
+
 export const RespondBookingInputZ = z.object({
   bookingId: z.string().uuid(),
   decision: z.enum(['accept', 'decline']),

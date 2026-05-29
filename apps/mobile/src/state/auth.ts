@@ -217,6 +217,20 @@ export async function getAuthToken(): Promise<string | null> {
   return user ? user.getIdToken() : null;
 }
 
+/**
+ * Force-refresh the Firebase ID token. Used by:
+ *  - The tRPC fetch wrapper after a 401, before retrying.
+ *  - The root layout on AppState `active` so a backgrounded app
+ *    doesn't get stuck on an expired token after foregrounding.
+ */
+export async function refreshAuthToken(): Promise<string | null> {
+  const nativeUser = getNativeFirebaseAuth().currentUser;
+  if (nativeUser) return nativeUser.getIdToken(true);
+  if (firebaseConfigError()) return null;
+  const user = getFirebaseAuth().currentUser;
+  return user ? user.getIdToken(true) : null;
+}
+
 export function bootstrapAuthListener() {
   const error = firebaseConfigError();
   if (error) {

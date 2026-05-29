@@ -113,10 +113,10 @@ export const fontFamily = {
 export const shadow = {
   card: {
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 12,
-    elevation: 2,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.10,
+    shadowRadius: 14,
+    elevation: 3,
   },
   cardLight: {
     shadowColor: '#000',

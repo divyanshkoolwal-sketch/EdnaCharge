@@ -17,7 +17,7 @@ import { ChevronLeft, Plus, Send } from '../../../src/components/icons/Icon';
 import { trpc } from '../../../src/lib/trpc';
 import { supabase } from '../../../src/lib/supabase';
 
-const QUICK_REPLIES = ['On my way ✓', 'Pull right', 'Gate 1234'];
+const DRIVER_QUICK_REPLIES = ['On my way ✓', "I'm here", "Can't find the spot"];
 
 export default function ChatThread() {
   const { bookingId } = useLocalSearchParams<{ bookingId: string }>();
@@ -157,7 +157,7 @@ export default function ChatThread() {
 
         {/* Quick replies */}
         <View style={{ paddingHorizontal: 16, paddingVertical: 8, flexDirection: 'row', gap: 6 }}>
-          {QUICK_REPLIES.map((r) => (
+          {DRIVER_QUICK_REPLIES.map((r) => (
             <Chip key={r} label={r} variant="outline" onPress={() => setDraft(r)} />
           ))}
         </View>

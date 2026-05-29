@@ -100,10 +100,28 @@ export function handleError(err: unknown, opts: ErrorOptions = {}): void {
     return;
   }
 
-  // 5. Default — generic with the raw message preserved (useful for support).
+  // 5. Default — show a clean friendly message. NEVER spill the raw server
+  //    message: dev-mode Prisma / TRPC errors include stack traces, file
+  //    paths, and SQL — none of which the user should see. Log the full
+  //    detail to the console for debugging instead.
+  console.warn('[handleError uncategorised]', { code, message: rawMessage, raw });
   Alert.alert(
     opts.title ?? 'Something went wrong',
-    rawMessage || 'Please try again.',
+    looksLikeServerStack(rawMessage)
+      ? `${opts.feature ? `${opts.feature} ` : ''}is temporarily unavailable. Try again in a moment.`
+      : rawMessage || 'Please try again.',
   );
-  console.warn('[handleError uncategorised]', { code, raw });
+}
+
+/** Detect Prisma / TRPC / Node stack traces so we don't surface them to users. */
+function looksLikeServerStack(msg: string): boolean {
+  if (!msg) return false;
+  if (msg.length > 200) return true;
+  return (
+    msg.includes('Invalid `prisma.') ||
+    msg.includes('node_modules') ||
+    msg.includes('TRPCError:') ||
+    msg.includes("Can't reach database server") ||
+    /^\s*\d+\s+(const|let|var|→|→ )/m.test(msg)
+  );
 }

@@ -29,7 +29,8 @@ export async function registerPushToken(): Promise<void> {
   }
   const token = (await Notifications.getExpoPushTokenAsync()).data;
   try {
-    const apiUrl = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000';
+    const apiUrl = process.env.EXPO_PUBLIC_API_URL ?? (__DEV__ ? 'http://localhost:3000' : undefined);
+    if (!apiUrl) return;
     const accessToken = await getAuthToken();
     if (accessToken) {
       await fetch(`${apiUrl}/trpc/auth.registerExpoPushToken`, {

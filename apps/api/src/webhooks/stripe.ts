@@ -41,15 +41,18 @@ const stripeWebhookPlugin: FastifyPluginAsync = async (scoped) => {
       return reply.code(400).send({ error: 'bad signature' });
     }
 
-    // AUDIT H8: de-duplicate Stripe event deliveries. Stripe retries on any
-    // non-2xx or timeout; without this, handlers that aren't idempotent-by-value
-    // (e.g. the account.updated → roles fanout) can race.
-    try {
-      await prisma.stripeWebhookEvent.create({
-        data: { id: event.id, type: event.type },
-      });
-    } catch (err) {
-      // Unique violation → already processed. Return 200 so Stripe stops retrying.
+    // AUDIT H8 + race fix: de-duplicate Stripe event deliveries with a
+    // race-safe upsert pattern. Two concurrent identical deliveries could
+    // both pass a `create()` + catch-unique check before either commits.
+    // The upsert + `processedAt IS NULL` guard makes that impossible:
+    // whoever wins the race processes the event and stamps `processedAt`,
+    // the other observes the stamp and bails.
+    const dedup = await prisma.stripeWebhookEvent.upsert({
+      where: { id: event.id },
+      create: { id: event.id, type: event.type },
+      update: {},
+    });
+    if (dedup.processedAt !== null) {
       logger.info({ eventId: event.id, type: event.type }, 'stripe event already processed');
       return { received: true, duplicate: true };
     }
@@ -127,15 +130,67 @@ const stripeWebhookPlugin: FastifyPluginAsync = async (scoped) => {
           }
           break;
         }
+        case 'identity.verification_session.verified': {
+          const session = event.data.object as Stripe.Identity.VerificationSession;
+          const row = await prisma.identityVerification.findUnique({
+            where: { stripeVerificationSessionId: session.id },
+          });
+          if (!row) break;
+          const out = session.verified_outputs;
+          const fullName = [out?.first_name, out?.last_name].filter(Boolean).join(' ') || null;
+          const dob = out?.dob
+            ? new Date(Date.UTC(out.dob.year ?? 1970, (out.dob.month ?? 1) - 1, out.dob.day ?? 1))
+            : null;
+          await prisma.identityVerification.update({
+            where: { id: row.id },
+            data: {
+              status: 'verified',
+              verifiedAt: new Date(),
+              verifiedName: fullName,
+              verifiedDob: dob,
+              verifiedAddress: out?.address ? (out.address as unknown as object) : undefined,
+              documentLast4: out?.id_number?.slice(-4) ?? null,
+              documentType: (session.last_verification_report as unknown as { document?: { type?: string } })?.document?.type ?? null,
+              failureReason: null,
+            },
+          });
+          break;
+        }
+        case 'identity.verification_session.requires_input': {
+          const session = event.data.object as Stripe.Identity.VerificationSession;
+          await prisma.identityVerification.updateMany({
+            where: { stripeVerificationSessionId: session.id },
+            data: {
+              status: 'requires_input',
+              failureReason: session.last_error?.code ?? 'document_unverified_other',
+            },
+          });
+          break;
+        }
+        case 'identity.verification_session.canceled': {
+          const session = event.data.object as Stripe.Identity.VerificationSession;
+          await prisma.identityVerification.updateMany({
+            where: { stripeVerificationSessionId: session.id },
+            data: { status: 'canceled' },
+          });
+          break;
+        }
         default:
           logger.debug({ type: event.type }, 'stripe event unhandled');
       }
+      // Stamp `processedAt` so a concurrent retry of the same event sees
+      // it as already processed (race-safe dedup).
+      await prisma.stripeWebhookEvent.update({
+        where: { id: event.id },
+        data: { processedAt: new Date() },
+      });
     } catch (err) {
       // AUDIT: never silently swallow — log + Sentry so we can alert on webhook
       // failures that would otherwise appear as Stripe-side retries only.
+      // We intentionally don't stamp `processedAt` here, so Stripe's retry
+      // gets a fresh shot at the handler.
       logger.error({ err, eventId: event.id, type: event.type }, 'stripe webhook handler error');
       Sentry.captureException(err);
-      // Stripe will retry on non-2xx; let it.
       return reply.code(500).send({ error: 'handler failed' });
     }
     return { received: true };

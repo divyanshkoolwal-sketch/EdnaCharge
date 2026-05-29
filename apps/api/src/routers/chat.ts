@@ -29,7 +29,12 @@ export const chatRouter = router({
           ],
         },
         include: {
-          booking: { include: { charger: true } },
+          booking: {
+            include: {
+              charger: { include: { host: { select: { id: true, fullName: true, avatarUrl: true } } } },
+              driver: { select: { id: true, fullName: true, avatarUrl: true } },
+            },
+          },
           messages: { orderBy: { createdAt: 'desc' }, take: 1 },
         },
         orderBy: { createdAt: 'desc' },
@@ -45,8 +50,16 @@ export const chatRouter = router({
       const thread = await prisma.chatThread.findUniqueOrThrow({
         where: { bookingId: input.bookingId },
         include: {
-          booking: { include: { charger: true } },
-          messages: { orderBy: { createdAt: 'asc' } },
+          booking: {
+            include: {
+              charger: { include: { host: { select: { id: true, fullName: true, avatarUrl: true } } } },
+              driver: { select: { id: true, fullName: true, avatarUrl: true } },
+            },
+          },
+          // Bound the history: fetch the most recent 200 messages, then return
+          // them ascending for the UI. Prevents an unbounded payload on a
+          // long-lived thread.
+          messages: { orderBy: { createdAt: 'desc' }, take: 200 },
         },
       });
       if (
@@ -55,6 +68,7 @@ export const chatRouter = router({
       ) {
         throw new TRPCError({ code: 'FORBIDDEN' });
       }
+      thread.messages.reverse();
       return thread;
     }),
 

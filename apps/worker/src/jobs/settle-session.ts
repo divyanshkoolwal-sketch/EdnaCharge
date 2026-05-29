@@ -33,8 +33,20 @@ export async function settleSessionById(sessionId: string) {
     return;
   }
 
-  const kwh = session.finalKwh ?? 0;
   const charger = session.booking.charger;
+  // Defensive bounds on the charger-reported energy:
+  //  - never negative (meter rollover) → no negative capture.
+  //  - never more than the hardware could physically deliver over the session
+  //    (powerKw × hours, +25% headroom + 2 kWh slack). A compromised/rogue
+  //    Tier-3 charger could otherwise report inflated kWh; the final amount is
+  //    still independently clamped to the pre-auth below, this just stops the
+  //    energy figure itself from being absurd.
+  const elapsedHours = Math.max(
+    0,
+    (session.endedAt.getTime() - session.startedAt.getTime()) / 3_600_000,
+  );
+  const maxPlausibleKwh = charger.powerKw * elapsedHours * 1.25 + 2;
+  const kwh = Math.min(Math.max(0, session.finalKwh ?? 0), maxPlausibleKwh);
   const energyCents =
     charger.pricePerKwhCents != null
       ? Math.round(charger.pricePerKwhCents * kwh)

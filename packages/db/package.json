@@ -12,6 +12,7 @@
     "typecheck": "tsc --noEmit && tsc -p tsconfig.test.json",
     "lint": "echo \"(no lint)\"",
     "generate": "prisma generate",
+    "push": "prisma db push",
     "migrate": "prisma migrate dev",
     "migrate:deploy": "prisma migrate deploy",
     "seed": "tsx seed/index.ts",

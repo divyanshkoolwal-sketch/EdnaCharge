@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Alert, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import * as Google from 'expo-auth-session/providers/google';
+import { ResponseType } from 'expo-auth-session';
 import * as WebBrowser from 'expo-web-browser';
 import { Screen, Button, H1Lg, Body, Label, Muted, Row, StatusDot } from '../../src/components/ui';
 import { HomeChargerIllo } from '../../src/components/illustrations/HomeCharger';
@@ -26,6 +27,7 @@ export default function Welcome() {
       webClientId: googleAuthConfig.webClientId,
       scopes: ['openid', 'profile', 'email'],
       selectAccount: true,
+      responseType: ResponseType.IdToken,
     },
     {
       native: `${googleAuthConfig.iosUrlScheme}:/oauthredirect`,
@@ -34,7 +36,19 @@ export default function Welcome() {
 
   const finishAuth = async () => {
     const session = await utils.auth.getSession.fetch();
-    router.replace(session.driverProfile ? '/' : '/(auth)/driver-profile');
+    if (!session.driverProfile && !session.hostProfile) {
+      router.replace('/(auth)/pick-role' as never);
+      return;
+    }
+    if (session.driverProfile && !session.hostProfile) {
+      router.replace('/(driver)/map');
+      return;
+    }
+    if (session.hostProfile && !session.driverProfile) {
+      router.replace('/(host)/home');
+      return;
+    }
+    router.replace('/');
   };
 
   const continueWithProvider = async (

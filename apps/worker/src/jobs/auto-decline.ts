@@ -1,5 +1,7 @@
 import type { Job } from 'bullmq';
 import Stripe from 'stripe';
+import IORedis from 'ioredis';
+import { Queue } from 'bullmq';
 import { prisma } from '@edna/db';
 import { logger } from '../logger.js';
 import { Sentry } from '../sentry.js';
@@ -7,6 +9,16 @@ import { Sentry } from '../sentry.js';
 const stripe = process.env.STRIPE_SECRET_KEY
   ? new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: '2024-06-20' })
   : null;
+
+let _notifyQueue: Queue | null = null;
+function notificationsQueue(): Queue {
+  if (_notifyQueue) return _notifyQueue;
+  const connection = new IORedis(process.env.REDIS_URL ?? 'redis://localhost:6379', {
+    maxRetriesPerRequest: null,
+  });
+  _notifyQueue = new Queue('notifications', { connection });
+  return _notifyQueue;
+}
 
 export async function autoDecline(job: Job<{ bookingId: string }>) {
   return autoDeclineById(job.data.bookingId);
@@ -43,6 +55,15 @@ export async function autoDeclineById(bookingId: string) {
         body: 'Booking auto-declined: host did not respond in time.',
       },
     });
+  }
+  // Notify the driver (host never responded — driver should retry with another charger).
+  try {
+    await notificationsQueue().add('booking_auto_declined', {
+      driverId: b.driverId,
+      bookingId: b.id,
+    });
+  } catch (err) {
+    logger.warn({ err, bookingId: b.id }, 'auto-decline: failed to enqueue notification');
   }
   logger.info({ bookingId: b.id }, 'booking auto-declined');
 }

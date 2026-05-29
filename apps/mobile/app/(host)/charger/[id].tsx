@@ -1,4 +1,5 @@
-import { Alert, Pressable, View } from 'react-native';
+import { useState } from 'react';
+import { Alert, Pressable, Switch, Text, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import {
   Screen,
@@ -25,6 +26,102 @@ function tierForCharger(t: string): string {
   return m ? m[1]! : '?';
 }
 
+// Live OCPP connection card. Polls connectionStatus so the host sees their
+// charger flip to "Connected" the moment it dials into the CSMS, and can reveal
+// the credentials to paste into the charger's OCPP settings.
+function ConnectChargerCard({ chargerId }: { chargerId: string }) {
+  const { c } = useTheme();
+  const status = trpc.charger.connectionStatus.useQuery(
+    { id: chargerId },
+    { refetchInterval: 5000 },
+  );
+  const [creds, setCreds] = useState<{ wssUrl: string; chargePointId: string; password: string } | null>(
+    null,
+  );
+  const ocpp = trpc.charger.ocppCredentials.useMutation({
+    onSuccess: (d) => setCreds(d),
+    onError: (e) => handleError(e, { feature: 'OCPP credentials' }),
+  });
+
+  const connected = status.data?.connected ?? false;
+
+  return (
+    <>
+      <SectionHeader>Connect your charger</SectionHeader>
+      <Card padding={14}>
+        <Row between>
+          <Row gap={8}>
+            <View
+              style={{
+                width: 9,
+                height: 9,
+                borderRadius: 5,
+                backgroundColor: connected ? c.green2 : '#D4A82A',
+              }}
+            />
+            <Body style={{ fontWeight: '700', fontSize: 14 }}>
+              {connected ? 'Connected' : 'Waiting for your charger…'}
+            </Body>
+          </Row>
+          {connected && status.data?.lastConnectedAt ? (
+            <Muted style={{ fontSize: 11 }}>
+              since {new Date(status.data.lastConnectedAt).toLocaleTimeString()}
+            </Muted>
+          ) : null}
+        </Row>
+        <Muted style={{ fontSize: 12, marginTop: 8, lineHeight: 18 }}>
+          In your charger's OCPP settings, choose OCPP 1.6 (JSON over WebSocket) and enter the
+          server URL, charge point ID, and password below. It'll show as connected here within a
+          few seconds.
+        </Muted>
+
+        {creds ? (
+          <View style={{ marginTop: 12, gap: 10 }}>
+            <CredRow label="Server URL (OCPP 1.6J)" value={creds.wssUrl} />
+            <CredRow label="Charge point ID" value={creds.chargePointId} />
+            <CredRow label="Password" value={creds.password} />
+            <Muted style={{ fontSize: 11, color: c.red }}>
+              Save the password now — it's shown once. Generating new details replaces it, so you'd
+              need to reconfigure the charger.
+            </Muted>
+          </View>
+        ) : (
+          <Button
+            label={ocpp.isPending ? 'Generating…' : 'Show connection details'}
+            variant="secondary"
+            onPress={() => ocpp.mutate({ id: chargerId })}
+            loading={ocpp.isPending}
+            height={44}
+            fontSize={13}
+            style={{ marginTop: 12 }}
+          />
+        )}
+      </Card>
+    </>
+  );
+}
+
+function CredRow({ label, value }: { label: string; value: string }) {
+  const { c } = useTheme();
+  return (
+    <View>
+      <Muted style={{ fontSize: 11, marginBottom: 3 }}>{label}</Muted>
+      <View
+        style={{
+          backgroundColor: c.chip,
+          borderRadius: 8,
+          paddingHorizontal: 10,
+          paddingVertical: 9,
+        }}
+      >
+        <Text selectable style={{ fontSize: 13, color: c.ink, fontFamily: 'Courier' }}>
+          {value}
+        </Text>
+      </View>
+    </View>
+  );
+}
+
 export default function HostChargerEdit() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
@@ -32,10 +129,17 @@ export default function HostChargerEdit() {
   const utils = trpc.useUtils();
   const q = trpc.charger.get.useQuery({ id: id! }, { enabled: !!id });
 
-  const ocpp = trpc.charger.ocppCredentials.useMutation();
+  // Online/offline toggle — visible-on-map vs hidden-from-drivers.
+  const setOnline = trpc.charger.setOnline.useMutation({
+    onSuccess: () => {
+      utils.charger.myChargers.invalidate();
+      utils.charger.nearby.invalidate();
+      utils.charger.get.invalidate({ id: id! });
+    },
+    onError: (e) => handleError(e, { feature: 'Charger status' }),
+  });
 
-  // Soft-unlist via dedicated server procedure. We don't truly delete because
-  // completed bookings + receipts must remain referenceable.
+  // Permanent unlist — kept around for fully decommissioning a charger.
   const unlist = trpc.charger.unlist.useMutation({
     onSuccess: () => {
       utils.charger.myChargers.invalidate();
@@ -49,20 +153,6 @@ export default function HostChargerEdit() {
   if (!q.data) return <Screen><View /></Screen>;
   const ch = q.data;
   const isUnlisted = !ch.published;
-
-  const revealCreds = () => {
-    ocpp.mutate(
-      { id: id! },
-      {
-        onSuccess: (d) =>
-          Alert.alert(
-            'OCPP credentials',
-            `URL: ${d.wssUrl}\nID: ${d.chargePointId}\nPassword: ${d.password}\n\nPaste these into your charger's admin panel.`,
-          ),
-        onError: (e) => handleError(e, { feature: 'OCPP credentials' }),
-      },
-    );
-  };
 
   const confirmUnlist = () => {
     Alert.alert(
@@ -107,13 +197,9 @@ export default function HostChargerEdit() {
           <Muted>Connector</Muted>
           <Body>{ch.connectorType.toUpperCase()}</Body>
         </Row>
-        <Row between style={{ marginBottom: 4 }}>
+        <Row between>
           <Muted>Power</Muted>
           <Body>{ch.powerKw} kW</Body>
-        </Row>
-        <Row between>
-          <Muted>Tier</Muted>
-          <Body>{ch.hardwareTier.replace('tier_', 'Tier ').replace('_', ' ')}</Body>
         </Row>
       </FrameSoft>
 
@@ -132,28 +218,53 @@ export default function HostChargerEdit() {
         </Row>
       </FrameSoft>
 
-      <SectionHeader>Status</SectionHeader>
-      <Card padding={12}>
-        <Row gap={10}>
-          <StatusPill status={ch.status as Status} />
-          <View style={{ flex: 1 }} />
-          <Body style={{ fontSize: 12, fontWeight: '600' }}>
-            {isUnlisted ? 'Unlisted' : 'Live'}
-          </Body>
+      {ch.hardwareTier === 'tier_3_native' ? <ConnectChargerCard chargerId={ch.id} /> : null}
+
+      <SectionHeader>Visibility</SectionHeader>
+      <Card padding={14}>
+        <Row between>
+          <View style={{ flex: 1, paddingRight: 12 }}>
+            <Body style={{ fontWeight: '700', fontSize: 14 }}>
+              {ch.published ? 'Online' : 'Offline'}
+            </Body>
+            <Muted style={{ fontSize: 12, marginTop: 2 }}>
+              {ch.published
+                ? 'Drivers near you can find and book this charger.'
+                : "This charger is hidden from drivers on the map."}
+            </Muted>
+          </View>
+          <Switch
+            value={ch.published}
+            onValueChange={(next) => {
+              if (!next) {
+                Alert.alert(
+                  'Take this charger offline?',
+                  "Drivers won't see it on the map until you turn it back on. Existing bookings still complete.",
+                  [
+                    { text: 'Cancel', style: 'cancel' },
+                    {
+                      text: 'Take offline',
+                      style: 'destructive',
+                      onPress: () => setOnline.mutate({ id: id!, online: false }),
+                    },
+                  ],
+                );
+              } else {
+                setOnline.mutate({ id: id!, online: true });
+              }
+            }}
+            trackColor={{ true: '#6BB36C', false: '#D6D6D9' }}
+            thumbColor="#FFFFFF"
+            ios_backgroundColor="#D6D6D9"
+            disabled={setOnline.isPending}
+          />
         </Row>
+        <View style={{ marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: '#0F0F1010', flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+          <Muted style={{ fontSize: 12 }}>Current state:</Muted>
+          <StatusPill status={ch.status as Status} />
+        </View>
       </Card>
 
-      {ch.hardwareTier === 'tier_3_native' ? (
-        <Button
-          label="Reveal OCPP credentials"
-          variant="secondary"
-          onPress={revealCreds}
-          loading={ocpp.isPending}
-          height={44}
-          fontSize={13}
-          style={{ marginTop: 18 }}
-        />
-      ) : null}
       <Button
         label={isUnlisted ? 'Already unlisted' : 'Unlist this charger'}
         variant="destructive-outline"
@@ -162,7 +273,7 @@ export default function HostChargerEdit() {
         disabled={isUnlisted || unlist.isPending}
         loading={unlist.isPending}
         onPress={confirmUnlist}
-        style={{ marginTop: 10 }}
+        style={{ marginTop: 18 }}
       />
     </Screen>
   );

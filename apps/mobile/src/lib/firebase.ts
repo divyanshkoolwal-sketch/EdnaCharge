@@ -22,13 +22,16 @@ const {
 
 const firebaseAuth = FirebaseAuth as FirebaseAuthModule;
 
+// No hardcoded fallbacks: a hardcoded value would silently ship the DEV
+// Firebase project into a misconfigured production build. Missing env is caught
+// by missingFirebaseConfig() / firebaseConfigError() and fails loudly at boot.
 const firebaseConfig = {
-  apiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY ?? 'AIzaSyBzw7_1SbWbZT3U6OpCL_YFEP5949JkTu8',
-  authDomain: process.env.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN ?? 'ednacharge-a13d8.firebaseapp.com',
-  projectId: process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID ?? 'ednacharge-a13d8',
-  storageBucket: process.env.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET ?? 'ednacharge-a13d8.firebasestorage.app',
-  messagingSenderId: process.env.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID ?? '312909386856',
-  appId: process.env.EXPO_PUBLIC_FIREBASE_APP_ID ?? '1:312909386856:ios:35e93ff1038a54329a17dd',
+  apiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY,
+  authDomain: process.env.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN,
+  projectId: process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID,
+  storageBucket: process.env.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: process.env.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
+  appId: process.env.EXPO_PUBLIC_FIREBASE_APP_ID,
 };
 
 function missingFirebaseConfig(): string[] {

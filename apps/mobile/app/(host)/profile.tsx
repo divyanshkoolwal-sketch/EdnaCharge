@@ -1,16 +1,14 @@
-import { View, Pressable } from 'react-native';
+import { View, Pressable, Text } from 'react-native';
 import { useRouter } from 'expo-router';
 import {
   Screen,
   Card,
-  H1,
   Body,
   Muted,
   Row,
   Avatar,
   Button,
   SectionHeader,
-  Chip,
 } from '../../src/components/ui';
 import {
   Bolt,
@@ -25,8 +23,10 @@ import { useTheme } from '../../src/theme/useTheme';
 import { useRole } from '../../src/state/role';
 import { useAuth } from '../../src/state/auth';
 import { trpc } from '../../src/lib/trpc';
+import { VerifiedPill } from '../../src/components/VerificationBanner';
 
-const ITEMS: { key: string; label: string; icon: 'bolt' | 'card' | 'bell' | 'gear' | 'help'; path: string }[] = [
+const ITEMS: { key: string; label: string; icon: 'verify' | 'bolt' | 'card' | 'bell' | 'gear' | 'help'; path: string; params?: Record<string, string> }[] = [
+  { key: 'verify', label: 'Verify ID', icon: 'verify', path: '/(shared)/identity-verification', params: { next: '/(host)/profile' } },
   { key: 'setup', label: 'My setup', icon: 'bolt', path: '/(host)/host-onboarding/charger-identification' },
   { key: 'card', label: 'Payment methods', icon: 'card', path: '/(shared)/payment-methods' },
   { key: 'bell', label: 'Notifications', icon: 'bell', path: '/(shared)/notifications' },
@@ -35,6 +35,7 @@ const ITEMS: { key: string; label: string; icon: 'bolt' | 'card' | 'bell' | 'gea
 ];
 
 const ICON: Record<string, React.ComponentType<{ size?: number; color?: string }>> = {
+  verify: Star,
   bolt: Bolt,
   card: CardIcon,
   bell: Bell,
@@ -53,29 +54,52 @@ export default function HostProfile() {
     <Screen scroll contentStyle={{ paddingBottom: 30 }}>
       <View style={{ marginTop: 14, alignItems: 'center' }}>
         <Avatar name={me.data?.fullName ?? 'EC'} size="lg" />
-        <Body style={{ fontWeight: '700', fontSize: 18, marginTop: 10 }}>
-          {me.data?.fullName ?? 'You'}
-        </Body>
-        <Row gap={4}>
-          <Star size={11} />
-          <Muted>4.9 · Host since Jan 2026</Muted>
+        <Row gap={6} style={{ marginTop: 10 }}>
+          <Body style={{ fontWeight: '700', fontSize: 18 }}>
+            {me.data?.fullName ?? 'You'}
+          </Body>
+          <VerifiedPill />
         </Row>
+        <HostRatingRow userId={me.data?.id} createdAt={me.data?.createdAt ?? null} />
       </View>
 
-      <Card padding={12} style={{ marginTop: 16 }}>
+      <Pressable
+        onPress={() => {
+          setRole('driver');
+          router.replace('/(driver)/map');
+        }}
+        style={({ pressed }) => ({
+          marginTop: 16,
+          backgroundColor: '#C9E8C7',
+          borderRadius: 18,
+          borderWidth: 1,
+          borderColor: '#6BB36C',
+          padding: 16,
+          opacity: pressed ? 0.85 : 1,
+        })}
+      >
         <Row gap={10}>
-          <Chip label="HOST" variant="dark" />
-          <View style={{ flex: 1 }} />
-          <Pressable
-            onPress={() => {
-              setRole('driver');
-              router.replace('/(driver)/map');
+          <View
+            style={{
+              width: 40,
+              height: 40,
+              borderRadius: 10,
+              backgroundColor: '#FFFFFF',
+              alignItems: 'center',
+              justifyContent: 'center',
             }}
           >
-            <Body style={{ fontSize: 13, fontWeight: '600' }}>Switch to driver</Body>
-          </Pressable>
+            <Bolt size={20} color="#3F7E40" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontSize: 16, fontWeight: '700', color: '#0F0F10' }}>Switch to driver</Text>
+            <Text style={{ fontSize: 12, color: 'rgba(15,15,16,0.7)', marginTop: 2 }}>
+              Find chargers near you
+            </Text>
+          </View>
+          <ChevronRight color="#0F0F10" />
         </Row>
-      </Card>
+      </Pressable>
 
       <SectionHeader>Account</SectionHeader>
       <Card padding={0} style={{ overflow: 'hidden' }}>
@@ -84,7 +108,7 @@ export default function HostProfile() {
           return (
             <Pressable
               key={it.key}
-              onPress={() => router.push(it.path as never)}
+              onPress={() => router.push(it.params ? { pathname: it.path, params: it.params } as never : it.path as never)}
               style={{
                 flexDirection: 'row',
                 alignItems: 'center',
@@ -106,9 +130,36 @@ export default function HostProfile() {
       <Button
         label="Sign out"
         variant="destructive-outline"
-        onPress={() => signOut()}
+        onPress={async () => {
+          await signOut();
+          router.replace('/(auth)/welcome');
+        }}
         style={{ marginTop: 18 }}
       />
     </Screen>
+  );
+}
+
+function HostRatingRow({ userId, createdAt }: { userId: string | undefined; createdAt: Date | string | null }) {
+  const summary = trpc.review.summary.useQuery({ userId: userId! }, { enabled: !!userId });
+  const count = summary.data?.count ?? 0;
+  const avg = summary.data?.avg;
+  const since = createdAt
+    ? new Date(createdAt).toLocaleDateString(undefined, { month: 'short', year: 'numeric' })
+    : null;
+  return (
+    <Row gap={4}>
+      {count > 0 && typeof avg === 'number' ? (
+        <>
+          <Star size={11} />
+          <Muted>
+            {avg.toFixed(1)}
+            {since ? ` · Host since ${since}` : ''}
+          </Muted>
+        </>
+      ) : (
+        <Muted>{since ? `Host since ${since}` : 'New host'}</Muted>
+      )}
+    </Row>
   );
 }

@@ -9,7 +9,12 @@ const DEV_CUSTOMER_PREFIX = 'cus_dev_';
 
 async function ensureStripeCustomer(userId: string, email: string): Promise<string> {
   const user = await prisma.user.findUniqueOrThrow({ where: { id: userId } });
-  if (user.stripeCustomerId) return user.stripeCustomerId;
+
+  // Existing real customer — use it.
+  if (user.stripeCustomerId && !user.stripeCustomerId.startsWith(DEV_CUSTOMER_PREFIX)) {
+    return user.stripeCustomerId;
+  }
+
   // Dev bypass: stamp a placeholder customer id so booking precondition
   // checks (`!driver.stripeCustomerId`) pass in demo mode.
   if (devBypassStripe()) {
@@ -20,13 +25,22 @@ async function ensureStripeCustomer(userId: string, email: string): Promise<stri
     });
     return customerId;
   }
+
+  // Real Stripe is now live but we have a leftover `cus_dev_*` customer id
+  // (or no customer at all) from earlier dev-bypass state. Create a real
+  // customer and clear the placeholder default PM at the same time.
   const customer = await stripe().customers.create({
     email,
     metadata: { ednaUserId: userId },
   });
   await prisma.user.update({
     where: { id: userId },
-    data: { stripeCustomerId: customer.id },
+    data: {
+      stripeCustomerId: customer.id,
+      // Clear `pm_dev_card` so the booking precondition forces a real card.
+      defaultPaymentMethodId:
+        user.defaultPaymentMethodId === DEV_PM_ID ? null : user.defaultPaymentMethodId,
+    },
   });
   return customer.id;
 }
@@ -85,12 +99,16 @@ export const paymentRouter = router({
         devBypass: true as const,
       };
     }
-    if (!user.stripeCustomerId)
+    // No customer id yet, OR a leftover dev placeholder from when bypass was on.
+    // Real Stripe wouldn't recognise `cus_dev_*` and would 500 — return empty
+    // instead so the UI just shows "No cards yet" + an Add card button.
+    if (!user.stripeCustomerId || user.stripeCustomerId.startsWith(DEV_CUSTOMER_PREFIX)) {
       return {
         paymentMethods: [],
         defaultPaymentMethodId: null,
         devBypass: false as const,
       };
+    }
     const s = stripe();
     const pms = await s.paymentMethods.list({
       customer: user.stripeCustomerId,
@@ -106,6 +124,56 @@ export const paymentRouter = router({
       })),
       defaultPaymentMethodId: user.defaultPaymentMethodId,
       devBypass: false as const,
+    };
+  }),
+
+  // Aggregated host-side stats: today's earnings, current active sessions,
+  // and a 7-day earnings rollup for the home + earnings screens.
+  // Uses the `Payout` table which is created by `settle-session` after every
+  // successful capture. `netCents` excludes the platform fee.
+  hostStats: protectedProcedure.query(async ({ ctx }) => {
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+
+    const [todayPayouts, activeBookings, weekPayouts] = await Promise.all([
+      prisma.payout.aggregate({
+        where: { hostId: ctx.userId, createdAt: { gte: startOfToday } },
+        _sum: { netCents: true },
+        _count: { _all: true },
+      }),
+      prisma.booking.count({
+        where: { charger: { hostId: ctx.userId }, status: 'active' },
+      }),
+      prisma.payout.findMany({
+        where: { hostId: ctx.userId, createdAt: { gte: sevenDaysAgo } },
+        select: { netCents: true, createdAt: true },
+      }),
+    ]);
+
+    // Bucket the last 7 days, [oldest, ..., today].
+    const buckets: { dayLabel: string; date: string; netCents: number }[] = [];
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date();
+      d.setHours(0, 0, 0, 0);
+      d.setDate(d.getDate() - i);
+      const next = new Date(d);
+      next.setDate(next.getDate() + 1);
+      const sum = weekPayouts
+        .filter((p) => p.createdAt >= d && p.createdAt < next)
+        .reduce((acc, p) => acc + p.netCents, 0);
+      buckets.push({
+        dayLabel: d.toLocaleDateString(undefined, { weekday: 'short' }),
+        date: d.toISOString().slice(0, 10),
+        netCents: sum,
+      });
+    }
+
+    return {
+      todayNetCents: todayPayouts._sum.netCents ?? 0,
+      todaySessionCount: todayPayouts._count._all,
+      activeSessionCount: activeBookings,
+      weekly: buckets,
     };
   }),
 

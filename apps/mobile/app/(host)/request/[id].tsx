@@ -47,15 +47,12 @@ export default function HostRequestReview() {
 
       <Card padding={14} style={{ marginTop: 14 }}>
         <Row gap={12}>
-          <Avatar name="Driver" />
+          <Avatar name={b.driver?.fullName ?? 'Driver'} />
           <View style={{ flex: 1 }}>
-            <Body style={{ fontWeight: '700' }}>{b.charger.title}</Body>
-            <Row gap={4}>
-              <Star size={11} />
-              <Muted>4.8 · 12 sessions</Muted>
-            </Row>
+            <Body style={{ fontWeight: '700' }}>{b.driver?.fullName ?? 'Driver'}</Body>
+            <Muted style={{ fontSize: 11 }}>{b.charger.title}</Muted>
+            {b.driver?.id ? <DriverRatingInline driverId={b.driver.id} /> : null}
           </View>
-          <Chip label="Profile" variant="outline" />
         </Row>
       </Card>
 
@@ -120,5 +117,22 @@ export default function HostRequestReview() {
         />
       </CTABar>
     </Screen>
+  );
+}
+
+function DriverRatingInline({ driverId }: { driverId: string }) {
+  const summary = trpc.review.summary.useQuery({ userId: driverId });
+  const count = summary.data?.count ?? 0;
+  const avg = summary.data?.avg;
+  if (count === 0 || typeof avg !== 'number') {
+    return <Muted style={{ fontSize: 11, marginTop: 2 }}>New driver</Muted>;
+  }
+  return (
+    <Row gap={4} style={{ marginTop: 2 }}>
+      <Star size={11} />
+      <Muted style={{ fontSize: 11 }}>
+        {avg.toFixed(1)} · {count} {count === 1 ? 'session' : 'sessions'}
+      </Muted>
+    </Row>
   );
 }

@@ -36,7 +36,13 @@ export default function DriverProfile() {
   const mut = trpc.auth.completeDriverProfile.useMutation({
     onSuccess: () => {
       utils.auth.getSession.invalidate();
-      router.replace('/(driver)/map');
+      // Send the user through ID verification before landing on the map. They
+      // can skip and verify later — the map is browseable while unverified;
+      // booking is gated server-side.
+      router.replace({
+        pathname: '/(shared)/identity-verification',
+        params: { next: '/(driver)/map' },
+      } as never);
     },
     onError: (e) => handleError(e, { feature: 'Profile' }),
   });

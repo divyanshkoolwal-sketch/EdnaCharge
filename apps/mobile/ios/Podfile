@@ -85,6 +85,16 @@ target 'EdnaCharge' do
       end
     end
 
+    # Fix "include of non-modular header inside framework module" build error
+    # for React-Core <-> RCTDeprecation. RN 0.74 + Xcode 26 turns this warning
+    # into an error by default; downgrading it across all targets unblocks the
+    # iOS build.
+    installer.pods_project.targets.each do |target|
+      target.build_configurations.each do |config|
+        config.build_settings['CLANG_WARN_NON_MODULAR_INCLUDE_IN_FRAMEWORK_MODULE'] = 'NO'
+      end
+    end
+
     # Sentry-Cocoa 8.x's profiling code uses `std::vector<const T>` which
     # Xcode 26's libc++ rejects (allocator can't deal with const value types).
     # The xcconfig preprocessor macro alone doesn't override the in-file

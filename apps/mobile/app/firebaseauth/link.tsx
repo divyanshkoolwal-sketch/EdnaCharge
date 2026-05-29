@@ -11,7 +11,7 @@ export default function FirebaseAuthLink() {
       if (router.canGoBack()) {
         router.back();
       } else {
-        router.replace('/(auth)/phone');
+        router.replace('/(auth)/phone' as never);
       }
     }, 0);
 

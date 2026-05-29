@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { View, Pressable } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { handleError } from '../../../src/lib/errors';
@@ -36,12 +36,25 @@ export default function Receipt() {
   const [stars, setStars] = useState(5);
   const [text, setText] = useState('');
 
+  // Settle-session can take a few seconds (BullMQ + Stripe); after 30s of
+  // 'Settling…' we surface a real error instead of pretending it's still
+  // processing. Counter starts when the receipt screen mounts.
+  const [settleStartedAt] = useState(() => Date.now());
+  const [settleTimedOut, setSettleTimedOut] = useState(false);
+  useEffect(() => {
+    if (q.data?.capturedAmountCents != null) return; // already settled
+    const t = setTimeout(() => setSettleTimedOut(true), 30_000 - (Date.now() - settleStartedAt));
+    return () => clearTimeout(t);
+  }, [q.data?.capturedAmountCents, settleStartedAt]);
+
   if (!q.data) return <Screen><View /></Screen>;
   const b = q.data;
   const captured = b.capturedAmountCents ?? null;
   const kwh = b.session?.finalKwh ?? 0;
   const energy = b.session?.finalCostCents ?? 0;
   const fee = b.platformFeeCents;
+  const settling = captured == null && !settleTimedOut;
+  const settleFailed = captured == null && settleTimedOut;
 
   return (
     <Screen scroll contentStyle={{ paddingBottom: 160 }}>
@@ -74,13 +87,24 @@ export default function Receipt() {
         <Row between>
           <Body style={{ fontWeight: '700', fontSize: 17 }}>Total charged</Body>
           <Body style={{ fontWeight: '700', fontSize: 17 }}>
-            {captured != null ? `$${(captured / 100).toFixed(2)}` : 'Settling…'}
+            {captured != null
+              ? `$${(captured / 100).toFixed(2)}`
+              : settleFailed
+                ? '—'
+                : 'Settling…'}
           </Body>
         </Row>
-        <Muted style={{ fontSize: 11, marginTop: 8 }}>
-          Pre-auth of ${(b.preauthAmountCents / 100).toFixed(2)} was released; we only captured what
-          you used.
-        </Muted>
+        {settleFailed ? (
+          <Muted style={{ fontSize: 11, marginTop: 8, color: c.red }}>
+            We couldn't finalize the charge yet. Don't worry — we'll keep retrying in the background
+            and email you a receipt once it settles. Contact support if you don't see one within 24 hours.
+          </Muted>
+        ) : (
+          <Muted style={{ fontSize: 11, marginTop: 8 }}>
+            Pre-auth of ${(b.preauthAmountCents / 100).toFixed(2)} was released; we only captured what
+            you used.
+          </Muted>
+        )}
       </Card>
 
       <SectionHeader>Rate your host</SectionHeader>
@@ -106,7 +130,7 @@ export default function Receipt() {
       <CTABar>
         <Button
           label={
-            b.status !== 'completed'
+            settling
               ? 'Waiting for settlement…'
               : review.isPending
                 ? 'Submitting…'
@@ -114,7 +138,9 @@ export default function Receipt() {
           }
           onPress={() => review.mutate({ bookingId: b.id, stars, text: text || undefined })}
           loading={review.isPending}
-          disabled={review.isPending || b.status !== 'completed'}
+          // Allow the review even after a settle timeout — the booking row
+          // can still receive a star rating; we just couldn't capture yet.
+          disabled={review.isPending || settling}
         />
         <Button
           label="Done"

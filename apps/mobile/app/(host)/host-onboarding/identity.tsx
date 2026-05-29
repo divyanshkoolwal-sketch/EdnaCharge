@@ -27,7 +27,13 @@ export default function Identity() {
   const mut = trpc.auth.submitHostIdentity.useMutation({
     onSuccess: () => {
       utils.auth.getSession.invalidate();
-      router.push('/(host)/host-onboarding/charger-identification');
+      // Drop the host into the ID verification flow before they hit charger
+      // identification. They can skip and verify later — listing is gated
+      // server-side until they're verified.
+      router.push({
+        pathname: '/(shared)/identity-verification',
+        params: { next: '/(host)/host-onboarding/charger-identification' },
+      } as never);
     },
     onError: (e) => handleError(e, { feature: 'Identity' }),
   });

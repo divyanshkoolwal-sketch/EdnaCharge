@@ -50,7 +50,8 @@ Copied from the build brief; violating any one means the work is wrong.
 
 ## 6. Environment expectations
 
-- Node 20+, pnpm 10+, Docker (for Supabase local), redis-server installed, Supabase CLI (install via `brew install supabase/tap/supabase`).
+- Node 20+, pnpm 10+, Docker (for Supabase local + EMQX MQTT broker), redis-server installed, Supabase CLI (install via `brew install supabase/tap/supabase`).
+- MQTT broker: `docker-compose up emqx -d` starts EMQX on port 1883. Required for Tier 1/2 device communication in local dev.
 - Copy `.env.example` → `.env`. Sentry DSNs may be blank in dev; services skip init gracefully. `pnpm sentry:smoke` requires them to be set.
 
 ## 7. Commands
@@ -81,6 +82,13 @@ Keep this current. When a gate passes, mark it ✅ with the date.
 | 8 | Notifications + polish + chaos test | Chaos runs 5× clean, 15 PostHog events in order | 🟡 code-complete; chaos script + PostHog analytics + Expo push all wired. Final chaos run needs everything above provisioned. |
 
 ## 9. Known gotchas / decisions (append-only log)
+
+- **2026-05-01** — Hardware integration implemented (Tier 1 + Tier 2 Shelly MQTT drivers). New files: `apps/worker/src/drivers/`, `apps/worker/src/lib/mqtt-client.ts`, `apps/worker/src/lib/device-registry.ts`, `apps/worker/src/jobs/shelly-command.ts`, `apps/worker/src/jobs/device-monitor.ts`, `apps/api/src/routers/device.ts`, `apps/mobile/app/(host)/host-onboarding/device-setup.tsx`.
+- **2026-05-01** — Tier 1 (smart plug) session lifecycle: `shelly_start` BullMQ job → MQTT relay ON → create ChargingSession → `shelly_meter_poll` every 30s. Stop: `shelly_stop` → relay OFF → stamp endedAt → `settle_session`.
+- **2026-05-01** — Tier 2 (CT clamp, monitoring-only) session lifecycle: `device_monitor` job polls every 5s → >500W for 30s → create session. <100W for 30s → end session → settle. No relay; host cannot physically cut power in this mode.
+- **2026-05-01** — EMQX 5 broker runs in Docker (`docker-compose up emqx -d`). Shelly devices configure their MQTT broker URL to our EMQX instance. `MQTT_BROKER_URL` for internal worker, `MQTT_BROKER_PUBLIC_URL` for what we show hosts in the app.
+- **2026-05-01** — Shelly Gen2/3 RPC: publish to `{shellyId}/rpc`, responses arrive on `edna-server/rpc`. Status published by device on `{shellyId}/status/switch:0` (Tier 1) and `{shellyId}/status/em1:0` / `em1:1` (Tier 2).
+- **2026-05-01** — `ShellDevice` DB model added. Migration in `supabase/migrations/20260501000000_shell_device.sql`. `prisma db push` after Supabase starts.
 
 - **2026-04-22** — Chose `ocpp-rpc` as the OCPP library per PRD §17. Simulator will be rebuilt on the same lib in Phase 5.
 - **2026-04-22** — Sentry init in each service is guarded on the DSN env var; missing DSN logs a warning and continues (keeps local dev frictionless). `sentry:smoke` fails loud if DSNs are unset.

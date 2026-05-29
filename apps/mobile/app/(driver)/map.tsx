@@ -11,6 +11,7 @@ import Mapbox, {
   SymbolLayer,
   CircleLayer,
   UserLocation,
+  PointAnnotation,
   type MapState,
 } from '@rnmapbox/maps';
 import type { CameraRef } from '@rnmapbox/maps/lib/typescript/src/components/Camera';
@@ -21,6 +22,7 @@ import { useTheme } from '../../src/theme/useTheme';
 import { useUserLocation } from '../../src/state/userLocation';
 import { Search, Recenter, Bolt } from '../../src/components/icons/Icon';
 import { IconCircle } from '../../src/components/ui';
+import { VerificationBanner } from '../../src/components/VerificationBanner';
 
 const MAPBOX_TOKEN = process.env.EXPO_PUBLIC_MAPBOX_TOKEN ?? '';
 
@@ -323,34 +325,62 @@ export default function Map() {
                 textIgnorePlacement: true,
               }}
             />
-            <CircleLayer
-              id="charger-pin-bg"
-              filter={['!', ['has', 'point_count']]}
-              style={{
-                circleColor: [
-                  'case',
-                  ['==', ['get', 'available'], true],
-                  theme.c.greenPill,
-                  '#D4D2CB',
-                ],
-                circleRadius: 18,
-                circleStrokeColor: theme.c.bg,
-                circleStrokeWidth: 3,
-              }}
-            />
-            <SymbolLayer
-              id="charger-pin-icon"
-              filter={['!', ['has', 'point_count']]}
-              style={{
-                textField: '⚡',
-                textColor: theme.c.green2,
-                textSize: 14,
-                textAllowOverlap: true,
-                textIgnorePlacement: true,
-              }}
-            />
           </ShapeSource>
         ) : null}
+        {styleLoaded
+          ? (nearby.data ?? []).map((charger: Charger) => (
+              <PointAnnotation
+                key={charger.id}
+                id={`charger-${charger.id}`}
+                coordinate={[charger.lng, charger.lat]}
+                anchor={{ x: 0.5, y: 1 }}
+                onSelected={() =>
+                  router.push({
+                    pathname: '/(driver)/charger/[id]',
+                    params: { id: charger.id },
+                  })
+                }
+              >
+                <View
+                  style={{ alignItems: 'center', justifyContent: 'center', width: 36, height: 48 }}
+                >
+                  <View
+                    style={{
+                      width: 30,
+                      height: 30,
+                      borderRadius: 15,
+                      backgroundColor:
+                        charger.status === 'available' ? '#22A06B' : '#9AA0A6',
+                      borderWidth: 3,
+                      borderColor: '#FFFFFF',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      shadowColor: '#000',
+                      shadowOffset: { width: 0, height: 2 },
+                      shadowOpacity: 0.3,
+                      shadowRadius: 3,
+                    }}
+                  >
+                    <Text style={{ color: '#FFFFFF', fontSize: 14, fontWeight: '900' }}>⚡</Text>
+                  </View>
+                  <View
+                    style={{
+                      width: 0,
+                      height: 0,
+                      borderLeftWidth: 6,
+                      borderRightWidth: 6,
+                      borderTopWidth: 10,
+                      borderLeftColor: 'transparent',
+                      borderRightColor: 'transparent',
+                      borderTopColor:
+                        charger.status === 'available' ? '#22A06B' : '#9AA0A6',
+                      marginTop: -2,
+                    }}
+                  />
+                </View>
+              </PointAnnotation>
+            ))
+          : null}
       </MapView>
 
       {/* Top floating search bar */}
@@ -383,6 +413,11 @@ export default function Map() {
         <IconCircle size={44}>
           <Bolt size={18} color={theme.c.ink} />
         </IconCircle>
+      </View>
+
+      {/* Verification banner — only shows when not verified */}
+      <View style={{ position: 'absolute', top: 110, left: 20, right: 20 }}>
+        <VerificationBanner next="/(driver)/map" role="driver" />
       </View>
 
       {/* Search this area */}

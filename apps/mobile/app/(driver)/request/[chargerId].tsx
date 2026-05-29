@@ -1,12 +1,12 @@
-import { useState } from 'react';
-import { View, Pressable, ActivityIndicator, ScrollView } from 'react-native';
+import { useEffect, useMemo, useState } from 'react';
+import { View, Pressable, ActivityIndicator, ScrollView, Platform } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { handleError } from '../../../src/lib/errors';
 import {
   Screen,
   Card,
   FrameSoft,
-  Chip,
   Button,
   CTABar,
   H1,
@@ -22,14 +22,27 @@ import { ChevronLeft } from '../../../src/components/icons/Icon';
 import { useTheme } from '../../../src/theme/useTheme';
 import { trpc } from '../../../src/lib/trpc';
 
-const DURATIONS: { label: string; hours: number }[] = [
-  { label: '0.5h', hours: 0.5 },
-  { label: '1h', hours: 1 },
-  { label: '2h', hours: 2 },
-  { label: '3h', hours: 3 },
-  { label: '4h', hours: 4 },
-  { label: '8h', hours: 8 },
-];
+function roundUpToHalfHour(d: Date) {
+  const out = new Date(d);
+  out.setSeconds(0, 0);
+  const m = out.getMinutes();
+  if (m === 0 || m === 30) return out;
+  out.setMinutes(m < 30 ? 30 : 60);
+  return out;
+}
+
+function fmtTime(d: Date) {
+  return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+}
+
+function fmtDay(d: Date) {
+  const today = new Date();
+  const tomorrow = new Date(today);
+  tomorrow.setDate(today.getDate() + 1);
+  if (d.toDateString() === today.toDateString()) return 'Today';
+  if (d.toDateString() === tomorrow.toDateString()) return 'Tomorrow';
+  return d.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
+}
 
 export default function RequestBooking() {
   const { chargerId } = useLocalSearchParams<{ chargerId: string }>();
@@ -37,8 +50,21 @@ export default function RequestBooking() {
   const { c } = useTheme();
   const charger = trpc.charger.get.useQuery({ id: chargerId! }, { enabled: !!chargerId });
 
-  const [hours, setHours] = useState(1);
+  const initialStart = useMemo(() => roundUpToHalfHour(new Date()), []);
+  const initialEnd = useMemo(() => new Date(initialStart.getTime() + 60 * 60_000), [initialStart]);
+  const [startAt, setStartAt] = useState<Date>(initialStart);
+  const [endAt, setEndAt] = useState<Date>(initialEnd);
   const [msg, setMsg] = useState('');
+  const hours = Math.max(0.25, (endAt.getTime() - startAt.getTime()) / 3_600_000);
+
+  // Lock the picker to "now + 1 minute" (buffer for form submission). Re-tick
+  // every 30s so a user who lingers can't submit a stale start time.
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(id);
+  }, []);
+  const minStart = useMemo(() => new Date(now + 60_000), [now]);
 
   const utils = trpc.useUtils();
   const mut = trpc.booking.requestBooking.useMutation({
@@ -89,18 +115,47 @@ export default function RequestBooking() {
           </Muted>
         </FrameSoft>
 
-        <SectionHeader>Duration</SectionHeader>
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-          {DURATIONS.map((d) => (
-            <Chip
-              key={d.label}
-              label={d.label}
-              variant="outline"
-              selected={hours === d.hours}
-              onPress={() => setHours(d.hours)}
-            />
-          ))}
-        </View>
+        <SectionHeader>When</SectionHeader>
+        <Card padding={14}>
+          <Row between style={{ marginBottom: 10 }}>
+            <Body style={{ fontWeight: '600' }}>Start</Body>
+            <Body style={{ color: c.muted }}>
+              {fmtDay(startAt)} · {fmtTime(startAt)}
+            </Body>
+          </Row>
+          <DateTimePicker
+            value={startAt}
+            mode="datetime"
+            display={Platform.OS === 'ios' ? 'compact' : 'default'}
+            minuteInterval={15}
+            minimumDate={minStart}
+            onChange={(_, d) => {
+              if (!d) return;
+              setStartAt(d);
+              if (d.getTime() >= endAt.getTime()) {
+                setEndAt(new Date(d.getTime() + 60 * 60_000));
+              }
+            }}
+          />
+          <Divider />
+          <Row between style={{ marginBottom: 10 }}>
+            <Body style={{ fontWeight: '600' }}>End</Body>
+            <Body style={{ color: c.muted }}>
+              {fmtDay(endAt)} · {fmtTime(endAt)} · {hours.toFixed(1)}h
+            </Body>
+          </Row>
+          <DateTimePicker
+            value={endAt}
+            mode="datetime"
+            display={Platform.OS === 'ios' ? 'compact' : 'default'}
+            minuteInterval={15}
+            minimumDate={new Date(startAt.getTime() + 15 * 60_000)}
+            onChange={(_, d) => {
+              if (!d) return;
+              setEndAt(d);
+            }}
+          />
+        </Card>
 
         <SectionHeader>Message to host</SectionHeader>
         <Input
@@ -136,12 +191,10 @@ export default function RequestBooking() {
           label="Send request"
           loading={mut.isPending}
           onPress={() => {
-            const start = new Date();
-            const end = new Date(start.getTime() + hours * 3_600_000);
             mut.mutate({
               chargerId: chargerId!,
-              startAt: start.toISOString(),
-              endAt: end.toISOString(),
+              startAt: startAt.toISOString(),
+              endAt: endAt.toISOString(),
               message: msg || undefined,
             });
           }}

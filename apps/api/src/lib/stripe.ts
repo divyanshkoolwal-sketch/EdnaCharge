@@ -29,12 +29,17 @@ export function isStripeConfigured(): boolean {
   return isUsable(process.env.STRIPE_SECRET_KEY);
 }
 
-// In non-production environments, when the operator hasn't dropped real Stripe
-// keys yet, fake the entire Stripe surface so demos can complete the host
-// onboarding and booking flows. Production NEVER takes this branch — even with
-// missing keys, prod returns SERVICE_UNAVAILABLE instead of fabricating data.
+// Fake the entire Stripe surface so demos can complete onboarding + booking
+// without real keys. To prevent staging environments from accidentally
+// accepting the bypass, this requires BOTH:
+//   1. NODE_ENV !== 'production'
+//   2. ENABLE_DEV_BYPASS=1 set explicitly
+// Default: bypass OFF. Production never takes this branch — even with missing
+// keys, prod returns SERVICE_UNAVAILABLE instead of fabricating data.
 export function devBypassStripe(): boolean {
-  return process.env.NODE_ENV !== 'production' && !isStripeConfigured();
+  if (process.env.NODE_ENV === 'production') return false;
+  if (process.env.ENABLE_DEV_BYPASS !== '1') return false;
+  return !isStripeConfigured();
 }
 
 export const PLATFORM_FEE_BPS = 1500; // 15% per PRD §1

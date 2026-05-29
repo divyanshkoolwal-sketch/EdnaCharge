@@ -2,6 +2,19 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
   <dict>
+    <!-- Sign in with Apple — allowed on personal teams too. -->
+    <key>com.apple.developer.applesignin</key>
+    <array>
+      <string>Default</string>
+    </array>
+
+    <!--
+      Push Notifications. Requires a PAID Apple Developer Program team.
+      'development' value works in both Xcode Debug builds AND TestFlight.
+      Apple automatically switches the App Store production build to
+      'production' at submission time, so this single value is correct for
+      every distribution channel.
+    -->
     <key>aps-environment</key>
     <string>development</string>
   </dict>
