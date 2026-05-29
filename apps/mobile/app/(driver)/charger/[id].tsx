@@ -91,9 +91,7 @@ export default function ChargerDetail() {
           <Row gap={10} style={{ marginTop: 8 }}>
             <Avatar name={ch.host.fullName} size="sm" />
             <Body>Hosted by {ch.host.fullName.split(' ')[0]}</Body>
-            <Muted>·</Muted>
-            <Star size={12} />
-            <Body>4.9</Body>
+            <HostRatingInline hostId={ch.host.id} />
           </Row>
           {distanceLabel ? (
             <Body style={{ marginTop: 6, color: c.muted }}>{distanceLabel}</Body>
@@ -159,4 +157,25 @@ function tierForCharger(t: string): string {
   // tier_3_native → '3', tier_4_unmetered → '4'
   const m = /tier_(\d)/.exec(t);
   return m ? m[1]! : '?';
+}
+
+function HostRatingInline({ hostId }: { hostId: string }) {
+  const summary = trpc.review.summary.useQuery({ userId: hostId });
+  const count = summary.data?.count ?? 0;
+  const avg = summary.data?.avg;
+  if (count === 0 || typeof avg !== 'number') {
+    return (
+      <>
+        <Muted>·</Muted>
+        <Body>New host</Body>
+      </>
+    );
+  }
+  return (
+    <>
+      <Muted>·</Muted>
+      <Star size={12} />
+      <Body>{avg.toFixed(1)}</Body>
+    </>
+  );
 }

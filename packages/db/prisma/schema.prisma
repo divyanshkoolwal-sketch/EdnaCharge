@@ -85,12 +85,14 @@ model User {
 
   driverProfile   DriverProfile?
   hostProfile     HostProfile?
+  identityVerification IdentityVerification?
   chargers        Charger[]      @relation("HostChargers")
   driverBookings  Booking[]      @relation("DriverBookings")
   sentMessages    ChatMessage[]  @relation("SentMessages")
   reviewsAuthored Review[]       @relation("AuthorReviews")
   reviewsReceived Review[]       @relation("SubjectReviews")
   payouts         Payout[]
+  chargerWaitlist ChargerWaitlist[] @relation("UserChargerWaitlist")
 
   @@index([email])
   @@index([firebaseUid])
@@ -153,12 +155,19 @@ model Charger {
   pricePerKwhCents Int?
   pricePerHourCents Int?
   houseRules     String?
+  /// Optional gate / building access code shared with drivers via chat
+  /// when their booking is confirmed. Hosts who don't have one leave it null.
+  gateCode       String?
   status         ChargerStatus @default(offline)
   instantAvailable Boolean @default(false)
   published      Boolean @default(false)
   /// OCPP auth (Tier 3 only)
   ocppChargePointId String? @unique
   ocppAuthHash   String?
+  /// Set when the physical OCPP charger is connected to the CSMS websocket,
+  /// cleared on disconnect. Lets the API (a separate service from the in-memory
+  /// CSMS registry) surface a live "charger connected" indicator to the host.
+  ocppConnectedAt DateTime?
   /// Weekly availability template: array of { dow: 0-6, start: "HH:MM", end: "HH:MM" }
   availability   Json     @default("[]")
   createdAt      DateTime @default(now())
@@ -167,9 +176,26 @@ model Charger {
   host           User      @relation("HostChargers", fields: [hostId], references: [id], onDelete: Cascade)
   bookings       Booking[]
   sessions       ChargingSession[]
+  shellDevice    ShellDevice?
 
   @@index([hostId])
   @@index([status])
+}
+
+/// Hosts whose charger can't speak OCPP to our CSMS (most consumer units are
+/// locked to the vendor cloud). v1 is OCPP-only; we capture these as leads so
+/// we can notify them when broader hardware support ships.
+model ChargerWaitlist {
+  id            String   @id @default(uuid()) @db.Uuid
+  userId        String   @db.Uuid
+  email         String
+  chargerBrand  String?
+  note          String?
+  createdAt     DateTime @default(now())
+
+  user          User     @relation("UserChargerWaitlist", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
 /// ------------------------------------------------------------------
@@ -318,9 +344,81 @@ model Payout {
 /// AUDIT H8: Stripe webhook event de-duplication. Insert-on-receive; unique
 /// violation → already processed.
 model StripeWebhookEvent {
-  id         String   @id
-  type       String
-  receivedAt DateTime @default(now())
+  id          String    @id
+  type        String
+  receivedAt  DateTime  @default(now())
+  /// Stamped after the handler runs successfully. The webhook handler uses
+  /// an upsert + `processedAt IS NULL` guard so concurrent identical
+  /// deliveries can't both pass the dedup check before either commits.
+  processedAt DateTime?
 
   @@index([type])
+}
+
+/// ------------------------------------------------------------------
+/// Identity verification (Stripe Identity)
+/// ------------------------------------------------------------------
+
+enum VerificationStatus {
+  unstarted
+  processing
+  requires_input
+  verified
+  canceled
+}
+
+model IdentityVerification {
+  id                          String              @id @default(uuid()) @db.Uuid
+  userId                      String              @unique @db.Uuid
+  stripeVerificationSessionId String?             @unique
+  status                      VerificationStatus  @default(unstarted)
+  documentType                String?
+  verifiedName                String?
+  verifiedDob                 DateTime?
+  verifiedAddress             Json?
+  documentLast4               String?
+  documentExpiresOn           DateTime?
+  verifiedAt                  DateTime?
+  failureReason               String?
+  createdAt                   DateTime            @default(now())
+  updatedAt                   DateTime            @updatedAt
+
+  user                        User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([status])
+}
+
+/// ------------------------------------------------------------------
+/// Hardware devices (Tier 1 smart plug + Tier 2 CT clamp bridge kit)
+/// ------------------------------------------------------------------
+
+enum DeviceStatus {
+  provisioned
+  active
+  offline
+  error
+}
+
+/// One ShellDevice row per physical Shelly device shipped to a host.
+/// Only Tier 1 and Tier 2 chargers have a linked device; Tier 3 uses OCPP.
+model ShellDevice {
+  id              String       @id @default(uuid()) @db.Uuid
+  chargerId       String       @unique @db.Uuid
+  shellyDeviceId  String       @unique
+  mac             String       @unique
+  mqttClientId    String
+  mqttTopicPrefix String
+  certFingerprint String?
+  firmwareVersion String?
+  hardwareModel   String
+  status          DeviceStatus @default(provisioned)
+  lastSeenAt      DateTime?
+  lastMeterKwh    Float        @default(0)
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  charger         Charger      @relation(fields: [chargerId], references: [id], onDelete: Cascade)
+
+  @@index([status])
+  @@index([shellyDeviceId])
 }

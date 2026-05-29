@@ -16,7 +16,7 @@ export const authRouter = router({
   getSession: protectedProcedure.query(async ({ ctx }) => {
     return prisma.user.findUniqueOrThrow({
       where: { id: ctx.userId },
-      include: { driverProfile: true, hostProfile: true },
+      include: { driverProfile: true, hostProfile: true, identityVerification: true },
     });
   }),
 
@@ -87,7 +87,11 @@ export const authRouter = router({
       };
     }
     const s = stripe();
-    let accountId = profile.stripeAccountId;
+    // Discard leftover dev placeholders from earlier dev-bypass mode —
+    // `acct_dev_*` isn't a real Stripe account and `accountLinks.create`
+    // would 400 on it.
+    const isDevAccount = profile.stripeAccountId?.startsWith('acct_dev_') ?? false;
+    let accountId = isDevAccount ? null : profile.stripeAccountId;
     if (!accountId) {
       const account = await s.accounts.create({
         type: 'express',
@@ -98,7 +102,12 @@ export const authRouter = router({
       accountId = account.id;
       await prisma.hostProfile.update({
         where: { userId: ctx.userId },
-        data: { stripeAccountId: accountId },
+        data: {
+          stripeAccountId: accountId,
+          // Reset the onboarding flag if we're upgrading from a dev account
+          // — Stripe needs to actually onboard the user.
+          ...(isDevAccount ? { stripeOnboardingComplete: false } : {}),
+        },
       });
     }
     const baseUrl = process.env.API_URL ?? 'http://localhost:3000';
@@ -124,11 +133,227 @@ export const authRouter = router({
       return { ok: true as const };
     }),
 
+  // ─── Identity verification (Stripe Identity) ─────────────────────────────
+  // Drivers must verify before booking; hosts must verify before listing a
+  // charger. Users can browse the rest of the app freely while unverified.
+
+  startIdentityVerification: protectedProcedure.mutation(async ({ ctx }) => {
+    // Already verified — short-circuit.
+    const existing = await prisma.identityVerification.findUnique({
+      where: { userId: ctx.userId },
+    });
+    if (existing?.status === 'verified') {
+      return {
+        url: null as string | null,
+        verificationSessionId: existing.stripeVerificationSessionId,
+        clientSecret: null as string | null,
+        devBypass: false as const,
+        alreadyVerified: true as const,
+      };
+    }
+
+    // Dev mode: instantly mark verified so demos work without real Stripe keys.
+    if (devBypassStripe()) {
+      const fakeId = `vs_dev_${ctx.userId.slice(0, 8)}`;
+      const user = await prisma.user.findUniqueOrThrow({ where: { id: ctx.userId } });
+      await prisma.identityVerification.upsert({
+        where: { userId: ctx.userId },
+        create: {
+          userId: ctx.userId,
+          stripeVerificationSessionId: fakeId,
+          status: 'verified',
+          verifiedName: user.fullName,
+          verifiedAt: new Date(),
+          documentType: 'driving_license',
+          documentLast4: '0000',
+        },
+        update: {
+          stripeVerificationSessionId: fakeId,
+          status: 'verified',
+          verifiedName: user.fullName,
+          verifiedAt: new Date(),
+        },
+      });
+      return {
+        url: null as string | null,
+        verificationSessionId: fakeId,
+        clientSecret: null as string | null,
+        devBypass: true as const,
+        alreadyVerified: false as const,
+      };
+    }
+
+    // Real Stripe Identity flow.
+    const s = stripe();
+
+    // Idempotency: if a session is already processing, reuse its URL instead
+    // of opening a second one. Avoids leaking duplicate sessions when the
+    // user double-taps "Verify now" or the screen re-mounts.
+    if (existing?.status === 'processing' && existing.stripeVerificationSessionId) {
+      try {
+        const live = await s.identity.verificationSessions.retrieve(
+          existing.stripeVerificationSessionId,
+        );
+        // Stripe sessions can move to 'verified' / 'requires_input' / 'canceled'
+        // server-side. Only reuse if still actionable.
+        if (live.status === 'requires_input' && live.url) {
+          return {
+            url: live.url,
+            verificationSessionId: live.id,
+            clientSecret: live.client_secret,
+            devBypass: false as const,
+            alreadyVerified: false as const,
+          };
+        }
+      } catch {
+        // Session vanished — fall through and create a fresh one.
+      }
+    }
+
+    const session = await s.identity.verificationSessions.create({
+      type: 'document',
+      metadata: { ednaUserId: ctx.userId },
+      options: {
+        document: {
+          require_matching_selfie: true,
+          require_live_capture: true,
+          allowed_types: ['driving_license', 'id_card', 'passport'],
+        },
+      },
+    });
+
+    await prisma.identityVerification.upsert({
+      where: { userId: ctx.userId },
+      create: {
+        userId: ctx.userId,
+        stripeVerificationSessionId: session.id,
+        status: 'processing',
+      },
+      update: {
+        stripeVerificationSessionId: session.id,
+        status: 'processing',
+        failureReason: null,
+      },
+    });
+
+    return {
+      url: session.url,
+      verificationSessionId: session.id,
+      clientSecret: session.client_secret,
+      devBypass: false as const,
+      alreadyVerified: false as const,
+    };
+  }),
+
+  identityVerificationStatus: protectedProcedure.query(async ({ ctx }) => {
+    const row = await prisma.identityVerification.findUnique({
+      where: { userId: ctx.userId },
+    });
+    if (!row) return { status: 'unstarted' as const, failureReason: null, verifiedAt: null };
+    return {
+      status: row.status,
+      failureReason: row.failureReason,
+      verifiedAt: row.verifiedAt,
+      verifiedName: row.verifiedName,
+      documentType: row.documentType,
+      documentLast4: row.documentLast4,
+    };
+  }),
+
+  // App Store Guideline 5.1.1(v) — apps that let users sign in must let
+  // them delete the account in-app. This cascades through Prisma's
+  // onDelete:Cascade chain (DriverProfile, HostProfile, IdentityVerification,
+  // Charger, Booking, ChatMessage, Review, Payout) and best-effort cleans up
+  // Stripe customer + Connect account. The user is signed out client-side
+  // after this returns ok.
+  deleteAccount: protectedProcedure.mutation(async ({ ctx }) => {
+    const user = await prisma.user.findUniqueOrThrow({
+      where: { id: ctx.userId },
+      include: {
+        driverBookings: { where: { status: { in: ['pending', 'confirmed', 'active'] } } },
+        chargers: true,
+        hostProfile: true,
+      },
+    });
+
+    // 1. Cancel any in-flight Stripe payment intents on the driver side.
+    if (!devBypassStripe()) {
+      const s = stripe();
+      for (const b of user.driverBookings) {
+        if (b.stripePaymentIntentId && !b.stripePaymentIntentId.startsWith('pi_dev_')) {
+          try {
+            await s.paymentIntents.cancel(b.stripePaymentIntentId, undefined, {
+              idempotencyKey: `cancel:${b.id}:account_deletion`,
+            });
+          } catch {
+            // Already canceled / not cancelable — continue.
+          }
+        }
+      }
+      // 2. Delete the Stripe customer (driver).
+      if (user.stripeCustomerId && !user.stripeCustomerId.startsWith('cus_dev_')) {
+        try {
+          await s.customers.del(user.stripeCustomerId);
+        } catch {
+          // Already gone or restricted — continue.
+        }
+      }
+      // 3. Reject the Stripe Connect account (host). Stripe Connect Express
+      //    accounts can't be hard-deleted, but `accounts.reject` flips them
+      //    to inactive and disables payouts.
+      const accountId = user.hostProfile?.stripeAccountId;
+      if (accountId && !accountId.startsWith('acct_dev_')) {
+        try {
+          await s.accounts.reject(accountId, { reason: 'other' });
+        } catch {
+          // Already rejected / not rejectable — continue.
+        }
+      }
+    }
+
+    // 4. Delete the User row. Cascades clean the rest.
+    await prisma.user.delete({ where: { id: ctx.userId } });
+
+    return { ok: true as const };
+  }),
+
+  cancelIdentityVerification: protectedProcedure.mutation(async ({ ctx }) => {
+    const row = await prisma.identityVerification.findUnique({
+      where: { userId: ctx.userId },
+    });
+    if (!row || !row.stripeVerificationSessionId) return { ok: true as const };
+    if (row.status === 'verified' || row.status === 'canceled') return { ok: true as const };
+
+    if (!devBypassStripe()) {
+      try {
+        await stripe().identity.verificationSessions.cancel(row.stripeVerificationSessionId);
+      } catch (err) {
+        // Already canceled / completed — log and continue.
+        // eslint-disable-next-line no-console
+        console.warn('cancelIdentityVerification: stripe cancel failed', err);
+      }
+    }
+    await prisma.identityVerification.update({
+      where: { userId: ctx.userId },
+      data: { status: 'canceled' },
+    });
+    return { ok: true as const };
+  }),
+
   hostOnboardingStatus: protectedProcedure.query(async ({ ctx }) => {
     const profile = await prisma.hostProfile.findUnique({ where: { userId: ctx.userId } });
     if (!profile?.stripeAccountId) return { status: 'not_started' as const };
-    // Dev bypass: trust the row, don't call Stripe.
-    if (devBypassStripe()) {
+    // Dev bypass OR a leftover dev placeholder from earlier dev-bypass mode:
+    // trust the row, don't call Stripe (an `acct_dev_*` would fail the
+    // accounts.retrieve call with "no such account").
+    const isDevAccount = profile.stripeAccountId.startsWith('acct_dev_');
+    if (devBypassStripe() || isDevAccount) {
+      // If real Stripe is now live but the host's row still has `acct_dev_*`,
+      // surface as `not_started` so they re-enter onboarding and we mint a
+      // real account on the next `startHostOnboarding` call.
+      if (isDevAccount && !devBypassStripe()) {
+        return { status: 'not_started' as const };
+      }
       return {
         status: profile.stripeOnboardingComplete
           ? ('complete' as const)

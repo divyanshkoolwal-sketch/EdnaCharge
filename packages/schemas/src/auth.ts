@@ -34,3 +34,13 @@ export const HostIdentityInputZ = z.object({
   country: z.string().length(2).default('US'),
 });
 export type HostIdentityInput = z.infer<typeof HostIdentityInputZ>;
+
+// Identity verification (Stripe Identity)
+export const VerificationStatusZ = z.enum([
+  'unstarted',
+  'processing',
+  'requires_input',
+  'verified',
+  'canceled',
+]);
+export type VerificationStatus = z.infer<typeof VerificationStatusZ>;

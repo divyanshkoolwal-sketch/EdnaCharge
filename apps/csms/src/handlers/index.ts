@@ -145,7 +145,9 @@ export function bindHandlers(client: Client, ctx: Ctx): void {
       );
       return { idTagInfo: { status: 'Accepted' } };
     }
-    const kwh = p.meterStop != null ? (p.meterStop - session.meterStartWh) / 1000 : 0;
+    // Guard against a meter register rollover / reset (meterStop < meterStart),
+    // which would otherwise produce a negative finalKwh and a negative capture.
+    const kwh = p.meterStop != null ? Math.max(0, (p.meterStop - session.meterStartWh) / 1000) : 0;
     await prisma.chargingSession.update({
       where: { id: session.id },
       data: {

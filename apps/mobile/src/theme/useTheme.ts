@@ -1,7 +1,5 @@
-import { useColorScheme } from 'react-native';
 import {
   lightColors,
-  darkColors,
   radius,
   space,
   fontSize,
@@ -22,12 +20,14 @@ export type Theme = {
   shadow: typeof shadow;
 };
 
+// EdnaCharge is a light-themed app; the dark palette was never finished and
+// was causing invisible text against white cards in iOS 26 simulators with
+// the OS in dark mode. Lock everything to lightColors until a proper dark
+// theme pass ships.
 export function useTheme(): Theme {
-  const scheme = useColorScheme();
-  const isDark = scheme === 'dark';
   return {
-    isDark,
-    c: isDark ? darkColors : lightColors,
+    isDark: false,
+    c: lightColors,
     radius,
     space,
     fontSize,

@@ -60,7 +60,7 @@ export default function Support() {
 
       <Button
         label="Contact support"
-        onPress={() => Linking.openURL('mailto:support@ednacharge.com')}
+        onPress={() => Linking.openURL('mailto:support@endacharges.com')}
         style={{ marginTop: 18 }}
       />
     </Screen>

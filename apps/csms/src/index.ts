@@ -36,8 +36,23 @@ async function main() {
     logger.info({ cpId, connected: size() + 1 }, 'client connected');
     register(cpId, client);
     bindHandlers(client, { chargePointId: cpId });
+    // Persist connection state so the API (a separate service) can show the
+    // host a live "charger connected" indicator. Best-effort — a DB blip must
+    // never tear down a live OCPP session.
+    prisma.charger
+      .updateMany({ where: { ocppChargePointId: cpId }, data: { ocppConnectedAt: new Date() } })
+      .catch((err) => {
+        logger.warn({ cpId, err }, 'failed to stamp ocppConnectedAt');
+        Sentry.captureException(err);
+      });
     client.on('close', () => {
       unregister(cpId);
+      prisma.charger
+        .updateMany({ where: { ocppChargePointId: cpId }, data: { ocppConnectedAt: null } })
+        .catch((err) => {
+          logger.warn({ cpId, err }, 'failed to clear ocppConnectedAt');
+          Sentry.captureException(err);
+        });
       logger.info({ cpId, connected: size() }, 'client disconnected');
     });
     client.on('protocolError', (err: unknown) => {
@@ -68,8 +83,11 @@ async function main() {
     rpc.handleUpgrade(req, socket, head);
   });
 
-  await app.listen({ port: env.CSMS_PORT, host: '0.0.0.0' });
-  logger.info({ port: env.CSMS_PORT }, 'csms listening (OCPP + HTTP)');
+  // Render injects $PORT (single port serves both the HTTP healthz and the
+  // OCPP websocket upgrade); fall back to the configured port locally.
+  const port = Number(process.env.PORT) || env.CSMS_PORT;
+  await app.listen({ port, host: '0.0.0.0' });
+  logger.info({ port }, 'csms listening (OCPP + HTTP)');
 
   startCommandConsumer(env.REDIS_URL);
   logger.info('ocpp-commands consumer started');

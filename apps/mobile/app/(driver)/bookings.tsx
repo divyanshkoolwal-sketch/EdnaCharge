@@ -22,9 +22,12 @@ export default function Bookings() {
   const router = useRouter();
   const { c } = useTheme();
   const [filter, setFilter] = useState<Filter>('all');
-  const q = trpc.booking.list.useQuery({ role: 'driver' });
+  const q = trpc.booking.list.useInfiniteQuery(
+    { role: 'driver' },
+    { getNextPageParam: (last) => last.nextCursor ?? undefined },
+  );
 
-  const all = q.data?.rows ?? [];
+  const all = q.data?.pages.flatMap((p) => p.rows) ?? [];
   const now = Date.now();
   const filtered = all.filter((b: { startAt: string; status: string }) => {
     if (filter === 'all') return true;
@@ -48,10 +51,19 @@ export default function Bookings() {
         data={filtered}
         keyExtractor={(b) => b.id}
         contentContainerStyle={{ padding: 24, paddingTop: 16, gap: 10 }}
+        onEndReachedThreshold={0.5}
+        onEndReached={() => {
+          if (q.hasNextPage && !q.isFetchingNextPage) q.fetchNextPage();
+        }}
         ListEmptyComponent={
           <Muted style={{ textAlign: 'center', marginTop: 40 }}>
             {q.isLoading ? 'Loading…' : 'No bookings yet — find a charger →'}
           </Muted>
+        }
+        ListFooterComponent={
+          q.isFetchingNextPage ? (
+            <Muted style={{ textAlign: 'center', paddingVertical: 16 }}>Loading more…</Muted>
+          ) : null
         }
         renderItem={({ item }) => (
           <Pressable

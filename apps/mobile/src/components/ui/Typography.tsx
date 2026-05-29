@@ -1,5 +1,21 @@
-import { Text, View, type TextProps, type ViewProps } from 'react-native';
+import { Text, View, StyleSheet, type TextProps, type ViewProps, type TextStyle } from 'react-native';
 import { useTheme } from '../../theme/useTheme';
+
+/**
+ * When a caller overrides `fontSize` via the `style` prop, our default
+ * `lineHeight` (computed from the base font size) is no longer correct and
+ * the larger glyphs get clipped at the top/bottom. Resolve `lineHeight` from
+ * the override fontSize so callers can size text freely without clipping.
+ */
+function resolveLineHeight(
+  baseFontSize: number,
+  multiplier: number,
+  overrideStyle: TextProps['style'],
+): number {
+  const flat = StyleSheet.flatten(overrideStyle) as TextStyle | undefined;
+  const effective = (flat && typeof flat.fontSize === 'number') ? flat.fontSize : baseFontSize;
+  return Math.round(effective * multiplier);
+}
 
 export function H1(props: TextProps) {
   const { c, fontSize, fontWeight } = useTheme();
@@ -12,7 +28,7 @@ export function H1(props: TextProps) {
           fontSize: fontSize.h1,
           fontWeight: fontWeight.bold,
           letterSpacing: -0.5,
-          lineHeight: fontSize.h1 * 1.1,
+          lineHeight: resolveLineHeight(fontSize.h1, 1.15, props.style),
         },
         props.style,
       ]}
@@ -31,7 +47,7 @@ export function H1Lg(props: TextProps) {
           fontSize: fontSize.h1Lg,
           fontWeight: fontWeight.bold,
           letterSpacing: -0.5,
-          lineHeight: fontSize.h1Lg * 1.1,
+          lineHeight: resolveLineHeight(fontSize.h1Lg, 1.15, props.style),
         },
         props.style,
       ]}
@@ -50,6 +66,7 @@ export function H2(props: TextProps) {
           fontSize: fontSize.h2,
           fontWeight: fontWeight.bold,
           letterSpacing: -0.2,
+          lineHeight: resolveLineHeight(fontSize.h2, 1.25, props.style),
         },
         props.style,
       ]}
@@ -66,7 +83,7 @@ export function Body(props: TextProps) {
         {
           color: c.ink2,
           fontSize: fontSize.body,
-          lineHeight: fontSize.body * 1.4,
+          lineHeight: resolveLineHeight(fontSize.body, 1.4, props.style),
         },
         props.style,
       ]}
@@ -75,7 +92,7 @@ export function Body(props: TextProps) {
 }
 
 export function Muted(props: TextProps) {
-  const { c, fontSize } = useTheme();
+  const { c } = useTheme();
   return (
     <Text
       {...props}
@@ -83,6 +100,7 @@ export function Muted(props: TextProps) {
         {
           color: c.muted,
           fontSize: 12,
+          lineHeight: resolveLineHeight(12, 1.4, props.style),
         },
         props.style,
       ]}
@@ -101,6 +119,7 @@ export function Label(props: TextProps) {
           fontSize: fontSize.label,
           fontWeight: fontWeight.medium,
           letterSpacing: 0.2,
+          lineHeight: resolveLineHeight(fontSize.label, 1.4, props.style),
         },
         props.style,
       ]}
@@ -158,6 +177,8 @@ export function Row({
         },
         style,
       ]}
-    />
+    >
+      {children}
+    </View>
   );
 }

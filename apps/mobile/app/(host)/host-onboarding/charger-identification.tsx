@@ -20,170 +20,158 @@ import {
 import { ChevronLeft, Check } from '../../../src/components/icons/Icon';
 import { useTheme } from '../../../src/theme/useTheme';
 import { trpc } from '../../../src/lib/trpc';
-import type { ConnectorType, HardwareTier } from '@edna/schemas';
+import type { ConnectorType } from '@edna/schemas';
 import { SuccessCheckIllo } from '../../../src/components/illustrations/HomeCharger';
 
-type Step = 1 | 2 | 3 | 4 | 5 | 6 | 7;
-type Location = 'wall_outlet' | 'installed_level2' | 'none' | 'unsure';
+// v1 is OCPP-only. The flow gates on whether the host's charger can connect to
+// a custom OCPP 1.6 server; everything else (brand / connector / power) is
+// metadata for the listing. Non-OCPP hosts join a waitlist instead of listing.
+type Step = 'capability' | 'help' | 'brand' | 'connector' | 'power' | 'done' | 'waitlist' | 'waitlisted';
 
-const BRANDS = [
+// Chargers that commonly let you point OCPP 1.6 at a custom server. (Vendor-
+// locked units — Tesla Wall Connector, ChargePoint Home, Emporia, JuiceBox —
+// generally cannot, so they're intentionally absent.)
+const OCPP_BRANDS = [
+  'Wallbox Pulsar / Pulsar Plus',
+  'Grizzl-E Smart',
+  'OpenEVSE',
+  'EVBox',
+  'ABB / commercial unit',
+  'Other (OCPP 1.6)',
+];
+// Common vendor-locked chargers, shown on the waitlist step so hosts can tell
+// us what they have.
+const WAITLIST_BRANDS = [
   'Tesla Wall Connector',
-  'ChargePoint Home Flex',
-  'Wallbox Pulsar Plus',
+  'ChargePoint Home',
+  'Emporia',
   'Enel X JuiceBox',
-  'Emporia EV Charger',
-  'Grizzl-E',
-  'EO Mini',
   'Other',
 ];
 const CONNECTORS: ConnectorType[] = ['j1772', 'nacs', 'tesla', 'ccs1', 'chademo'];
-const POWERS = [1.4, 3.3, 7.2, 11, 19.2];
-
-const TIER_COPY: Record<HardwareTier, { label: string; title: string; body: string }> = {
-  tier_3_native: {
-    label: 'TIER 3 · OCPP-NATIVE',
-    title: "You're all set.",
-    body: "We'll give you your charger's connection details when you list it.",
-  },
-  tier_2_bridge_kit: {
-    label: 'TIER 2 · BRIDGE KIT',
-    title: "We'll ship you a free bridge kit.",
-    body: 'Shipping takes 3–5 days. You can finish listing now and go live once it arrives.',
-  },
-  tier_1_smart_plug: {
-    label: 'TIER 1 · SMART PLUG',
-    title: "We'll ship you a free smart plug.",
-    body: 'Shipping takes 3–5 days. You can finish listing now and go live once it arrives.',
-  },
-  tier_4_unmetered: {
-    label: 'TIER 4 · UNMETERED',
-    title: 'No metering required.',
-    body: "You can still list, but you'll price by the hour instead of per kWh.",
-  },
-};
+const POWERS = [3.3, 7.2, 11, 19.2, 22];
 
 export default function ChargerIdentification() {
   const router = useRouter();
   const { c } = useTheme();
-  const [step, setStep] = useState<Step>(1);
-  const [location, setLocation] = useState<Location | null>(null);
+  const [step, setStep] = useState<Step>('capability');
   const [brand, setBrand] = useState<string | null>(null);
   const [brandOther, setBrandOther] = useState('');
-  const [hasWifi, setHasWifi] = useState<boolean | null>(null);
   const [connector, setConnector] = useState<ConnectorType>('j1772');
   const [powerKw, setPowerKw] = useState<number | null>(null);
-  const [tier, setTier] = useState<HardwareTier | null>(null);
+  const [waitNote, setWaitNote] = useState('');
 
   const utils = trpc.useUtils();
   const mut = trpc.auth.submitChargerIdentification.useMutation({
     onSuccess: () => {
       utils.auth.getSession.invalidate();
-      setStep(7);
+      setStep('done');
     },
-    onError: (e) => handleError(e, { feature: 'Hardware setup' }),
+    onError: (e) => handleError(e, { feature: 'Charger setup' }),
+  });
+  const waitlist = trpc.charger.joinWaitlist.useMutation({
+    onSuccess: () => setStep('waitlisted'),
+    onError: (e) => handleError(e, { feature: 'Waitlist' }),
   });
 
-  // Pre-fill from a previously-submitted hardwareSetup so "My setup" works as
-  // an edit flow rather than re-entry.
+  // Pre-fill from a previously-submitted hardwareSetup so this works as an edit.
   const session = trpc.auth.getSession.useQuery();
   useEffect(() => {
     const setup = session.data?.hostProfile?.hardwareSetup as
-      | {
-          chargerLocation?: Location;
-          chargerBrand?: string | null;
-          hasWifi?: boolean | null;
-          connectorType?: ConnectorType;
-          powerKw?: number;
-          hardwareTier?: HardwareTier;
-        }
+      | { chargerBrand?: string | null; connectorType?: ConnectorType; powerKw?: number }
       | undefined;
     if (!setup) return;
-    if (setup.chargerLocation) setLocation(setup.chargerLocation);
     if (setup.chargerBrand) setBrand(setup.chargerBrand);
-    if (typeof setup.hasWifi === 'boolean') setHasWifi(setup.hasWifi);
     if (setup.connectorType) setConnector(setup.connectorType);
     if (typeof setup.powerKw === 'number') setPowerKw(setup.powerKw);
-    if (setup.hardwareTier) setTier(setup.hardwareTier);
   }, [session.data]);
 
-  const pickLocation = (l: Location) => {
-    setLocation(l);
-    if (l === 'installed_level2') setStep(2);
-    else {
-      setBrand(null);
-      setHasWifi(null);
-      setStep(4);
-    }
-  };
+  const resolvedBrand = brand === 'Other (OCPP 1.6)' ? brandOther || null : brand;
 
-  const submit = (finalTier: HardwareTier) => {
-    setTier(finalTier);
+  const submit = () => {
     mut.mutate({
-      chargerLocation: location!,
-      chargerBrand: brand === 'Other' ? brandOther || null : brand,
+      // OCPP chargers are networked Level 2 units by definition.
+      chargerLocation: 'installed_level2',
+      chargerBrand: resolvedBrand,
       chargerModel: null,
-      hasWifi,
+      hasWifi: true,
       connectorType: connector,
       powerKw: powerKw ?? 0,
-      hardwareTier: finalTier,
+      hardwareTier: 'tier_3_native',
     });
   };
 
+  const isInputStep = step === 'brand' || step === 'connector' || step === 'power';
+  const stepIndex = step === 'brand' ? 0 : step === 'connector' ? 1 : step === 'power' ? 2 : 0;
+
   return (
     <Screen keyboardAvoiding>
-      {step < 7 ? (
+      {step !== 'done' && step !== 'waitlisted' ? (
         <Pressable onPress={() => router.back()} style={{ paddingTop: 8 }}>
           <ChevronLeft />
         </Pressable>
       ) : null}
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingBottom: 130 }}
-      >
-        {step < 7 ? (
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 130 }}>
+        {isInputStep ? (
           <View style={{ marginTop: 12 }}>
-            <Stepper count={6} current={Math.max(0, step - 1)} label={`STEP ${step} OF 6`} />
+            <Stepper count={3} current={stepIndex} label={`STEP ${stepIndex + 1} OF 3`} />
           </View>
         ) : null}
 
-        {step === 1 ? (
+        {step === 'capability' ? (
           <>
-            <H1 style={{ marginTop: 14, fontSize: 24 }}>How is your EV currently charged at home?</H1>
+            <H1 style={{ marginTop: 14, fontSize: 24 }}>Can your charger connect to EdnaCharge?</H1>
+            <Muted style={{ marginTop: 8, fontSize: 13, lineHeight: 19 }}>
+              EdnaCharge talks to your charger over OCPP 1.6 to start and stop sessions and read
+              real energy use. Most networked Level 2 chargers that let you set a custom OCPP server
+              work — Wallbox, Grizzl-E Smart, OpenEVSE, EVBox and most commercial units. Vendor-locked
+              chargers (Tesla Wall Connector, ChargePoint Home, Emporia, JuiceBox) usually can't.
+            </Muted>
             <View style={{ marginTop: 18, gap: 10 }}>
-              <Choice label="Wall outlet (Level 1, 120V)" onPress={() => pickLocation('wall_outlet')} />
-              <Choice label="Installed home charger (Level 2, 240V)" onPress={() => pickLocation('installed_level2')} />
-              <Choice label="No charger yet, but I'm interested" onPress={() => pickLocation('none')} />
-              <Choice label="I'm not sure" onPress={() => pickLocation('unsure')} />
+              <Choice label="Yes — I can set a custom OCPP server" onPress={() => setStep('brand')} />
+              <Choice label="I'm not sure" onPress={() => setStep('help')} />
+              <Choice label="No / it's vendor-locked" onPress={() => setStep('waitlist')} />
             </View>
           </>
         ) : null}
 
-        {step === 2 ? (
+        {step === 'help' ? (
           <>
-            <H1 style={{ marginTop: 14, fontSize: 24 }}>What brand is your charger?</H1>
+            <H1 style={{ marginTop: 14, fontSize: 24 }}>How to check</H1>
+            <Muted style={{ marginTop: 8, fontSize: 13, lineHeight: 19 }}>
+              Look in your charger's app or web admin for a setting called “OCPP”, “OCPP 1.6”,
+              “Backend”, or “Central System URL”. If you can type in a custom server address, your
+              charger is compatible. If there's no such setting (or only the manufacturer's own
+              cloud), it isn't compatible yet.
+            </Muted>
+            <FrameSoft style={{ marginTop: 16 }}>
+              <Body style={{ fontSize: 13 }}>
+                Tip: many chargers expose OCPP only to the installer or after enabling a “smart”
+                or “networked” mode. Check the manual for your exact model.
+              </Body>
+            </FrameSoft>
             <View style={{ marginTop: 18, gap: 10 }}>
-              {BRANDS.map((b) => (
+              <Choice label="My charger has an OCPP server setting" onPress={() => setStep('brand')} />
+              <Choice label="It doesn't — add me to the waitlist" onPress={() => setStep('waitlist')} />
+            </View>
+          </>
+        ) : null}
+
+        {step === 'brand' ? (
+          <>
+            <H1 style={{ marginTop: 14, fontSize: 24 }}>What's your charger?</H1>
+            <View style={{ marginTop: 18, gap: 10 }}>
+              {OCPP_BRANDS.map((b) => (
                 <Choice key={b} label={b} selected={brand === b} onPress={() => setBrand(b)} />
               ))}
-              {brand === 'Other' ? (
-                <Input value={brandOther} onChangeText={setBrandOther} placeholder="Type brand / model" />
+              {brand === 'Other (OCPP 1.6)' ? (
+                <Input value={brandOther} onChangeText={setBrandOther} placeholder="Brand / model" />
               ) : null}
             </View>
           </>
         ) : null}
 
-        {step === 3 ? (
-          <>
-            <H1 style={{ marginTop: 14, fontSize: 24 }}>Does your charger have Wi-Fi or an app?</H1>
-            <View style={{ marginTop: 18, gap: 10 }}>
-              <Choice label="Yes" selected={hasWifi === true} onPress={() => setHasWifi(true)} />
-              <Choice label="No (hard-wired only)" selected={hasWifi === false} onPress={() => setHasWifi(false)} />
-              <Choice label="Not sure" selected={hasWifi === null && step === 3} onPress={() => setHasWifi(null)} />
-            </View>
-          </>
-        ) : null}
-
-        {step === 4 ? (
+        {step === 'connector' ? (
           <>
             <H1 style={{ marginTop: 14, fontSize: 24 }}>Which connector?</H1>
             <View style={{ marginTop: 18, gap: 10 }}>
@@ -199,11 +187,11 @@ export default function ChargerIdentification() {
           </>
         ) : null}
 
-        {step === 5 ? (
+        {step === 'power' ? (
           <>
             <H1 style={{ marginTop: 14, fontSize: 24 }}>Power output (kW)</H1>
             <Muted style={{ marginTop: 6, fontSize: 13 }}>
-              Look on the charger's label or in the manual — usually printed on the side.
+              On the charger's label or in the manual — usually printed on the side.
             </Muted>
             <Row gap={6} style={{ marginTop: 14, flexWrap: 'wrap' }}>
               {POWERS.map((p) => (
@@ -224,23 +212,11 @@ export default function ChargerIdentification() {
                 placeholder="Or type a number"
               />
             </View>
-          </>
-        ) : null}
-
-        {step === 6 ? (
-          <>
-            <H1 style={{ marginTop: 14, fontSize: 24 }}>Can you see your energy use?</H1>
-            <View style={{ marginTop: 18, gap: 10 }}>
-              <Choice label="My charger shows kWh in its app" onPress={() => submit('tier_3_native')} />
-              <Choice label="It has Wi-Fi but no app / a basic app" onPress={() => submit('tier_2_bridge_kit')} />
-              <Choice label="I have a smart plug or would like one" onPress={() => submit('tier_1_smart_plug')} />
-              <Choice label="None of the above" onPress={() => submit('tier_4_unmetered')} />
-            </View>
             {mut.isPending ? <Muted style={{ marginTop: 14 }}>Saving…</Muted> : null}
           </>
         ) : null}
 
-        {step === 7 && tier ? (
+        {step === 'done' ? (
           <View style={{ alignItems: 'center', marginTop: 30 }}>
             <SuccessCheckIllo size={120} />
             <View
@@ -253,36 +229,98 @@ export default function ChargerIdentification() {
               }}
             >
               <Body style={{ color: c.green2, fontWeight: '700', fontSize: 11, letterSpacing: 0.3 }}>
-                {TIER_COPY[tier].label}
+                OCPP 1.6 · READY
               </Body>
             </View>
-            <H1Lg style={{ marginTop: 14, fontSize: 28, textAlign: 'center' }}>
-              {TIER_COPY[tier].title}
-            </H1Lg>
-            <Body style={{ marginTop: 10, textAlign: 'center', maxWidth: 260 }}>
-              {TIER_COPY[tier].body}
+            <H1Lg style={{ marginTop: 14, fontSize: 28, textAlign: 'center' }}>You're all set.</H1Lg>
+            <Body style={{ marginTop: 10, textAlign: 'center', maxWidth: 280 }}>
+              When you list your charger, we'll give you the connection details to paste into its
+              OCPP settings — then it shows up here the moment it connects.
+            </Body>
+          </View>
+        ) : null}
+
+        {step === 'waitlist' ? (
+          <>
+            <H1 style={{ marginTop: 14, fontSize: 24 }}>Join the waitlist</H1>
+            <Muted style={{ marginTop: 8, fontSize: 13, lineHeight: 19 }}>
+              We're starting with chargers that speak OCPP 1.6. Tell us what you have and we'll email
+              you the moment we support it.
+            </Muted>
+            <View style={{ marginTop: 18, gap: 10 }}>
+              {WAITLIST_BRANDS.map((b) => (
+                <Choice key={b} label={b} selected={brand === b} onPress={() => setBrand(b)} />
+              ))}
+            </View>
+            <View style={{ marginTop: 12 }}>
+              <Input
+                value={waitNote}
+                onChangeText={setWaitNote}
+                placeholder="Anything else? (optional)"
+                multiline
+                style={{ minHeight: 70, paddingTop: 14, paddingBottom: 14, height: undefined }}
+              />
+            </View>
+          </>
+        ) : null}
+
+        {step === 'waitlisted' ? (
+          <View style={{ alignItems: 'center', marginTop: 30 }}>
+            <SuccessCheckIllo size={120} />
+            <H1Lg style={{ marginTop: 18, fontSize: 28, textAlign: 'center' }}>You're on the list.</H1Lg>
+            <Body style={{ marginTop: 10, textAlign: 'center', maxWidth: 280 }}>
+              Thanks — we'll email you when EdnaCharge supports your charger. In the meantime you can
+              still use the app as a driver.
             </Body>
           </View>
         ) : null}
       </ScrollView>
-      {step < 7 && (step === 2 || step === 3 || step === 4 || step === 5) ? (
+
+      {step === 'brand' ? (
         <CTABar>
           <Button
             label="Next"
-            onPress={() => setStep((step + 1) as Step)}
-            disabled={
-              (step === 2 && (!brand || (brand === 'Other' && !brandOther))) ||
-              (step === 5 && !powerKw)
+            onPress={() => setStep('connector')}
+            disabled={!brand || (brand === 'Other (OCPP 1.6)' && !brandOther)}
+          />
+        </CTABar>
+      ) : null}
+      {step === 'connector' ? (
+        <CTABar>
+          <Button label="Next" onPress={() => setStep('power')} />
+        </CTABar>
+      ) : null}
+      {step === 'power' ? (
+        <CTABar>
+          <Button label="Save & continue" onPress={submit} loading={mut.isPending} disabled={!powerKw} />
+        </CTABar>
+      ) : null}
+      {step === 'waitlist' ? (
+        <CTABar>
+          <Button
+            label="Join waitlist"
+            loading={waitlist.isPending}
+            disabled={!brand}
+            onPress={() =>
+              waitlist.mutate({
+                chargerBrand: brand === 'Other' ? undefined : brand ?? undefined,
+                note: waitNote || undefined,
+              })
             }
           />
         </CTABar>
       ) : null}
-      {step === 7 ? (
+      {step === 'done' ? (
         <CTABar>
           <Button
             label="Continue to payouts"
-            onPress={() => router.replace('/(host)/host-onboarding/stripe-connect')}
+            onPress={() => router.push('/(host)/host-onboarding/stripe-connect')}
           />
+        </CTABar>
+      ) : null}
+      {step === 'waitlisted' ? (
+        <CTABar>
+          <Button label="Done" onPress={() => router.replace('/(auth)/pick-role')} />
         </CTABar>
       ) : null}
     </Screen>

@@ -18,6 +18,7 @@ const ChargerCreateFieldsZ = z
     pricePerKwhCents: z.number().int().nonnegative().optional(),
     pricePerHourCents: z.number().int().nonnegative().optional(),
     houseRules: z.string().max(500).optional(),
+    gateCode: z.string().max(32).optional(),
     instantAvailable: z.boolean().default(false),
     availability: z
       .array(
@@ -70,6 +71,14 @@ export const ChargerUpdateInputZ = z.object({
     .strict(),
 });
 export type ChargerUpdateInput = z.infer<typeof ChargerUpdateInputZ>;
+
+// v1 is OCPP-only. Hosts whose charger can't connect to our CSMS join a
+// waitlist instead of listing. Email is taken from the authenticated user.
+export const ChargerWaitlistInputZ = z.object({
+  chargerBrand: z.string().max(80).optional(),
+  note: z.string().max(500).optional(),
+});
+export type ChargerWaitlistInput = z.infer<typeof ChargerWaitlistInputZ>;
 
 export const NearbyInputZ = z.object({
   lat: z.number(),

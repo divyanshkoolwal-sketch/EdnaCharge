@@ -1,4 +1,4 @@
-import { View, Pressable } from 'react-native';
+import { View, Pressable, Text } from 'react-native';
 import { useRouter } from 'expo-router';
 import {
   Screen,
@@ -16,8 +16,10 @@ import { useTheme } from '../../src/theme/useTheme';
 import { trpc } from '../../src/lib/trpc';
 import { useAuth } from '../../src/state/auth';
 import { useRole } from '../../src/state/role';
+import { VerifiedPill } from '../../src/components/VerificationBanner';
 
-const ITEMS: { key: string; label: string; icon: 'card' | 'bell' | 'gear' | 'help'; path: string }[] = [
+const ITEMS: { key: string; label: string; icon: 'verify' | 'card' | 'bell' | 'gear' | 'help'; path: string; params?: Record<string, string> }[] = [
+  { key: 'verify', label: 'Verify ID', icon: 'verify', path: '/(shared)/identity-verification', params: { next: '/(driver)/profile' } },
   { key: 'card', label: 'Payment methods', icon: 'card', path: '/(shared)/payment-methods' },
   { key: 'bell', label: 'Notifications', icon: 'bell', path: '/(shared)/notifications' },
   { key: 'gear', label: 'Settings', icon: 'gear', path: '/(shared)/settings' },
@@ -25,6 +27,7 @@ const ITEMS: { key: string; label: string; icon: 'card' | 'bell' | 'gear' | 'hel
 ];
 
 const ICON: Record<string, React.ComponentType<{ size?: number; color?: string }>> = {
+  verify: Star,
   card: CardIcon,
   bell: Bell,
   gear: Gear,
@@ -43,13 +46,13 @@ export default function Profile() {
     <Screen scroll contentStyle={{ paddingBottom: 40 }}>
       <View style={{ marginTop: 14, alignItems: 'center' }}>
         <Avatar name={me.data?.fullName ?? 'EC'} size="lg" />
-        <Body style={{ fontWeight: '700', fontSize: 18, marginTop: 10 }}>
-          {me.data?.fullName ?? 'You'}
-        </Body>
-        <Row gap={4}>
-          <Star size={11} />
-          <Muted>4.8 · {me.data?.email}</Muted>
+        <Row gap={6} style={{ marginTop: 10 }}>
+          <Body style={{ fontWeight: '700', fontSize: 18 }}>
+            {me.data?.fullName ?? 'You'}
+          </Body>
+          <VerifiedPill />
         </Row>
+        <DriverRatingRow userId={me.data?.id} email={me.data?.email ?? null} />
       </View>
 
       {/* Become a host card */}
@@ -62,33 +65,39 @@ export default function Profile() {
             router.push('/(host)/host-onboarding/intro');
           }
         }}
-        style={{ marginTop: 18 }}
+        style={({ pressed }) => ({
+          marginTop: 18,
+          backgroundColor: '#C9E8C7',
+          borderRadius: 18,
+          borderWidth: 1,
+          borderColor: '#6BB36C',
+          padding: 16,
+          opacity: pressed ? 0.85 : 1,
+        })}
       >
-        <Card padding={14}>
-          <Row gap={10}>
-            <View
-              style={{
-                width: 38,
-                height: 38,
-                borderRadius: 10,
-                backgroundColor: c.greenPill,
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-            >
-              <Bolt size={18} color={c.green2} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Body style={{ fontSize: 14, fontWeight: '700' }}>
-                {isHost ? 'Switch to host' : 'Become a host'}
-              </Body>
-              <Muted style={{ fontSize: 11 }}>
-                {isHost ? 'Open your host dashboard' : 'Earn $40–$200/mo on your home charger'}
-              </Muted>
-            </View>
-            <ChevronRight color={c.muted2} />
-          </Row>
-        </Card>
+        <Row gap={10}>
+          <View
+            style={{
+              width: 40,
+              height: 40,
+              borderRadius: 10,
+              backgroundColor: '#FFFFFF',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <Bolt size={20} color="#3F7E40" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontSize: 16, fontWeight: '700', color: '#0F0F10' }}>
+              {isHost ? 'Switch to host' : 'Become a host'}
+            </Text>
+            <Text style={{ fontSize: 12, color: 'rgba(15,15,16,0.7)', marginTop: 2 }}>
+              {isHost ? 'Open your host dashboard' : 'Earn $40–$200/mo on your home charger'}
+            </Text>
+          </View>
+          <ChevronRight color="#0F0F10" />
+        </Row>
       </Pressable>
 
       <SectionHeader>Account</SectionHeader>
@@ -98,7 +107,7 @@ export default function Profile() {
           return (
             <Pressable
               key={it.key}
-              onPress={() => router.push(it.path as never)}
+              onPress={() => router.push(it.params ? { pathname: it.path, params: it.params } as never : it.path as never)}
               style={{
                 flexDirection: 'row',
                 alignItems: 'center',
@@ -120,9 +129,32 @@ export default function Profile() {
       <Button
         label="Sign out"
         variant="destructive-outline"
-        onPress={() => signOut()}
+        onPress={async () => {
+          await signOut();
+          router.replace('/(auth)/welcome');
+        }}
         style={{ marginTop: 18 }}
       />
     </Screen>
+  );
+}
+
+function DriverRatingRow({ userId, email }: { userId: string | undefined; email: string | null }) {
+  const summary = trpc.review.summary.useQuery({ userId: userId! }, { enabled: !!userId });
+  const count = summary.data?.count ?? 0;
+  const avg = summary.data?.avg;
+  return (
+    <Row gap={4}>
+      {count > 0 && typeof avg === 'number' ? (
+        <>
+          <Star size={11} />
+          <Muted>
+            {avg.toFixed(1)} · {email ?? ''}
+          </Muted>
+        </>
+      ) : (
+        <Muted>{email ?? ''}</Muted>
+      )}
+    </Row>
   );
 }

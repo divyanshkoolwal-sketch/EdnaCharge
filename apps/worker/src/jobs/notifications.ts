@@ -29,15 +29,21 @@ async function pushUser(ref: UserRef, title: string, body: string, data: Record<
     logger.debug({ userId: ref.id }, 'no expo push token; skipping');
     return;
   }
+  // 10s timeout so a hung Expo push endpoint can't block the worker's job slot.
+  const ctrl = new AbortController();
+  const timeout = setTimeout(() => ctrl.abort(), 10_000);
   try {
     const res = await fetch('https://exp.host/--/api/v2/push/send', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ to: ref.expoPushToken, title, body, data }),
+      signal: ctrl.signal,
     });
     if (!res.ok) logger.warn({ status: res.status }, 'expo push non-2xx');
   } catch (err) {
     logger.warn({ err }, 'expo push failed');
+  } finally {
+    clearTimeout(timeout);
   }
 }
 
@@ -67,7 +73,24 @@ export async function notify(job: NotificationJob) {
     case 'booking_declined': {
       if (!hasStringProp(p, 'driverId') || !hasStringProp(p, 'bookingId')) break;
       const u = await prisma.user.findUnique({ where: { id: p.driverId } });
-      if (u) await pushUser(u, 'Booking declined', '', { bookingId: p.bookingId });
+      const b = await prisma.booking.findUnique({ where: { id: p.bookingId } });
+      const reason = b?.declineReason
+        ? `Reason: ${b.declineReason.replace(/_/g, ' ')}`
+        : 'Try a different charger nearby.';
+      if (u) await pushUser(u, 'Booking declined', reason, { bookingId: p.bookingId });
+      break;
+    }
+    case 'booking_auto_declined': {
+      if (!hasStringProp(p, 'driverId') || !hasStringProp(p, 'bookingId')) break;
+      const u = await prisma.user.findUnique({ where: { id: p.driverId } });
+      if (u) {
+        await pushUser(
+          u,
+          'Booking expired',
+          "The host didn't respond in time. Try a different charger nearby.",
+          { bookingId: p.bookingId },
+        );
+      }
       break;
     }
     case 'new_chat_message': {

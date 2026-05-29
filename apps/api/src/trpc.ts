@@ -45,10 +45,25 @@ export const publicProcedure = t.procedure;
 export const protectedProcedure = t.procedure.use(async ({ ctx, next }) => {
   if (!ctx.firebaseUser) throw new TRPCError({ code: 'UNAUTHORIZED' });
   const authUser = ctx.firebaseUser;
-  const email =
-    authUser.email && authUser.email.length > 0
-      ? authUser.email.toLowerCase()
-      : `firebase-${authUser.firebaseUid}@ednacharge.local`;
+
+  // Email-verification gate. Allow phone-only accounts (Firebase issues those
+  // without an email field) and dev tokens (no `email` field unless we set
+  // it). Reject email-based sign-ups whose address hasn't been verified —
+  // otherwise anyone can register `fake@anything.com` and use the app.
+  //
+  // App Store reviewers explicitly probe for this; failing it causes a
+  // "your app accepts unverified accounts" flag.
+  const hasEmail = authUser.email && authUser.email.length > 0;
+  if (hasEmail && authUser.emailVerified === false) {
+    throw new TRPCError({
+      code: 'PRECONDITION_FAILED',
+      message: 'Please verify your email before continuing. Check your inbox for the verification link.',
+    });
+  }
+
+  const email = hasEmail
+    ? authUser.email!.toLowerCase()
+    : `firebase-${authUser.firebaseUid}@ednacharge.local`;
   const fullName = authUser.name?.trim() || email.split('@')[0] || 'user';
 
   let user = await prisma.user.findFirst({

@@ -5,24 +5,27 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch --ignore='**/node_modules/**' src/index.ts",
+    "start": "tsx src/index.ts",
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc --noEmit",
     "lint": "echo \"(no lint yet)\"",
-    "test": "echo \"(no tests yet)\""
+    "test": "vitest run"
   },
   "dependencies": {
     "@edna/config": "workspace:*",
     "@edna/db": "workspace:*",
     "@sentry/node": "^8.30.0",
     "bullmq": "^5.20.0",
-    "stripe": "^16.12.0",
     "fastify": "^4.28.1",
     "ioredis": "^5.4.1",
+    "mqtt": "^5.15.1",
     "pino": "^9.4.0",
-    "pino-pretty": "^11.2.2"
+    "pino-pretty": "^11.2.2",
+    "stripe": "^16.12.0"
   },
   "devDependencies": {
     "tsx": "^4.19.0",
-    "typescript": "^5.5.4"
+    "typescript": "^5.5.4",
+    "vitest": "^2.0.5"
   }
 }

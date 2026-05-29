@@ -21,6 +21,11 @@ module.exports = {
         CFBundleURLTypes: [...baseUrlTypes, googleUrlType],
       },
     },
+    android: {
+      ...(app.expo.android ?? {}),
+      package: app.expo.android?.package ?? 'edna.charge',
+      googleServicesFile: './google-services.json',
+    },
     plugins: [
       ...app.expo.plugins,
       'expo-apple-authentication',

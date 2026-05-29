@@ -6,3 +6,4 @@ export * from './booking.js';
 export * from './chat.js';
 export * from './payment.js';
 export * from './review.js';
+export * from './device.js';

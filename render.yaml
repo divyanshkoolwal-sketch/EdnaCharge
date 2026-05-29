@@ -1,0 +1,98 @@
+# EdnaCharge — Render Blueprint
+# Docs: https://render.com/docs/blueprint-spec
+#
+# Deploys the three backend services from this monorepo:
+#   edna-api    — Fastify + tRPC public API            (web,    $PORT, /healthz)
+#   edna-csms   — OCPP 1.6 WebSocket central system     (web,    $PORT, /healthz, wss upgrade)
+#   edna-worker — BullMQ jobs (Stripe capture, push)    (worker, no inbound port)
+#
+# Postgres = Supabase Cloud, Redis = Upstash (both external — set via secrets).
+# Services run TypeScript directly with tsx (workspace packages export TS source),
+# so no compile step is needed — only `prisma generate`.
+#
+# Secrets (sync:false / the shared group) are entered ONCE in the Render dashboard
+# and never committed. See DEPLOY.md for the exact values and the one-time DB setup.
+
+envVarGroups:
+  - name: edna-shared
+    envVars:
+      - key: DATABASE_URL          # Supabase pooled connection string (postgresql://...)
+        sync: false
+      - key: REDIS_URL             # Upstash rediss://... (TLS)
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: STRIPE_SECRET_KEY     # sk_live_...
+        sync: false
+
+services:
+  # ---------------------------------------------------------------- API
+  - type: web
+    name: edna-api
+    runtime: node
+    region: oregon
+    plan: starter
+    branch: main
+    autoDeploy: true
+    buildCommand: corepack enable && corepack prepare pnpm@10.28.0 --activate && pnpm install --prod=false --frozen-lockfile && pnpm --filter @edna/db generate
+    startCommand: pnpm --filter @edna/api start
+    healthCheckPath: /healthz
+    envVars:
+      - fromGroup: edna-shared
+      - key: NODE_ENV
+        value: production
+      - key: FIREBASE_SERVICE_ACCOUNT_JSON   # full service-account JSON (one line)
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET            # whsec_... from the LIVE webhook
+        sync: false
+      - key: STRIPE_PUBLISHABLE_KEY           # pk_live_...
+        sync: false
+      - key: API_URL                          # https://api.<domain>  (Stripe Connect return/refresh)
+        sync: false
+      - key: CSMS_PUBLIC_URL                  # wss://csms.<domain>   (shown to hosts as the OCPP URL)
+        sync: false
+      - key: CORS_ORIGINS                     # optional; blank => cross-origin denied in prod
+        sync: false
+      - key: SENTRY_DSN_API
+        sync: false
+
+  # ---------------------------------------------------------------- CSMS (OCPP WebSocket)
+  - type: web
+    name: edna-csms
+    runtime: node
+    region: oregon
+    plan: starter
+    branch: main
+    autoDeploy: true
+    buildCommand: corepack enable && corepack prepare pnpm@10.28.0 --activate && pnpm install --prod=false --frozen-lockfile && pnpm --filter @edna/db generate
+    startCommand: pnpm --filter @edna/csms start
+    healthCheckPath: /healthz
+    envVars:
+      - fromGroup: edna-shared
+      - key: NODE_ENV
+        value: production
+      - key: SENTRY_DSN_CSMS
+        sync: false
+
+  # ---------------------------------------------------------------- Worker (BullMQ)
+  - type: worker
+    name: edna-worker
+    runtime: node
+    region: oregon
+    plan: starter
+    branch: main
+    autoDeploy: true
+    buildCommand: corepack enable && corepack prepare pnpm@10.28.0 --activate && pnpm install --prod=false --frozen-lockfile && pnpm --filter @edna/db generate
+    startCommand: pnpm --filter @edna/worker start
+    envVars:
+      - fromGroup: edna-shared
+      - key: NODE_ENV
+        value: production
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+      - key: SENTRY_DSN_WORKER
+        sync: false

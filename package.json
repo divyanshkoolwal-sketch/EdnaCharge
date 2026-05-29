@@ -40,6 +40,15 @@
       "metro-babel-transformer": "0.80.12",
       "metro-file-map": "0.80.12",
       "metro-cache": "0.80.12"
-    }
+    },
+    "onlyBuiltDependencies": [
+      "esbuild",
+      "@prisma/client",
+      "@prisma/engines",
+      "prisma",
+      "@sentry/cli",
+      "msgpackr-extract",
+      "protobufjs"
+    ]
   }
 }

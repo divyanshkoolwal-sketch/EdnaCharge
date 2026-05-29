@@ -44,6 +44,17 @@ export const reviewRouter = router({
     return review;
   }),
 
+  // The caller's own review for a booking (or null). Lets the receipt/host
+  // review screens render an already-submitted state instead of letting a
+  // second `create` fail with a CONFLICT.
+  mine: protectedProcedure
+    .input(z.object({ bookingId: z.string().uuid() }))
+    .query(async ({ ctx, input }) => {
+      return prisma.review.findUnique({
+        where: { bookingId_authorId: { bookingId: input.bookingId, authorId: ctx.userId } },
+      });
+    }),
+
   forUser: protectedProcedure
     .input(z.object({ userId: z.string().uuid(), cursor: z.string().uuid().optional() }))
     .query(async ({ input }) => {
@@ -54,5 +65,22 @@ export const reviewRouter = router({
         ...(input.cursor ? { cursor: { id: input.cursor }, skip: 1 } : {}),
       });
       return { rows, nextCursor: rows.at(-1)?.id ?? null };
+    }),
+
+  // Aggregate rating + count for a user. Used by mobile screens that show
+  // "4.8 ★" next to a name. Returns avg=null + count=0 for new users so the
+  // UI can render "New" instead of fabricating a fake number.
+  summary: protectedProcedure
+    .input(z.object({ userId: z.string().uuid() }))
+    .query(async ({ input }) => {
+      const agg = await prisma.review.aggregate({
+        where: { subjectId: input.userId },
+        _avg: { stars: true },
+        _count: { _all: true },
+      });
+      return {
+        avg: agg._avg.stars,
+        count: agg._count._all,
+      };
     }),
 });

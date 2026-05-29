@@ -18,8 +18,12 @@ import { trpc } from '../../src/lib/trpc';
 export default function Requests() {
   const router = useRouter();
   const { c } = useTheme();
-  const q = trpc.booking.list.useQuery({ role: 'host', status: 'pending' });
-  const count = q.data?.rows.length ?? 0;
+  const q = trpc.booking.list.useInfiniteQuery(
+    { role: 'host', status: 'pending' },
+    { getNextPageParam: (last) => last.nextCursor ?? undefined },
+  );
+  const rows = q.data?.pages.flatMap((p) => p.rows) ?? [];
+  const count = rows.length;
 
   return (
     <Screen flush>
@@ -45,13 +49,22 @@ export default function Requests() {
         </Row>
       </View>
       <FlatList
-        data={q.data?.rows ?? []}
+        data={rows}
         keyExtractor={(b) => b.id}
         contentContainerStyle={{ padding: 24, paddingTop: 16, gap: 10 }}
+        onEndReachedThreshold={0.5}
+        onEndReached={() => {
+          if (q.hasNextPage && !q.isFetchingNextPage) q.fetchNextPage();
+        }}
         ListEmptyComponent={
           <Muted style={{ textAlign: 'center', marginTop: 40 }}>
             {q.isLoading ? 'Loading…' : 'No pending requests.'}
           </Muted>
+        }
+        ListFooterComponent={
+          q.isFetchingNextPage ? (
+            <Muted style={{ textAlign: 'center', paddingVertical: 16 }}>Loading more…</Muted>
+          ) : null
         }
         renderItem={({ item }) => {
           const remainingMs =

@@ -1,6 +1,7 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { applicationDefault, cert, getApps, initializeApp, type AppOptions } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
+import { logger } from '../logger.js';
 
 export type VerifiedFirebaseUser = {
   firebaseUid: string;
@@ -34,10 +35,14 @@ function firebaseAdminApp() {
 }
 
 function devTokenSecret(): string | null {
-  if (process.env.NODE_ENV === 'production' && process.env.FIREBASE_AUTH_DEV_BYPASS !== '1') {
-    return null;
-  }
-  if (process.env.FIREBASE_AUTH_DEV_BYPASS === '0') return null;
+  // Hard guard: production never accepts dev tokens, regardless of any env.
+  if (process.env.NODE_ENV === 'production') return null;
+  // In dev/staging, dev tokens are off by default. Explicitly opt in via
+  // ENABLE_DEV_BYPASS=1 (preferred) or the legacy FIREBASE_AUTH_DEV_BYPASS=1.
+  const enabled =
+    process.env.ENABLE_DEV_BYPASS === '1' ||
+    process.env.FIREBASE_AUTH_DEV_BYPASS === '1';
+  if (!enabled) return null;
   return process.env.FIREBASE_AUTH_DEV_SECRET ?? 'ednacharge-test-firebase-auth';
 }
 
@@ -87,7 +92,19 @@ export async function verifyFirebaseIdToken(token: string): Promise<VerifiedFire
       picture: typeof decoded.picture === 'string' ? decoded.picture : null,
       emailVerified: decoded.email_verified === true,
     };
-  } catch {
+  } catch (err) {
+    // Surface the reason so we can debug auth issues — `errorInfo.code` is
+    // Firebase Admin's enum (e.g. `auth/id-token-expired`,
+    // `auth/argument-error`, `auth/project-not-found`).
+    const e = err as { errorInfo?: { code?: string; message?: string }; code?: string; message?: string };
+    logger.warn(
+      {
+        code: e?.errorInfo?.code ?? e?.code ?? 'unknown',
+        message: e?.errorInfo?.message ?? e?.message,
+        tokenPreview: `${token.slice(0, 10)}…${token.slice(-6)}`,
+      },
+      'firebase: verifyIdToken failed',
+    );
     return null;
   }
 }

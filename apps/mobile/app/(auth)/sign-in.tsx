@@ -31,7 +31,15 @@ export default function SignIn() {
         await signInWithEmail(email, password);
       }
       const session = await utils.auth.getSession.fetch();
-      router.replace(session.driverProfile ? '/' : '/(auth)/driver-profile');
+      if (!session.driverProfile && !session.hostProfile) {
+        router.replace('/(auth)/pick-role' as never);
+      } else if (session.driverProfile && !session.hostProfile) {
+        router.replace('/(driver)/map');
+      } else if (session.hostProfile && !session.driverProfile) {
+        router.replace('/(host)/home');
+      } else {
+        router.replace('/');
+      }
     } catch (err) {
       Alert.alert(
         mode === 'create' ? 'Account creation failed' : 'Sign-in failed',

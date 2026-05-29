@@ -140,6 +140,9 @@ export default function LiveSession() {
               <Text style={{ color: c.muted, marginTop: 10, fontSize: 13 }}>
                 Waiting for first meter reading…
               </Text>
+              <Text style={{ color: c.muted2, marginTop: 6, fontSize: 11, textAlign: 'center' }}>
+                You can stop the session anytime — even before the meter starts.
+              </Text>
             </View>
           )}
         </View>

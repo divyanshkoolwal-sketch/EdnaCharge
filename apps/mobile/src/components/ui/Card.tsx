@@ -16,10 +16,10 @@ export function Card({ flat, padding, style, children, ...rest }: Props) {
           backgroundColor: c.card,
           borderRadius: radius.card,
           padding,
+          borderWidth: 1,
+          borderColor: c.line,
         },
-        flat
-          ? { borderWidth: 1, borderColor: c.line }
-          : shadow.card,
+        flat ? null : shadow.card,
         style,
       ]}
     >

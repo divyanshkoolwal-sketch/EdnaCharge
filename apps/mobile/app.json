@@ -5,25 +5,21 @@
     "version": "0.0.1",
     "scheme": "ednacharge",
     "orientation": "portrait",
-    "userInterfaceStyle": "automatic",
+    "userInterfaceStyle": "light",
     "newArchEnabled": false,
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.ednacharge.app",
+      "buildNumber": "1",
       "infoPlist": {
-        "NSLocationWhenInUseUsageDescription": "We use your location to show nearby chargers.",
-        "NSCameraUsageDescription": "Take photos of your charger when you list it.",
-        "NSPhotoLibraryUsageDescription": "Pick a charger photo from your library."
+        "NSLocationWhenInUseUsageDescription": "We use your location to show nearby chargers and route you to bookings."
       }
     },
     "android": {
       "package": "com.ednacharge.app",
       "permissions": [
         "ACCESS_FINE_LOCATION",
-        "ACCESS_COARSE_LOCATION",
-        "CAMERA",
-        "READ_EXTERNAL_STORAGE",
-        "WRITE_EXTERNAL_STORAGE"
+        "ACCESS_COARSE_LOCATION"
       ]
     },
     "plugins": [
@@ -37,7 +33,9 @@
       [
         "expo-location",
         {
-          "locationAlwaysAndWhenInUsePermission": "Allow EdnaCharge to use your location to find nearby chargers."
+          "locationWhenInUsePermission": "Allow EdnaCharge to use your location to find nearby chargers.",
+          "isIosBackgroundLocationEnabled": false,
+          "isAndroidBackgroundLocationEnabled": false
         }
       ]
     ],

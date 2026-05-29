@@ -16,6 +16,7 @@ import {
 import { Bolt } from '../../src/components/icons/Icon';
 import { useTheme } from '../../src/theme/useTheme';
 import { trpc } from '../../src/lib/trpc';
+import { VerificationBanner } from '../../src/components/VerificationBanner';
 
 export default function HostHome() {
   const router = useRouter();
@@ -27,6 +28,7 @@ export default function HostHome() {
     day: 'numeric',
   });
   const pending = trpc.booking.list.useQuery({ role: 'host', status: 'pending' });
+  const stats = trpc.payment.hostStats.useQuery(undefined, { refetchInterval: 30_000 });
 
   return (
     <Screen scroll contentStyle={{ paddingBottom: 30 }}>
@@ -34,6 +36,8 @@ export default function HostHome() {
         <Label>{today.toUpperCase()}</Label>
         <H1 style={{ marginTop: 4 }}>Today</H1>
       </View>
+
+      <VerificationBanner next="/(host)/home" role="host" />
 
       <Row gap={8} style={{ marginTop: 14 }}>
         <Card padding={12} style={{ flex: 1 }}>
@@ -44,11 +48,15 @@ export default function HostHome() {
         </Card>
         <Card padding={12} style={{ flex: 1 }}>
           <Muted style={{ fontSize: 11 }}>Today</Muted>
-          <Body style={{ fontSize: 26, fontWeight: '800', marginTop: 4 }}>$—</Body>
+          <Body style={{ fontSize: 26, fontWeight: '800', marginTop: 4 }}>
+            ${((stats.data?.todayNetCents ?? 0) / 100).toFixed(2)}
+          </Body>
         </Card>
         <Card padding={12} style={{ flex: 1, backgroundColor: c.greenPill }}>
           <Body style={{ fontSize: 10, color: c.green2, fontWeight: '700' }}>ACTIVE</Body>
-          <Body style={{ fontSize: 12, fontWeight: '700', marginTop: 6 }}>—</Body>
+          <Body style={{ fontSize: 26, fontWeight: '800', marginTop: 4, color: c.green2 }}>
+            {stats.data?.activeSessionCount ?? 0}
+          </Body>
         </Card>
       </Row>
 
