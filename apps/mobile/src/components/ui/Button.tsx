@@ -1,4 +1,5 @@
-import { Pressable, Text, ActivityIndicator, View, type PressableProps } from 'react-native';
+import { Pressable, Text, ActivityIndicator, View, type GestureResponderEvent, type PressableProps } from 'react-native';
+import * as Haptics from 'expo-haptics';
 import { useTheme } from '../../theme/useTheme';
 
 type Variant = 'primary' | 'secondary' | 'destructive' | 'destructive-outline';
@@ -24,10 +25,19 @@ export function Button({
   fullWidth = true,
   iconLeft,
   style,
+  onPress,
   ...rest
 }: Props) {
   const { c, radius } = useTheme();
   const isDisabled = disabled || loading;
+
+  // Light haptic on the primary CTAs (confirm / pay / accept) for iOS feel.
+  const handlePress = (e: GestureResponderEvent) => {
+    if (variant === 'primary' || variant === 'destructive') {
+      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+    onPress?.(e);
+  };
 
   const bg =
     variant === 'primary'
@@ -53,6 +63,7 @@ export function Button({
   return (
     <Pressable
       {...rest}
+      onPress={handlePress}
       disabled={isDisabled}
       style={({ pressed }) => [
         {
@@ -66,7 +77,9 @@ export function Button({
           paddingHorizontal: 20,
           borderWidth: variant === 'secondary' || variant === 'destructive-outline' ? 1.5 : 0,
           borderColor: border,
-          opacity: isDisabled ? 0.55 : pressed ? 0.85 : 1,
+          opacity: isDisabled ? 0.55 : pressed ? 0.9 : 1,
+          // Subtle tactile press feedback (no Reanimated worklet → safe + instant).
+          transform: [{ scale: pressed && !isDisabled ? 0.985 : 1 }],
           width: fullWidth ? '100%' : undefined,
         },
         typeof style === 'function' ? undefined : style,
@@ -109,6 +122,7 @@ export function IconCircle({
   return (
     <Pressable
       onPress={onPress}
+      hitSlop={8}
       style={({ pressed }) => [
         {
           width: size,
@@ -117,7 +131,8 @@ export function IconCircle({
           backgroundColor: variant === 'dark' ? c.ink : c.card,
           alignItems: 'center',
           justifyContent: 'center',
-          opacity: pressed ? 0.85 : 1,
+          opacity: pressed ? 0.9 : 1,
+          transform: [{ scale: pressed ? 0.95 : 1 }],
         },
         shadow.cardLight,
         typeof style === 'function' ? undefined : style,
