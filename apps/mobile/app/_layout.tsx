@@ -3,6 +3,7 @@ import { AppState, LogBox } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { StripeProvider } from '@stripe/stripe-react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { trpc, trpcClientConfig } from '../src/lib/trpc';
 import { initSentry } from '../src/lib/sentry';
@@ -71,14 +72,16 @@ export default function RootLayout() {
   const stripeKey = process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY ?? '';
 
   return (
-    <SafeAreaProvider>
-      <StripeProvider publishableKey={stripeKey} merchantIdentifier="merchant.com.ednacharge">
-        <trpc.Provider client={trpcClient} queryClient={queryClient}>
-          <QueryClientProvider client={queryClient}>
-            <Stack screenOptions={{ headerShown: false }} />
-          </QueryClientProvider>
-        </trpc.Provider>
-      </StripeProvider>
-    </SafeAreaProvider>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <SafeAreaProvider>
+        <StripeProvider publishableKey={stripeKey} merchantIdentifier="merchant.com.ednacharge">
+          <trpc.Provider client={trpcClient} queryClient={queryClient}>
+            <QueryClientProvider client={queryClient}>
+              <Stack screenOptions={{ headerShown: false }} />
+            </QueryClientProvider>
+          </trpc.Provider>
+        </StripeProvider>
+      </SafeAreaProvider>
+    </GestureHandlerRootView>
   );
 }
