@@ -47,7 +47,9 @@ services:
         value: production
       - key: FIREBASE_SERVICE_ACCOUNT_JSON   # full service-account JSON (one line)
         sync: false
-      - key: STRIPE_WEBHOOK_SECRET            # whsec_... from the LIVE webhook
+      - key: STRIPE_WEBHOOK_SECRET            # whsec_... from the "account events" webhook
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET_CONNECT    # whsec_... from the "connected accounts" webhook
         sync: false
       - key: STRIPE_PUBLISHABLE_KEY           # pk_live_...
         sync: false
