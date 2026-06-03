@@ -23,21 +23,33 @@ const stripeWebhookPlugin: FastifyPluginAsync = async (scoped) => {
   );
 
   scoped.post('/webhooks/stripe', async (req, reply) => {
-    const secret = process.env.STRIPE_WEBHOOK_SECRET;
-    if (!secret) {
-      logger.error('STRIPE_WEBHOOK_SECRET not set');
+    // We run two Stripe webhook destinations that POST to this same endpoint:
+    //  - account events (payment_intent.*, identity.*) signed by STRIPE_WEBHOOK_SECRET
+    //  - connected-account events (account.updated) signed by STRIPE_WEBHOOK_SECRET_CONNECT
+    // Each destination has its own signing secret, so verify against whichever
+    // one matches. (Either may be unset; we only need one for a given event.)
+    const secrets = [
+      process.env.STRIPE_WEBHOOK_SECRET,
+      process.env.STRIPE_WEBHOOK_SECRET_CONNECT,
+    ].filter((s): s is string => typeof s === 'string' && s.length > 0);
+    if (secrets.length === 0) {
+      logger.error('No Stripe webhook secret set (STRIPE_WEBHOOK_SECRET[_CONNECT])');
       return reply.code(500).send({ error: 'webhook secret missing' });
     }
     const sig = req.headers['stripe-signature'];
-    let event: Stripe.Event;
-    try {
-      event = stripe().webhooks.constructEvent(
-        req.body as Buffer,
-        Array.isArray(sig) ? (sig[0] ?? '') : sig ?? '',
-        secret,
-      );
-    } catch (err) {
-      logger.warn({ err }, 'stripe signature verification failed');
+    const sigHeader = Array.isArray(sig) ? (sig[0] ?? '') : sig ?? '';
+    let event: Stripe.Event | null = null;
+    let lastErr: unknown;
+    for (const secret of secrets) {
+      try {
+        event = stripe().webhooks.constructEvent(req.body as Buffer, sigHeader, secret);
+        break;
+      } catch (err) {
+        lastErr = err;
+      }
+    }
+    if (!event) {
+      logger.warn({ err: lastErr }, 'stripe signature verification failed (all secrets)');
       return reply.code(400).send({ error: 'bad signature' });
     }
 
