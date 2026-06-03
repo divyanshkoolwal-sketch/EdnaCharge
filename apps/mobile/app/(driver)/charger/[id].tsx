@@ -1,4 +1,5 @@
-import { View, ActivityIndicator, ScrollView, Image, Pressable } from 'react-native';
+import { View, ActivityIndicator, ScrollView, Pressable } from 'react-native';
+import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { trpc } from '../../../src/lib/trpc';
 import { useTheme } from '../../../src/theme/useTheme';
@@ -76,6 +77,9 @@ export default function ChargerDetail() {
           <Image
             source={{ uri: ch.photoUrl }}
             style={{ width: '100%', height: 180, borderRadius: 18, marginTop: 14 }}
+            contentFit="cover"
+            transition={200}
+            cachePolicy="memory-disk"
           />
         ) : (
           <View style={{ marginTop: 14 }}>
