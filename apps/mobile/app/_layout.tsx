@@ -19,7 +19,22 @@ LogBox.ignoreLogs([
 ]);
 
 export default function RootLayout() {
-  const [queryClient] = useState(() => new QueryClient());
+  const [queryClient] = useState(
+    () =>
+      new QueryClient({
+        defaultOptions: {
+          queries: {
+            // Treat data as fresh for 30s so re-entering a screen reads cache
+            // instead of refetching (no blank flash). Polling screens set their
+            // own refetchInterval, and mutations still invalidate explicitly.
+            staleTime: 30_000,
+            gcTime: 5 * 60_000,
+            retry: 1,
+            refetchOnWindowFocus: false,
+          },
+        },
+      }),
+  );
   const [trpcClient] = useState(() => trpc.createClient(trpcClientConfig()));
   const hydrateRole = useRole((s) => s.hydrate);
   const session = useAuth((s) => s.session);
