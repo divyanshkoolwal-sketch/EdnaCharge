@@ -1,6 +1,6 @@
 // Live session — full-dark wow screen. Bypasses Screen+SafeAreaView wrapper so
 // the background extends edge-to-edge regardless of system theme.
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { View, Text, Pressable, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
@@ -18,6 +18,9 @@ export default function LiveSession() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const [latest, setLatest] = useState<MeterSample | null>(null);
+  // Coalesce inbound meter broadcasts: store the newest in a ref and flush to
+  // state at most ~2x/sec, so a burst of broadcasts can't thrash re-renders.
+  const latestRef = useRef<MeterSample | null>(null);
   const [stopping, setStopping] = useState(false);
   const [elapsed, setElapsed] = useState(0);
   const c = darkColors;
@@ -36,10 +39,17 @@ export default function LiveSession() {
     const ch = client
       .channel(`session:${id}`)
       .on('broadcast', { event: 'meter_value' }, ({ payload }) => {
-        setLatest(payload as MeterSample);
+        latestRef.current = payload as MeterSample;
       })
       .subscribe();
+    // Flush the latest sample to state ≤2x/sec. setLatest with the same object
+    // reference (no new broadcast since last flush) is a no-op render in React,
+    // so this only re-renders when a fresh sample actually arrived.
+    const flush = setInterval(() => {
+      if (latestRef.current) setLatest(latestRef.current);
+    }, 500);
     return () => {
+      clearInterval(flush);
       void client.removeChannel(ch);
     };
   }, [id]);
