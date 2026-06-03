@@ -2,13 +2,6 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<!-- Tracking -->
-	<key>NSPrivacyTracking</key>
-	<false/>
-	<key>NSPrivacyTrackingDomains</key>
-	<array/>
-
-	<!-- Required-reason API declarations (iOS 17+) -->
 	<key>NSPrivacyAccessedAPITypes</key>
 	<array>
 		<dict>
@@ -49,171 +42,161 @@
 			</array>
 		</dict>
 	</array>
-
-	<!-- Collected data types -->
 	<key>NSPrivacyCollectedDataTypes</key>
 	<array>
-		<!-- Email — required for sign-in, payment receipts -->
 		<dict>
 			<key>NSPrivacyCollectedDataType</key>
 			<string>NSPrivacyCollectedDataTypeEmailAddress</string>
 			<key>NSPrivacyCollectedDataTypeLinked</key>
 			<true/>
-			<key>NSPrivacyCollectedDataTypeTracking</key>
-			<false/>
 			<key>NSPrivacyCollectedDataTypePurposes</key>
 			<array>
 				<string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
 			</array>
+			<key>NSPrivacyCollectedDataTypeTracking</key>
+			<false/>
 		</dict>
-		<!-- Phone number — optional alternative sign-in -->
 		<dict>
 			<key>NSPrivacyCollectedDataType</key>
 			<string>NSPrivacyCollectedDataTypePhoneNumber</string>
 			<key>NSPrivacyCollectedDataTypeLinked</key>
 			<true/>
-			<key>NSPrivacyCollectedDataTypeTracking</key>
-			<false/>
 			<key>NSPrivacyCollectedDataTypePurposes</key>
 			<array>
 				<string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
 			</array>
+			<key>NSPrivacyCollectedDataTypeTracking</key>
+			<false/>
 		</dict>
-		<!-- Full name — shown to drivers/hosts during a booking -->
 		<dict>
 			<key>NSPrivacyCollectedDataType</key>
 			<string>NSPrivacyCollectedDataTypeName</string>
 			<key>NSPrivacyCollectedDataTypeLinked</key>
 			<true/>
-			<key>NSPrivacyCollectedDataTypeTracking</key>
-			<false/>
 			<key>NSPrivacyCollectedDataTypePurposes</key>
 			<array>
 				<string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
 			</array>
+			<key>NSPrivacyCollectedDataTypeTracking</key>
+			<false/>
 		</dict>
-		<!-- Physical address — host-only, where the charger is located -->
 		<dict>
 			<key>NSPrivacyCollectedDataType</key>
 			<string>NSPrivacyCollectedDataTypePhysicalAddress</string>
 			<key>NSPrivacyCollectedDataTypeLinked</key>
 			<true/>
-			<key>NSPrivacyCollectedDataTypeTracking</key>
-			<false/>
 			<key>NSPrivacyCollectedDataTypePurposes</key>
 			<array>
 				<string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
 			</array>
+			<key>NSPrivacyCollectedDataTypeTracking</key>
+			<false/>
 		</dict>
-		<!-- Precise location — driver map, find nearby chargers -->
 		<dict>
 			<key>NSPrivacyCollectedDataType</key>
 			<string>NSPrivacyCollectedDataTypePreciseLocation</string>
 			<key>NSPrivacyCollectedDataTypeLinked</key>
 			<true/>
-			<key>NSPrivacyCollectedDataTypeTracking</key>
-			<false/>
 			<key>NSPrivacyCollectedDataTypePurposes</key>
 			<array>
 				<string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
 			</array>
+			<key>NSPrivacyCollectedDataTypeTracking</key>
+			<false/>
 		</dict>
-		<!-- User ID — our internal account identifier -->
 		<dict>
 			<key>NSPrivacyCollectedDataType</key>
 			<string>NSPrivacyCollectedDataTypeUserID</string>
 			<key>NSPrivacyCollectedDataTypeLinked</key>
 			<true/>
-			<key>NSPrivacyCollectedDataTypeTracking</key>
-			<false/>
 			<key>NSPrivacyCollectedDataTypePurposes</key>
 			<array>
 				<string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
 				<string>NSPrivacyCollectedDataTypePurposeAnalytics</string>
 			</array>
+			<key>NSPrivacyCollectedDataTypeTracking</key>
+			<false/>
 		</dict>
-		<!-- Device ID — Expo push token + Firebase install id -->
 		<dict>
 			<key>NSPrivacyCollectedDataType</key>
 			<string>NSPrivacyCollectedDataTypeDeviceID</string>
 			<key>NSPrivacyCollectedDataTypeLinked</key>
 			<true/>
-			<key>NSPrivacyCollectedDataTypeTracking</key>
-			<false/>
 			<key>NSPrivacyCollectedDataTypePurposes</key>
 			<array>
 				<string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
 				<string>NSPrivacyCollectedDataTypePurposeAnalytics</string>
 			</array>
+			<key>NSPrivacyCollectedDataTypeTracking</key>
+			<false/>
 		</dict>
-		<!-- Payment info — handled by Stripe; we keep an opaque customer + PM id -->
 		<dict>
 			<key>NSPrivacyCollectedDataType</key>
 			<string>NSPrivacyCollectedDataTypePaymentInfo</string>
 			<key>NSPrivacyCollectedDataTypeLinked</key>
 			<true/>
-			<key>NSPrivacyCollectedDataTypeTracking</key>
-			<false/>
 			<key>NSPrivacyCollectedDataTypePurposes</key>
 			<array>
 				<string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
 			</array>
+			<key>NSPrivacyCollectedDataTypeTracking</key>
+			<false/>
 		</dict>
-		<!-- Crash data — Sentry crash reports -->
 		<dict>
 			<key>NSPrivacyCollectedDataType</key>
 			<string>NSPrivacyCollectedDataTypeCrashData</string>
 			<key>NSPrivacyCollectedDataTypeLinked</key>
 			<true/>
-			<key>NSPrivacyCollectedDataTypeTracking</key>
-			<false/>
 			<key>NSPrivacyCollectedDataTypePurposes</key>
 			<array>
 				<string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
 				<string>NSPrivacyCollectedDataTypePurposeAnalytics</string>
 			</array>
+			<key>NSPrivacyCollectedDataTypeTracking</key>
+			<false/>
 		</dict>
-		<!-- Performance data — Sentry traces -->
 		<dict>
 			<key>NSPrivacyCollectedDataType</key>
 			<string>NSPrivacyCollectedDataTypePerformanceData</string>
 			<key>NSPrivacyCollectedDataTypeLinked</key>
 			<true/>
-			<key>NSPrivacyCollectedDataTypeTracking</key>
-			<false/>
 			<key>NSPrivacyCollectedDataTypePurposes</key>
 			<array>
 				<string>NSPrivacyCollectedDataTypePurposeAnalytics</string>
 				<string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
 			</array>
+			<key>NSPrivacyCollectedDataTypeTracking</key>
+			<false/>
 		</dict>
-		<!-- Product interaction — PostHog product analytics -->
 		<dict>
 			<key>NSPrivacyCollectedDataType</key>
 			<string>NSPrivacyCollectedDataTypeProductInteraction</string>
 			<key>NSPrivacyCollectedDataTypeLinked</key>
 			<true/>
-			<key>NSPrivacyCollectedDataTypeTracking</key>
-			<false/>
 			<key>NSPrivacyCollectedDataTypePurposes</key>
 			<array>
 				<string>NSPrivacyCollectedDataTypePurposeAnalytics</string>
 				<string>NSPrivacyCollectedDataTypePurposeProductPersonalization</string>
 			</array>
+			<key>NSPrivacyCollectedDataTypeTracking</key>
+			<false/>
 		</dict>
-		<!-- Photos — Stripe Identity captures ID document + selfie via camera; we never store the image -->
 		<dict>
 			<key>NSPrivacyCollectedDataType</key>
 			<string>NSPrivacyCollectedDataTypePhotosorVideos</string>
 			<key>NSPrivacyCollectedDataTypeLinked</key>
 			<true/>
-			<key>NSPrivacyCollectedDataTypeTracking</key>
-			<false/>
 			<key>NSPrivacyCollectedDataTypePurposes</key>
 			<array>
 				<string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
 			</array>
+			<key>NSPrivacyCollectedDataTypeTracking</key>
+			<false/>
 		</dict>
 	</array>
+	<key>NSPrivacyTracking</key>
+	<false/>
+	<key>NSPrivacyTrackingDomains</key>
+	<array/>
 </dict>
 </plist>
