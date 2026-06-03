@@ -12,6 +12,7 @@ import {
   Row,
   Button,
   List,
+  ListSkeleton,
 } from '../../src/components/ui';
 import { ChevronRight } from '../../src/components/icons/Icon';
 import { ChargerIllo } from '../../src/components/illustrations/HomeCharger';
@@ -57,9 +58,11 @@ export default function HostChargers() {
         gap={10}
         contentContainerStyle={{ padding: 24, paddingTop: 16, paddingBottom: 100 }}
         ListEmptyComponent={
-          <Muted style={{ textAlign: 'center', marginTop: 40 }}>
-            {q.isLoading ? 'Loading…' : 'No chargers yet.'}
-          </Muted>
+          q.isLoading ? (
+            <ListSkeleton />
+          ) : (
+            <Muted style={{ textAlign: 'center', marginTop: 40 }}>No chargers yet.</Muted>
+          )
         }
         renderItem={({ item }) => {
           const online = item.published;

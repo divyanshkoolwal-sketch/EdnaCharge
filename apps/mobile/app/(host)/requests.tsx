@@ -11,6 +11,7 @@ import {
   Chip,
   StatusPill,
   List,
+  ListSkeleton,
 } from '../../src/components/ui';
 import { ChevronRight, Star } from '../../src/components/icons/Icon';
 import { useTheme } from '../../src/theme/useTheme';
@@ -60,9 +61,11 @@ export default function Requests() {
           if (q.hasNextPage && !q.isFetchingNextPage) q.fetchNextPage();
         }}
         ListEmptyComponent={
-          <Muted style={{ textAlign: 'center', marginTop: 40 }}>
-            {q.isLoading ? 'Loading…' : 'No pending requests.'}
-          </Muted>
+          q.isLoading ? (
+            <ListSkeleton />
+          ) : (
+            <Muted style={{ textAlign: 'center', marginTop: 40 }}>No pending requests.</Muted>
+          )
         }
         ListFooterComponent={
           q.isFetchingNextPage ? (
