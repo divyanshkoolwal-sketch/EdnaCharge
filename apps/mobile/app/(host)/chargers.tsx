@@ -1,4 +1,4 @@
-import { View, FlatList, Pressable, Switch, Alert } from 'react-native';
+import { View, Pressable, Switch, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import { handleError } from '../../src/lib/errors';
 import {
@@ -11,6 +11,7 @@ import {
   type Status,
   Row,
   Button,
+  List,
 } from '../../src/components/ui';
 import { ChevronRight } from '../../src/components/icons/Icon';
 import { ChargerIllo } from '../../src/components/illustrations/HomeCharger';
@@ -49,10 +50,12 @@ export default function HostChargers() {
           Toggle a charger online to make it visible to drivers nearby.
         </Muted>
       </View>
-      <FlatList
+      <List
         data={(q.data ?? []) as ChargerRow[]}
         keyExtractor={(c) => c.id}
-        contentContainerStyle={{ padding: 24, paddingTop: 16, gap: 10, paddingBottom: 100 }}
+        estimatedItemSize={210}
+        gap={10}
+        contentContainerStyle={{ padding: 24, paddingTop: 16, paddingBottom: 100 }}
         ListEmptyComponent={
           <Muted style={{ textAlign: 'center', marginTop: 40 }}>
             {q.isLoading ? 'Loading…' : 'No chargers yet.'}

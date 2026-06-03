@@ -7,3 +7,4 @@ export { Avatar } from './Avatar';
 export { Stepper } from './Stepper';
 export { H1, H1Lg, H2, Body, Muted, Label, SectionHeader, Divider, Row } from './Typography';
 export { Screen } from './Screen';
+export { List } from './List';

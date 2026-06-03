@@ -1,4 +1,4 @@
-import { View, FlatList, Pressable } from 'react-native';
+import { View, Pressable } from 'react-native';
 import { useState } from 'react';
 import { useRouter } from 'expo-router';
 import {
@@ -11,6 +11,7 @@ import {
   Muted,
   StatusPill,
   type Status,
+  List,
 } from '../../src/components/ui';
 import { ChevronRight } from '../../src/components/icons/Icon';
 import { useTheme } from '../../src/theme/useTheme';
@@ -47,10 +48,12 @@ export default function Bookings() {
           <Chip label="Past" selected={filter === 'past'} variant="outline" onPress={() => setFilter('past')} />
         </Row>
       </View>
-      <FlatList
+      <List
         data={filtered}
         keyExtractor={(b) => b.id}
-        contentContainerStyle={{ padding: 24, paddingTop: 16, gap: 10 }}
+        estimatedItemSize={104}
+        gap={10}
+        contentContainerStyle={{ padding: 24, paddingTop: 16 }}
         onEndReachedThreshold={0.5}
         onEndReached={() => {
           if (q.hasNextPage && !q.isFetchingNextPage) q.fetchNextPage();
