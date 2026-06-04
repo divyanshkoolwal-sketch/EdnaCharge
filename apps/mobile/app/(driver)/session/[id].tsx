@@ -63,8 +63,15 @@ export default function LiveSession() {
     onSuccess: () => {
       utils.booking.list.invalidate();
       utils.booking.bySessionId.invalidate({ sessionId: id! });
+      // The receipt screen is keyed by BOOKING id (it calls booking.get). Navigate
+      // with the booking id, not the session id, or booking.get misses and the
+      // receipt renders blank.
+      const bookingId = sessionInfo.data?.booking.id;
       setTimeout(
-        () => router.replace({ pathname: '/(driver)/receipt/[id]', params: { id: id! } }),
+        () =>
+          bookingId
+            ? router.replace({ pathname: '/(driver)/receipt/[id]', params: { id: bookingId } })
+            : router.replace('/(driver)/bookings'),
         1500,
       );
     },
