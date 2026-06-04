@@ -28,6 +28,8 @@ envVarGroups:
         sync: false
       - key: STRIPE_SECRET_KEY     # sk_live_...
         sync: false
+      - key: OCPP_SECRET_ENC_KEY   # 32+ char random; encrypts stored OCPP passwords (pgcrypto)
+        sync: false
 
 services:
   # ---------------------------------------------------------------- API
@@ -45,7 +47,14 @@ services:
       - fromGroup: edna-shared
       - key: NODE_ENV
         value: production
-      - key: FIREBASE_SERVICE_ACCOUNT_JSON   # full service-account JSON (one line)
+      # Firebase Admin (verifies mobile ID tokens). Set EITHER these three, OR a
+      # single FIREBASE_SERVICE_ACCOUNT_JSON. The trio is what .env uses; the
+      # PRIVATE_KEY keeps its literal \n escapes (the code converts them).
+      - key: FIREBASE_PROJECT_ID
+        sync: false
+      - key: FIREBASE_CLIENT_EMAIL
+        sync: false
+      - key: FIREBASE_PRIVATE_KEY
         sync: false
       - key: STRIPE_WEBHOOK_SECRET            # whsec_... from the "account events" webhook
         sync: false

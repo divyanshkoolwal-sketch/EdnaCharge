@@ -1,6 +1,6 @@
 // Live session — full-dark wow screen. Bypasses Screen+SafeAreaView wrapper so
 // the background extends edge-to-edge regardless of system theme.
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { View, Text, Pressable, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
@@ -18,6 +18,9 @@ export default function LiveSession() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const [latest, setLatest] = useState<MeterSample | null>(null);
+  // Coalesce inbound meter broadcasts: store the newest in a ref and flush to
+  // state at most ~2x/sec, so a burst of broadcasts can't thrash re-renders.
+  const latestRef = useRef<MeterSample | null>(null);
   const [stopping, setStopping] = useState(false);
   const [elapsed, setElapsed] = useState(0);
   const c = darkColors;
@@ -36,10 +39,17 @@ export default function LiveSession() {
     const ch = client
       .channel(`session:${id}`)
       .on('broadcast', { event: 'meter_value' }, ({ payload }) => {
-        setLatest(payload as MeterSample);
+        latestRef.current = payload as MeterSample;
       })
       .subscribe();
+    // Flush the latest sample to state ≤2x/sec. setLatest with the same object
+    // reference (no new broadcast since last flush) is a no-op render in React,
+    // so this only re-renders when a fresh sample actually arrived.
+    const flush = setInterval(() => {
+      if (latestRef.current) setLatest(latestRef.current);
+    }, 500);
     return () => {
+      clearInterval(flush);
       void client.removeChannel(ch);
     };
   }, [id]);
@@ -53,8 +63,15 @@ export default function LiveSession() {
     onSuccess: () => {
       utils.booking.list.invalidate();
       utils.booking.bySessionId.invalidate({ sessionId: id! });
+      // The receipt screen is keyed by BOOKING id (it calls booking.get). Navigate
+      // with the booking id, not the session id, or booking.get misses and the
+      // receipt renders blank.
+      const bookingId = sessionInfo.data?.booking.id;
       setTimeout(
-        () => router.replace({ pathname: '/(driver)/receipt/[id]', params: { id: id! } }),
+        () =>
+          bookingId
+            ? router.replace({ pathname: '/(driver)/receipt/[id]', params: { id: bookingId } })
+            : router.replace('/(driver)/bookings'),
         1500,
       );
     },

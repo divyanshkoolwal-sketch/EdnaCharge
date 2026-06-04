@@ -1,4 +1,4 @@
-import { View, FlatList, Pressable, Text } from 'react-native';
+import { View, Pressable, Text } from 'react-native';
 import { useRouter } from 'expo-router';
 import {
   Screen,
@@ -9,6 +9,7 @@ import {
   Muted,
   StatusPill,
   type Status,
+  List,
 } from '../../src/components/ui';
 import { useTheme } from '../../src/theme/useTheme';
 import { trpc } from '../../src/lib/trpc';
@@ -16,16 +17,18 @@ import { trpc } from '../../src/lib/trpc';
 export default function Chats() {
   const router = useRouter();
   const { c } = useTheme();
-  const q = trpc.chat.listThreads.useQuery();
+  const q = trpc.chat.listThreads.useQuery(undefined, { refetchInterval: 10000 });
+  type Thread = NonNullable<typeof q.data>[number];
 
   return (
     <Screen flush>
       <View style={{ paddingHorizontal: 24, paddingTop: 8, paddingBottom: 14 }}>
         <H1 style={{ marginTop: 14 }}>Chats</H1>
       </View>
-      <FlatList
-        data={q.data ?? []}
+      <List<Thread>
+        data={q.data}
         keyExtractor={(t) => t.id}
+        estimatedItemSize={76}
         contentContainerStyle={{ paddingHorizontal: 24, paddingBottom: 16 }}
         ListEmptyComponent={
           <Muted style={{ textAlign: 'center', marginTop: 40 }}>

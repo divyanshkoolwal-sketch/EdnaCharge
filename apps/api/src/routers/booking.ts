@@ -256,7 +256,7 @@ export const bookingRouter = router({
         if (b.stripePaymentIntentId && b.stripePaymentIntentId !== pi.id) {
           await stripe()
             .paymentIntents.cancel(b.stripePaymentIntentId, undefined, {
-              idempotencyKey: `cancel:modify:${b.stripePaymentIntentId}`,
+              idempotencyKey: `cancel:modify:${b.id}`,
             })
             .catch((err) => {
               // Old hold release is best-effort — the new hold is already live.

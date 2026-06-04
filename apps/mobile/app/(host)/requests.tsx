@@ -1,4 +1,4 @@
-import { View, FlatList, Pressable } from 'react-native';
+import { View, Pressable } from 'react-native';
 import { useRouter } from 'expo-router';
 import {
   Screen,
@@ -10,6 +10,8 @@ import {
   Avatar,
   Chip,
   StatusPill,
+  List,
+  ListSkeleton,
 } from '../../src/components/ui';
 import { ChevronRight, Star } from '../../src/components/icons/Icon';
 import { useTheme } from '../../src/theme/useTheme';
@@ -48,18 +50,22 @@ export default function Requests() {
           ) : null}
         </Row>
       </View>
-      <FlatList
+      <List
         data={rows}
         keyExtractor={(b) => b.id}
-        contentContainerStyle={{ padding: 24, paddingTop: 16, gap: 10 }}
+        estimatedItemSize={150}
+        gap={10}
+        contentContainerStyle={{ padding: 24, paddingTop: 16 }}
         onEndReachedThreshold={0.5}
         onEndReached={() => {
           if (q.hasNextPage && !q.isFetchingNextPage) q.fetchNextPage();
         }}
         ListEmptyComponent={
-          <Muted style={{ textAlign: 'center', marginTop: 40 }}>
-            {q.isLoading ? 'Loading…' : 'No pending requests.'}
-          </Muted>
+          q.isLoading ? (
+            <ListSkeleton />
+          ) : (
+            <Muted style={{ textAlign: 'center', marginTop: 40 }}>No pending requests.</Muted>
+          )
         }
         ListFooterComponent={
           q.isFetchingNextPage ? (

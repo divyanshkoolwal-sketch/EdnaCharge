@@ -94,7 +94,7 @@ export default function HostRequestReview() {
           height={44}
           fontSize={13}
           onPress={() =>
-            router.push({ pathname: '/(driver)/chat/[bookingId]', params: { bookingId: b.id } })
+            router.push({ pathname: '/(host)/chat/[bookingId]', params: { bookingId: b.id } })
           }
           style={{ marginTop: 14 }}
         />

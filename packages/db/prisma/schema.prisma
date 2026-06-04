@@ -163,7 +163,12 @@ model Charger {
   published      Boolean @default(false)
   /// OCPP auth (Tier 3 only)
   ocppChargePointId String? @unique
+  /// bcrypt hash of the OCPP password — the CSMS verifies against this.
   ocppAuthHash   String?
+  /// The OCPP password, symmetrically encrypted (pgcrypto pgp_sym_encrypt, base64)
+  /// so the host can re-view the SAME credentials without rotating them. Rotation
+  /// happens only via an explicit regenerate action.
+  ocppSecretEnc  String?
   /// Set when the physical OCPP charger is connected to the CSMS websocket,
   /// cleared on disconnect. Lets the API (a separate service from the in-memory
   /// CSMS registry) surface a live "charger connected" indicator to the host.

@@ -3,7 +3,9 @@ import { AppState, LogBox } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { StripeProvider } from '@stripe/stripe-react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import * as SplashScreen from 'expo-splash-screen';
 import { trpc, trpcClientConfig } from '../src/lib/trpc';
 import { initSentry } from '../src/lib/sentry';
 import { initAnalytics } from '../src/lib/analytics';
@@ -14,16 +16,41 @@ import { useRole } from '../src/state/role';
 initSentry();
 initAnalytics();
 
+// Keep the native splash up until the first auth state resolves, so the app
+// never flashes a white/empty frame before deciding welcome vs. home.
+void SplashScreen.preventAutoHideAsync();
+
 LogBox.ignoreLogs([
   'This method is deprecated (as well as all React Native Firebase namespaced API)',
 ]);
 
 export default function RootLayout() {
-  const [queryClient] = useState(() => new QueryClient());
+  const [queryClient] = useState(
+    () =>
+      new QueryClient({
+        defaultOptions: {
+          queries: {
+            // Treat data as fresh for 30s so re-entering a screen reads cache
+            // instead of refetching (no blank flash). Polling screens set their
+            // own refetchInterval, and mutations still invalidate explicitly.
+            staleTime: 30_000,
+            gcTime: 5 * 60_000,
+            retry: 1,
+            refetchOnWindowFocus: false,
+          },
+        },
+      }),
+  );
   const [trpcClient] = useState(() => trpc.createClient(trpcClientConfig()));
   const hydrateRole = useRole((s) => s.hydrate);
   const session = useAuth((s) => s.session);
+  const authLoading = useAuth((s) => s.loading);
   const router = useRouter();
+
+  // Reveal the app only once Firebase has reported the initial auth state.
+  useEffect(() => {
+    if (!authLoading) void SplashScreen.hideAsync().catch(() => undefined);
+  }, [authLoading]);
   const prevSession = useRef<typeof session>(session);
 
   useEffect(() => {
@@ -56,14 +83,16 @@ export default function RootLayout() {
   const stripeKey = process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY ?? '';
 
   return (
-    <SafeAreaProvider>
-      <StripeProvider publishableKey={stripeKey} merchantIdentifier="merchant.com.ednacharge">
-        <trpc.Provider client={trpcClient} queryClient={queryClient}>
-          <QueryClientProvider client={queryClient}>
-            <Stack screenOptions={{ headerShown: false }} />
-          </QueryClientProvider>
-        </trpc.Provider>
-      </StripeProvider>
-    </SafeAreaProvider>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <SafeAreaProvider>
+        <StripeProvider publishableKey={stripeKey} merchantIdentifier="merchant.com.ednacharge">
+          <trpc.Provider client={trpcClient} queryClient={queryClient}>
+            <QueryClientProvider client={queryClient}>
+              <Stack screenOptions={{ headerShown: false }} />
+            </QueryClientProvider>
+          </trpc.Provider>
+        </StripeProvider>
+      </SafeAreaProvider>
+    </GestureHandlerRootView>
   );
 }

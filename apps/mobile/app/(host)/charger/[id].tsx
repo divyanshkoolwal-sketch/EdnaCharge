@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { Alert, Pressable, Switch, Text, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import {
@@ -27,23 +26,36 @@ function tierForCharger(t: string): string {
 }
 
 // Live OCPP connection card. Polls connectionStatus so the host sees their
-// charger flip to "Connected" the moment it dials into the CSMS, and can reveal
-// the credentials to paste into the charger's OCPP settings.
+// charger flip to "Connected" the moment it dials into the CSMS. Credentials are
+// viewed on demand (stable — viewing never rotates them); a separate, confirmed
+// "Regenerate" action rotates them when the host deliberately wants new ones.
 function ConnectChargerCard({ chargerId }: { chargerId: string }) {
   const { c } = useTheme();
   const status = trpc.charger.connectionStatus.useQuery(
     { id: chargerId },
     { refetchInterval: 5000 },
   );
-  const [creds, setCreds] = useState<{ wssUrl: string; chargePointId: string; password: string } | null>(
-    null,
+  const details = trpc.charger.connectionDetails.useQuery(
+    { id: chargerId },
+    { enabled: false, retry: false },
   );
-  const ocpp = trpc.charger.ocppCredentials.useMutation({
-    onSuccess: (d) => setCreds(d),
+  const regen = trpc.charger.regenerateOcppCredentials.useMutation({
+    onSuccess: () => details.refetch(),
     onError: (e) => handleError(e, { feature: 'OCPP credentials' }),
   });
 
   const connected = status.data?.connected ?? false;
+  const creds = details.data;
+
+  const confirmRegen = () =>
+    Alert.alert(
+      'Regenerate credentials?',
+      "This creates a new password and invalidates the current one. If your charger is already configured, you'll need to update it with the new password.",
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Regenerate', style: 'destructive', onPress: () => regen.mutate({ id: chargerId }) },
+      ],
+    );
 
   return (
     <>
@@ -80,21 +92,36 @@ function ConnectChargerCard({ chargerId }: { chargerId: string }) {
             <CredRow label="Server URL (OCPP 1.6J)" value={creds.wssUrl} />
             <CredRow label="Charge point ID" value={creds.chargePointId} />
             <CredRow label="Password" value={creds.password} />
-            <Muted style={{ fontSize: 11, color: c.red }}>
-              Save the password now — it's shown once. Generating new details replaces it, so you'd
-              need to reconfigure the charger.
-            </Muted>
+            <Button
+              label={regen.isPending ? 'Regenerating…' : 'Regenerate credentials'}
+              variant="secondary"
+              onPress={confirmRegen}
+              loading={regen.isPending}
+              height={40}
+              fontSize={12}
+            />
           </View>
         ) : (
-          <Button
-            label={ocpp.isPending ? 'Generating…' : 'Show connection details'}
-            variant="secondary"
-            onPress={() => ocpp.mutate({ id: chargerId })}
-            loading={ocpp.isPending}
-            height={44}
-            fontSize={13}
-            style={{ marginTop: 12 }}
-          />
+          <View style={{ marginTop: 12, gap: 8 }}>
+            <Button
+              label={details.isFetching ? 'Loading…' : 'Show connection details'}
+              variant="secondary"
+              onPress={() => details.refetch()}
+              loading={details.isFetching}
+              height={44}
+              fontSize={13}
+            />
+            {details.error && !details.isFetching ? (
+              <Button
+                label={regen.isPending ? 'Regenerating…' : 'Regenerate credentials'}
+                variant="secondary"
+                onPress={confirmRegen}
+                loading={regen.isPending}
+                height={40}
+                fontSize={12}
+              />
+            ) : null}
+          </View>
         )}
       </Card>
     </>

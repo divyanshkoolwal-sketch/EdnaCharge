@@ -9,6 +9,7 @@ import {
   HostIdentityInputZ,
 } from '@edna/schemas';
 import { setHardwareSetup } from '../lib/hardwareSetup.js';
+import { logger } from '../logger.js';
 
 export const authRouter = router({
   // protectedProcedure middleware guarantees the User row exists by the time
@@ -329,8 +330,7 @@ export const authRouter = router({
         await stripe().identity.verificationSessions.cancel(row.stripeVerificationSessionId);
       } catch (err) {
         // Already canceled / completed — log and continue.
-        // eslint-disable-next-line no-console
-        console.warn('cancelIdentityVerification: stripe cancel failed', err);
+        logger.warn({ err }, 'cancelIdentityVerification: stripe cancel failed');
       }
     }
     await prisma.identityVerification.update({

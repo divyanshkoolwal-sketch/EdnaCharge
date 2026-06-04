@@ -24,15 +24,21 @@ export type Theme = {
 // was causing invisible text against white cards in iOS 26 simulators with
 // the OS in dark mode. Lock everything to lightColors until a proper dark
 // theme pass ships.
+//
+// Frozen module constant: the theme is static, so returning the same reference
+// every call avoids allocating a fresh object on every render of every themed
+// component (and keeps it stable if ever used as a hook/memo dependency).
+const theme: Theme = Object.freeze({
+  isDark: false,
+  c: lightColors,
+  radius,
+  space,
+  fontSize,
+  fontWeight,
+  fontFamily,
+  shadow,
+});
+
 export function useTheme(): Theme {
-  return {
-    isDark: false,
-    c: lightColors,
-    radius,
-    space,
-    fontSize,
-    fontWeight,
-    fontFamily,
-    shadow,
-  };
+  return theme;
 }
