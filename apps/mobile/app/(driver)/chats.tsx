@@ -17,7 +17,7 @@ import { trpc } from '../../src/lib/trpc';
 export default function Chats() {
   const router = useRouter();
   const { c } = useTheme();
-  const q = trpc.chat.listThreads.useQuery();
+  const q = trpc.chat.listThreads.useQuery(undefined, { refetchInterval: 10000 });
   type Thread = NonNullable<typeof q.data>[number];
 
   return (

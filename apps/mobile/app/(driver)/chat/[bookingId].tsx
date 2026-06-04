@@ -15,7 +15,6 @@ import { useTheme } from '../../../src/theme/useTheme';
 import { Avatar, Chip } from '../../../src/components/ui';
 import { ChevronLeft, Plus, Send } from '../../../src/components/icons/Icon';
 import { trpc } from '../../../src/lib/trpc';
-import { supabase } from '../../../src/lib/supabase';
 
 const DRIVER_QUICK_REPLIES = ['On my way ✓', "I'm here", "Can't find the spot"];
 
@@ -23,7 +22,13 @@ export default function ChatThread() {
   const { bookingId } = useLocalSearchParams<{ bookingId: string }>();
   const router = useRouter();
   const { c, isDark } = useTheme();
-  const q = trpc.chat.getThread.useQuery({ bookingId: bookingId! }, { enabled: !!bookingId });
+  // Poll for new messages. The mobile Supabase client is anon (auth is Firebase),
+  // so the old RLS-gated postgres_changes subscription never delivered. Polling
+  // is reliable and has no Realtime/RLS dependency.
+  const q = trpc.chat.getThread.useQuery(
+    { bookingId: bookingId! },
+    { enabled: !!bookingId, refetchInterval: 4000 },
+  );
   const me = trpc.auth.getSession.useQuery(undefined).data?.id;
   const utils = trpc.useUtils();
   const send = trpc.chat.sendMessage.useMutation({
@@ -35,28 +40,6 @@ export default function ChatThread() {
   const markRead = trpc.chat.markRead.useMutation();
   const [draft, setDraft] = useState('');
   const listRef = useRef<FlatList>(null);
-
-  useEffect(() => {
-    const client = supabase;
-    if (!q.data?.id || !client) return;
-    const channel = client
-      .channel(`chat:${q.data.id}`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'ChatMessage',
-          filter: `threadId=eq.${q.data.id}`,
-        },
-        () => utils.chat.getThread.invalidate({ bookingId: bookingId! }),
-      )
-      .subscribe();
-    return () => {
-      void client.removeChannel(channel);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [q.data?.id, bookingId, utils.chat.getThread]);
 
   useEffect(() => {
     const msgs = q.data?.messages ?? [];
