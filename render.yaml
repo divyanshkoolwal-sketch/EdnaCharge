@@ -28,6 +28,8 @@ envVarGroups:
         sync: false
       - key: STRIPE_SECRET_KEY     # sk_live_...
         sync: false
+      - key: OCPP_SECRET_ENC_KEY   # 32+ char random; encrypts stored OCPP passwords (pgcrypto)
+        sync: false
 
 services:
   # ---------------------------------------------------------------- API

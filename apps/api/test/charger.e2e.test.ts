@@ -103,9 +103,9 @@ d(`charger router ${skip ?? ''}`, () => {
     expect(rows.some((r) => r.id === chargerId)).toBe(true);
   });
 
-  it('ocppCredentials rotates the bcrypt hash', async () => {
+  it('regenerateOcppCredentials rotates the bcrypt hash', async () => {
     const before = await prisma.charger.findUniqueOrThrow({ where: { id: chargerId } });
-    const res = (await trpc('charger.ocppCredentials', hostToken, { id: chargerId })) as {
+    const res = (await trpc('charger.regenerateOcppCredentials', hostToken, { id: chargerId })) as {
       password: string;
       chargePointId: string;
       wssUrl: string;

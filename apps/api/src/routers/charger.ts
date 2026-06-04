@@ -140,6 +140,13 @@ export const chargerRouter = router({
             ocppAuthHash: hash,
           },
         });
+        // Store the password encrypted so the host can re-view the SAME creds
+        // later without rotating them. Best-effort: if the enc key isn't set
+        // (local dev), skip — `connectionDetails` will prompt a regenerate.
+        const encKey = process.env.OCPP_SECRET_ENC_KEY;
+        if (encKey) {
+          await prisma.$executeRaw`UPDATE "Charger" SET "ocppSecretEnc" = encode(pgp_sym_encrypt(${password}, ${encKey}), 'base64') WHERE id = ${charger.id}::uuid`;
+        }
       }
       return charger;
     }),
@@ -214,7 +221,50 @@ export const chargerRouter = router({
       };
     }),
 
-  ocppCredentials: protectedProcedure
+  // Read-only: the host views the SAME OCPP credentials any time (password
+  // decrypted from ocppSecretEnc). Viewing does NOT rotate, so re-opening the
+  // "Connect your charger" card never breaks an already-configured charger.
+  connectionDetails: protectedProcedure
+    .input(z.object({ id: z.string().uuid() }))
+    .query(async ({ ctx, input }) => {
+      const c = await prisma.charger.findUniqueOrThrow({
+        where: { id: input.id },
+        select: { hostId: true, hardwareTier: true, ocppChargePointId: true, ocppSecretEnc: true },
+      });
+      if (c.hostId !== ctx.userId) throw new TRPCError({ code: 'FORBIDDEN' });
+      if (c.hardwareTier !== 'tier_3_native') {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'OCPP only for Tier 3.' });
+      }
+      if (!c.ocppSecretEnc) {
+        throw new TRPCError({
+          code: 'PRECONDITION_FAILED',
+          message: 'No credentials yet — tap “Regenerate credentials”.',
+        });
+      }
+      const key = ocppEncKey();
+      const rows = await prisma.$queryRaw<Array<{ password: string | null }>>`
+        SELECT pgp_sym_decrypt(decode("ocppSecretEnc", 'base64'), ${key}) AS password
+        FROM "Charger" WHERE id = ${input.id}::uuid
+      `;
+      const password = rows[0]?.password;
+      if (!password) {
+        throw new TRPCError({
+          code: 'PRECONDITION_FAILED',
+          message: 'No credentials yet — tap “Regenerate credentials”.',
+        });
+      }
+      return {
+        wssUrl: `${csmsPublicBase()}/ocpp/v1.6/${c.ocppChargePointId}`,
+        chargePointId: c.ocppChargePointId!,
+        password,
+      };
+    }),
+
+  // Explicit rotation: generates a NEW password (new bcrypt hash + new encrypted
+  // copy). Only for when the host deliberately wants fresh credentials — it
+  // invalidates the charger's currently-configured password, so it's gated
+  // behind a confirm in the UI.
+  regenerateOcppCredentials: protectedProcedure
     .input(z.object({ id: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
       const c = await prisma.charger.findUniqueOrThrow({ where: { id: input.id } });
@@ -222,12 +272,11 @@ export const chargerRouter = router({
       if (c.hardwareTier !== 'tier_3_native') {
         throw new TRPCError({ code: 'BAD_REQUEST', message: 'OCPP only for Tier 3.' });
       }
+      const key = ocppEncKey();
       const password = randomBytes(24).toString('hex');
       const hash = await bcrypt.hash(password, 10);
-      await prisma.charger.update({
-        where: { id: c.id },
-        data: { ocppAuthHash: hash },
-      });
+      await prisma.charger.update({ where: { id: c.id }, data: { ocppAuthHash: hash } });
+      await prisma.$executeRaw`UPDATE "Charger" SET "ocppSecretEnc" = encode(pgp_sym_encrypt(${password}, ${key}), 'base64') WHERE id = ${c.id}::uuid`;
       return {
         wssUrl: `${csmsPublicBase()}/ocpp/v1.6/${c.ocppChargePointId}`,
         chargePointId: c.ocppChargePointId!,
@@ -259,4 +308,18 @@ export const chargerRouter = router({
 // CSMS_PUBLIC_URL in every environment; the dev fallback only applies locally.
 function csmsPublicBase(): string {
   return process.env.CSMS_PUBLIC_URL ?? 'ws://localhost:3100';
+}
+
+// Symmetric key for encrypting/decrypting stored OCPP passwords (pgcrypto).
+// Required to view or regenerate credentials; must be set in every env that
+// serves those calls.
+function ocppEncKey(): string {
+  const k = process.env.OCPP_SECRET_ENC_KEY;
+  if (!k) {
+    throw new TRPCError({
+      code: 'SERVICE_UNAVAILABLE',
+      message: 'OCPP credential encryption key not configured.',
+    });
+  }
+  return k;
 }
