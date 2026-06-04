@@ -73,6 +73,18 @@ export async function settleSessionById(sessionId: string) {
   // booking row + Payout below so the full demo flow ends in a "completed"
   // state and the receipt screen renders normally.
   const isDevPi = session.booking.stripePaymentIntentId?.startsWith('pi_dev_');
+  // Never silently complete a real booking without capturing. If Stripe isn't
+  // configured in production, fail the job (BullMQ retries) instead of marking
+  // the booking paid + creating a Payout with no transfer.
+  if (
+    process.env.NODE_ENV === 'production' &&
+    session.booking.stripePaymentIntentId &&
+    !isDevPi &&
+    amountToCapture > 0 &&
+    !stripe
+  ) {
+    throw new Error('STRIPE_SECRET_KEY not configured; refusing to settle a real booking without capture.');
+  }
   if (session.booking.stripePaymentIntentId && stripe && amountToCapture > 0 && !isDevPi) {
     // AUDIT H9: idempotency key so BullMQ retry after a partial failure doesn't
     // error with "already captured".
