@@ -9,6 +9,7 @@ import { logger } from './logger.js';
 import { appRouter, type AppRouter } from './router.js';
 import { createContext } from './trpc.js';
 import { registerStripeWebhooks } from './webhooks/stripe.js';
+import { registerLegalPages } from './legal.js';
 
 async function main() {
   const env = loadEnv();
@@ -84,6 +85,10 @@ async function main() {
       .type('text/html')
       .send(onboardingPage('Link expired', 'This onboarding link expired. Close this window and tap “Continue to payouts” again in EdnaCharge to get a fresh link.'));
   });
+
+  // Public legal pages (/privacy, /terms) — required by the app stores and
+  // linked from the app.
+  registerLegalPages(app);
 
   // AUDIT C2/L3: registerStripeWebhooks registers as an encapsulated Fastify
   // plugin so its raw-body content-type parser is scoped to its own routes.
