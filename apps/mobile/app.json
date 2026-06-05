@@ -39,6 +39,12 @@
         }
       ]
     ],
-    "experiments": { "typedRoutes": true }
+    "experiments": { "typedRoutes": true },
+    "owner": "divyanshkoolwal",
+    "extra": {
+      "eas": {
+        "projectId": "d89941c0-17c0-48d4-8298-a7fd4a02a32d"
+      }
+    }
   }
 }
