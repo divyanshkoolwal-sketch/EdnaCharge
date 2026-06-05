@@ -13,7 +13,7 @@ const TABS: TabSpec[] = [
 
 export default function HostTabs() {
   const router = useRouter();
-  const segments = useSegments();
+  const segments = useSegments() as string[];
   const top = segments[1];
   const currentKey =
     top === 'home' ||

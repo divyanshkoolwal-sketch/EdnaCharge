@@ -2,8 +2,3 @@ packages:
   - apps/*
   - packages/*
   - tools/*
-
-patchedDependencies:
-  '@expo/metro-config@0.18.11': patches/@expo__metro-config@0.18.11.patch
-  expo-device@6.0.2: patches/expo-device@6.0.2.patch
-  expo-dev-menu@5.0.23: patches/expo-dev-menu@5.0.23.patch
