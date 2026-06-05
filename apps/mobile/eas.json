@@ -30,7 +30,7 @@
         "EXPO_PUBLIC_SENTRY_DSN": "https://be7db74879d6e9b48caca0eace3226f3@o4511272775778304.ingest.us.sentry.io/4511272837054464",
         "EXPO_PUBLIC_POSTHOG_KEY": "phc_x5sYfLD6nzMhqLJBxjXRpB8nun3oN8zGBmMCzYK5weTv",
         "EXPO_PUBLIC_POSTHOG_HOST": "https://us.i.posthog.com",
-        "EXPO_PUBLIC_MAPBOX_TOKEN": "pk.eyJ1IjoibGVvcnYzMzU5IiwiYSI6ImNtb2NkcmhtcjAwNjAycHB4bzBtb29lYWIifQ.pjlmM4SUikq0CuUCXYTZPQ",
+        "EXPO_PUBLIC_MAPBOX_TOKEN": "pk.eyJ1IjoiZGl2eWFuc2hrb29sd2FsIiwiYSI6ImNtbzE1ZW55NjBlYmYycXB1ejZqd2dpMDAifQ.f3VxEQyToUwNxF5RiRJ56g",
         "EXPO_PUBLIC_API_URL": "https://edna-api-mg34.onrender.com",
         "EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY": "pk_live_51TMzKPQ2D13ZAOHLvsDstgADoDCvcoWHBml36E8Fewig2UrWz3hs9LR4bSkE3C0FfKbHNNxB22JEDcETSn3Yy0iL00GYY0UFHq"
       },
@@ -61,7 +61,7 @@
         "EXPO_PUBLIC_SENTRY_DSN": "https://be7db74879d6e9b48caca0eace3226f3@o4511272775778304.ingest.us.sentry.io/4511272837054464",
         "EXPO_PUBLIC_POSTHOG_KEY": "phc_x5sYfLD6nzMhqLJBxjXRpB8nun3oN8zGBmMCzYK5weTv",
         "EXPO_PUBLIC_POSTHOG_HOST": "https://us.i.posthog.com",
-        "EXPO_PUBLIC_MAPBOX_TOKEN": "pk.eyJ1IjoibGVvcnYzMzU5IiwiYSI6ImNtb2NkcmhtcjAwNjAycHB4bzBtb29lYWIifQ.pjlmM4SUikq0CuUCXYTZPQ",
+        "EXPO_PUBLIC_MAPBOX_TOKEN": "pk.eyJ1IjoiZGl2eWFuc2hrb29sd2FsIiwiYSI6ImNtbzE1ZW55NjBlYmYycXB1ejZqd2dpMDAifQ.f3VxEQyToUwNxF5RiRJ56g",
         "EXPO_PUBLIC_API_URL": "https://edna-api-mg34.onrender.com",
         "EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY": "pk_live_51TMzKPQ2D13ZAOHLvsDstgADoDCvcoWHBml36E8Fewig2UrWz3hs9LR4bSkE3C0FfKbHNNxB22JEDcETSn3Yy0iL00GYY0UFHq"
       },
