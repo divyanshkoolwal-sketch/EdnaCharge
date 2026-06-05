@@ -4,3 +4,5 @@
 
 expo-env.d.ts
 # @end expo-cli
+# Google Play submit key (eas submit) — never commit
+google-play-service-account.json

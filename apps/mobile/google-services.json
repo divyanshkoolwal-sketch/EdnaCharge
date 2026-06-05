@@ -7,6 +7,42 @@
   "client": [
     {
       "client_info": {
+        "mobilesdk_app_id": "1:312909386856:android:3dbf7294a45a26909a17dd",
+        "android_client_info": {
+          "package_name": "com.ednacharge.app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "312909386856-dqs22433oubd3h34tgq6dthgbeq5rkrd.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAXxSG1qF90i93CQrnZyz8B2jmomHS8HSc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "312909386856-dqs22433oubd3h34tgq6dthgbeq5rkrd.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "312909386856-k42nfrktnp3epe582hfm2d76h1kljmj1.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.ednacharge.app"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
         "mobilesdk_app_id": "1:312909386856:android:89ab9ec2ff6ee2169a17dd",
         "android_client_info": {
           "package_name": "edna.charge"

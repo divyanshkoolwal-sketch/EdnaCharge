@@ -14,6 +14,7 @@
     "preview": {
       "distribution": "internal",
       "channel": "preview",
+      "environment": "preview",
       "env": {
         "EXPO_PUBLIC_SUPABASE_URL": "https://mrjadsvmibkhqyfqhkvh.supabase.co",
         "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1yamFkc3ZtaWJraHF5ZnFoa3ZoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYzMDM4NjMsImV4cCI6MjA5MTg3OTg2M30.H6DaQ9zEO7uyIxNaKz4AXZy3XiydE9xusMMHUhUTOnU",
@@ -26,22 +27,25 @@
         "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "312909386856-dqs22433oubd3h34tgq6dthgbeq5rkrd.apps.googleusercontent.com",
         "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "312909386856-k42nfrktnp3epe582hfm2d76h1kljmj1.apps.googleusercontent.com",
         "EXPO_PUBLIC_GOOGLE_IOS_URL_SCHEME": "com.googleusercontent.apps.312909386856-k42nfrktnp3epe582hfm2d76h1kljmj1",
-        "EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID": "",
         "EXPO_PUBLIC_SENTRY_DSN": "https://be7db74879d6e9b48caca0eace3226f3@o4511272775778304.ingest.us.sentry.io/4511272837054464",
         "EXPO_PUBLIC_POSTHOG_KEY": "phc_x5sYfLD6nzMhqLJBxjXRpB8nun3oN8zGBmMCzYK5weTv",
         "EXPO_PUBLIC_POSTHOG_HOST": "https://us.i.posthog.com",
-        "EXPO_PUBLIC_MAPBOX_TOKEN": "pk.eyJ1IjoibGVvcnYzMzU5IiwiYSI6ImNtb2NkcmhtcjAwNjAycHB4bzBtb29lYWIifQ.pjlmM4SUikq0CuUCXYTZPQ",
+        "EXPO_PUBLIC_MAPBOX_TOKEN": "pk.eyJ1IjoiZGl2eWFuc2hrb29sd2FsIiwiYSI6ImNtbzE1ZW55NjBlYmYycXB1ejZqd2dpMDAifQ.f3VxEQyToUwNxF5RiRJ56g",
         "EXPO_PUBLIC_API_URL": "https://edna-api-mg34.onrender.com",
         "EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY": "pk_live_51TMzKPQ2D13ZAOHLvsDstgADoDCvcoWHBml36E8Fewig2UrWz3hs9LR4bSkE3C0FfKbHNNxB22JEDcETSn3Yy0iL00GYY0UFHq"
       },
       "ios": {
         "resourceClass": "m-medium",
         "autoIncrement": true
+      },
+      "android": {
+        "buildType": "apk"
       }
     },
     "production": {
       "distribution": "store",
       "channel": "production",
+      "environment": "production",
       "env": {
         "EXPO_PUBLIC_SUPABASE_URL": "https://mrjadsvmibkhqyfqhkvh.supabase.co",
         "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1yamFkc3ZtaWJraHF5ZnFoa3ZoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYzMDM4NjMsImV4cCI6MjA5MTg3OTg2M30.H6DaQ9zEO7uyIxNaKz4AXZy3XiydE9xusMMHUhUTOnU",
@@ -54,16 +58,19 @@
         "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "312909386856-dqs22433oubd3h34tgq6dthgbeq5rkrd.apps.googleusercontent.com",
         "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "312909386856-k42nfrktnp3epe582hfm2d76h1kljmj1.apps.googleusercontent.com",
         "EXPO_PUBLIC_GOOGLE_IOS_URL_SCHEME": "com.googleusercontent.apps.312909386856-k42nfrktnp3epe582hfm2d76h1kljmj1",
-        "EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID": "",
         "EXPO_PUBLIC_SENTRY_DSN": "https://be7db74879d6e9b48caca0eace3226f3@o4511272775778304.ingest.us.sentry.io/4511272837054464",
         "EXPO_PUBLIC_POSTHOG_KEY": "phc_x5sYfLD6nzMhqLJBxjXRpB8nun3oN8zGBmMCzYK5weTv",
         "EXPO_PUBLIC_POSTHOG_HOST": "https://us.i.posthog.com",
-        "EXPO_PUBLIC_MAPBOX_TOKEN": "pk.eyJ1IjoibGVvcnYzMzU5IiwiYSI6ImNtb2NkcmhtcjAwNjAycHB4bzBtb29lYWIifQ.pjlmM4SUikq0CuUCXYTZPQ",
+        "EXPO_PUBLIC_MAPBOX_TOKEN": "pk.eyJ1IjoiZGl2eWFuc2hrb29sd2FsIiwiYSI6ImNtbzE1ZW55NjBlYmYycXB1ejZqd2dpMDAifQ.f3VxEQyToUwNxF5RiRJ56g",
         "EXPO_PUBLIC_API_URL": "https://edna-api-mg34.onrender.com",
         "EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY": "pk_live_51TMzKPQ2D13ZAOHLvsDstgADoDCvcoWHBml36E8Fewig2UrWz3hs9LR4bSkE3C0FfKbHNNxB22JEDcETSn3Yy0iL00GYY0UFHq"
       },
       "ios": {
         "resourceClass": "m-medium",
+        "autoIncrement": true
+      },
+      "android": {
+        "buildType": "app-bundle",
         "autoIncrement": true
       }
     }
@@ -74,6 +81,11 @@
         "appleId": "YOUR_APPLE_ID@example.com",
         "ascAppId": "YOUR_APP_STORE_CONNECT_APP_ID",
         "appleTeamId": "YOUR_APPLE_TEAM_ID"
+      },
+      "android": {
+        "serviceAccountKeyPath": "./google-play-service-account.json",
+        "track": "internal",
+        "releaseStatus": "draft"
       }
     }
   }
