@@ -167,8 +167,8 @@ importers:
         specifier: ^24.0.0
         version: 24.0.0(@react-native-firebase/app@24.0.0(804dd689a2d54765e041fe6ed21e39bd))(expo@52.0.49(@babel/core@7.29.0)(@babel/preset-env@7.29.2(@babel/core@7.29.0))(@expo/metro-runtime@4.0.1(react-native@0.76.9(@babel/core@7.29.0)(@babel/preset-env@7.29.2(@babel/core@7.29.0))(@react-native-community/cli@13.6.9)(@types/react@18.3.30)(react@18.3.1)))(graphql@15.8.0)(react-native-webview@13.12.5(react-native@0.76.9(@babel/core@7.29.0)(@babel/preset-env@7.29.2(@babel/core@7.29.0))(@react-native-community/cli@13.6.9)(@types/react@18.3.30)(react@18.3.1))(react@18.3.1))(react-native@0.76.9(@babel/core@7.29.0)(@babel/preset-env@7.29.2(@babel/core@7.29.0))(@react-native-community/cli@13.6.9)(@types/react@18.3.30)(react@18.3.1))(react@18.3.1))
       '@rnmapbox/maps':
-        specifier: 10.1.31
-        version: 10.1.31(expo@52.0.49(@babel/core@7.29.0)(@babel/preset-env@7.29.2(@babel/core@7.29.0))(@expo/metro-runtime@4.0.1(react-native@0.76.9(@babel/core@7.29.0)(@babel/preset-env@7.29.2(@babel/core@7.29.0))(@react-native-community/cli@13.6.9)(@types/react@18.3.30)(react@18.3.1)))(graphql@15.8.0)(react-native-webview@13.12.5(react-native@0.76.9(@babel/core@7.29.0)(@babel/preset-env@7.29.2(@babel/core@7.29.0))(@react-native-community/cli@13.6.9)(@types/react@18.3.30)(react@18.3.1))(react@18.3.1))(react-native@0.76.9(@babel/core@7.29.0)(@babel/preset-env@7.29.2(@babel/core@7.29.0))(@react-native-community/cli@13.6.9)(@types/react@18.3.30)(react@18.3.1))(react@18.3.1))(react-dom@18.3.1(react@18.3.1))(react-native@0.76.9(@babel/core@7.29.0)(@babel/preset-env@7.29.2(@babel/core@7.29.0))(@react-native-community/cli@13.6.9)(@types/react@18.3.30)(react@18.3.1))(react@18.3.1)
+        specifier: 10.2.10
+        version: 10.2.10(expo@52.0.49(@babel/core@7.29.0)(@babel/preset-env@7.29.2(@babel/core@7.29.0))(@expo/metro-runtime@4.0.1(react-native@0.76.9(@babel/core@7.29.0)(@babel/preset-env@7.29.2(@babel/core@7.29.0))(@react-native-community/cli@13.6.9)(@types/react@18.3.30)(react@18.3.1)))(graphql@15.8.0)(react-native-webview@13.12.5(react-native@0.76.9(@babel/core@7.29.0)(@babel/preset-env@7.29.2(@babel/core@7.29.0))(@react-native-community/cli@13.6.9)(@types/react@18.3.30)(react@18.3.1))(react@18.3.1))(react-native@0.76.9(@babel/core@7.29.0)(@babel/preset-env@7.29.2(@babel/core@7.29.0))(@react-native-community/cli@13.6.9)(@types/react@18.3.30)(react@18.3.1))(react@18.3.1))(react-dom@18.3.1(react@18.3.1))(react-native@0.76.9(@babel/core@7.29.0)(@babel/preset-env@7.29.2(@babel/core@7.29.0))(@react-native-community/cli@13.6.9)(@types/react@18.3.30)(react@18.3.1))(react@18.3.1)
       '@sentry/react-native':
         specifier: ~6.10.0
         version: 6.10.0(expo@52.0.49(@babel/core@7.29.0)(@babel/preset-env@7.29.2(@babel/core@7.29.0))(@expo/metro-runtime@4.0.1(react-native@0.76.9(@babel/core@7.29.0)(@babel/preset-env@7.29.2(@babel/core@7.29.0))(@react-native-community/cli@13.6.9)(@types/react@18.3.30)(react@18.3.1)))(graphql@15.8.0)(react-native-webview@13.12.5(react-native@0.76.9(@babel/core@7.29.0)(@babel/preset-env@7.29.2(@babel/core@7.29.0))(@react-native-community/cli@13.6.9)(@types/react@18.3.30)(react@18.3.1))(react@18.3.1))(react-native@0.76.9(@babel/core@7.29.0)(@babel/preset-env@7.29.2(@babel/core@7.29.0))(@react-native-community/cli@13.6.9)(@types/react@18.3.30)(react@18.3.1))(react@18.3.1))(react-native@0.76.9(@babel/core@7.29.0)(@babel/preset-env@7.29.2(@babel/core@7.29.0))(@react-native-community/cli@13.6.9)(@types/react@18.3.30)(react@18.3.1))(react@18.3.1)
@@ -2616,14 +2616,14 @@ packages:
   '@react-navigation/routers@7.5.5':
     resolution: {integrity: sha512-9/hhMte12Kgu+pMnLfA4EWJ0OQmIEAMVMX06FPH2yGkEQSQ3JhhCN/GkcRikzQhtEi97VYYQA15umptBUShcOQ==}
 
-  '@rnmapbox/maps@10.1.31':
-    resolution: {integrity: sha512-nNmw99kgQC7SUo/OxhvcF1Jm6Z69iij4Sh0PlYoZpru5W4sJQsMCi6u81r8lCiS1XQ2aTH6ZBcT7RdpRs7uzbg==}
+  '@rnmapbox/maps@10.2.10':
+    resolution: {integrity: sha512-OfjW0rHp5bUWfzBo5fZ7qdKwAzGoocXYTsSssSPVMxZ2Y7axuhcbmsO5bV6gg+BJs5RwEsghzwTIoGydBNUClA==}
     peerDependencies:
       expo: '>=47.0.0'
       mapbox-gl: ^2.9.0
-      react: '>=16.6.1'
+      react: '>=17.0.0'
       react-dom: '>= 17.0.0'
-      react-native: '>=0.59.9'
+      react-native: '>=0.69'
     peerDependenciesMeta:
       expo:
         optional: true
@@ -3821,8 +3821,9 @@ packages:
   dayjs@1.11.20:
     resolution: {integrity: sha512-YbwwqR/uYpeoP4pu043q+LTDLFBLApUP6VxRihdfNTqu4ubqMlGDLd6ErXhEgsyvY0K6nCs7nggYumAN+9uEuQ==}
 
-  debounce@1.2.1:
-    resolution: {integrity: sha512-XRRe6Glud4rd/ZGQfiV1ruXSfbvfJedlV9Y6zOlP+2K04vBYiJEte6stfFkCP03aMnY5tsipamumUjL14fofug==}
+  debounce@2.2.0:
+    resolution: {integrity: sha512-Xks6RUDLZFdz8LIdR6q0MTH44k7FikOmnh5xkSjMig6ch45afc8sjTjRQf3P6ax8dMgcQrYO/AR2RGWURrruqw==}
+    engines: {node: '>=18'}
 
   debug@2.6.9:
     resolution: {integrity: sha512-bC7ElrdJaJnPbAP+1EotYvqZsb3ecl5wi6Bfi6BJTUcNowp6cvspg0jXznRTKDjm/E7AdgFBVeAPVMNcKGsHMA==}
@@ -10189,7 +10190,7 @@ snapshots:
     dependencies:
       nanoid: 3.3.11
 
-  '@rnmapbox/maps@10.1.31(expo@52.0.49(@babel/core@7.29.0)(@babel/preset-env@7.29.2(@babel/core@7.29.0))(@expo/metro-runtime@4.0.1(react-native@0.76.9(@babel/core@7.29.0)(@babel/preset-env@7.29.2(@babel/core@7.29.0))(@react-native-community/cli@13.6.9)(@types/react@18.3.30)(react@18.3.1)))(graphql@15.8.0)(react-native-webview@13.12.5(react-native@0.76.9(@babel/core@7.29.0)(@babel/preset-env@7.29.2(@babel/core@7.29.0))(@react-native-community/cli@13.6.9)(@types/react@18.3.30)(react@18.3.1))(react@18.3.1))(react-native@0.76.9(@babel/core@7.29.0)(@babel/preset-env@7.29.2(@babel/core@7.29.0))(@react-native-community/cli@13.6.9)(@types/react@18.3.30)(react@18.3.1))(react@18.3.1))(react-dom@18.3.1(react@18.3.1))(react-native@0.76.9(@babel/core@7.29.0)(@babel/preset-env@7.29.2(@babel/core@7.29.0))(@react-native-community/cli@13.6.9)(@types/react@18.3.30)(react@18.3.1))(react@18.3.1)':
+  '@rnmapbox/maps@10.2.10(expo@52.0.49(@babel/core@7.29.0)(@babel/preset-env@7.29.2(@babel/core@7.29.0))(@expo/metro-runtime@4.0.1(react-native@0.76.9(@babel/core@7.29.0)(@babel/preset-env@7.29.2(@babel/core@7.29.0))(@react-native-community/cli@13.6.9)(@types/react@18.3.30)(react@18.3.1)))(graphql@15.8.0)(react-native-webview@13.12.5(react-native@0.76.9(@babel/core@7.29.0)(@babel/preset-env@7.29.2(@babel/core@7.29.0))(@react-native-community/cli@13.6.9)(@types/react@18.3.30)(react@18.3.1))(react@18.3.1))(react-native@0.76.9(@babel/core@7.29.0)(@babel/preset-env@7.29.2(@babel/core@7.29.0))(@react-native-community/cli@13.6.9)(@types/react@18.3.30)(react@18.3.1))(react@18.3.1))(react-dom@18.3.1(react@18.3.1))(react-native@0.76.9(@babel/core@7.29.0)(@babel/preset-env@7.29.2(@babel/core@7.29.0))(@react-native-community/cli@13.6.9)(@types/react@18.3.30)(react@18.3.1))(react@18.3.1)':
     dependencies:
       '@turf/along': 6.5.0
       '@turf/distance': 6.5.0
@@ -10197,7 +10198,7 @@ snapshots:
       '@turf/length': 6.5.0
       '@turf/nearest-point-on-line': 6.5.0
       '@types/geojson': 7946.0.16
-      debounce: 1.2.1
+      debounce: 2.2.0
       react: 18.3.1
       react-native: 0.76.9(@babel/core@7.29.0)(@babel/preset-env@7.29.2(@babel/core@7.29.0))(@react-native-community/cli@13.6.9)(@types/react@18.3.30)(react@18.3.1)
     optionalDependencies:
@@ -11544,7 +11545,7 @@ snapshots:
   dayjs@1.11.20:
     optional: true
 
-  debounce@1.2.1: {}
+  debounce@2.2.0: {}
 
   debug@2.6.9:
     dependencies:
