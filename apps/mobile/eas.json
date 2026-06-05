@@ -37,6 +37,9 @@
       "ios": {
         "resourceClass": "m-medium",
         "autoIncrement": true
+      },
+      "android": {
+        "buildType": "apk"
       }
     },
     "production": {
@@ -65,6 +68,10 @@
       "ios": {
         "resourceClass": "m-medium",
         "autoIncrement": true
+      },
+      "android": {
+        "buildType": "app-bundle",
+        "autoIncrement": true
       }
     }
   },
@@ -74,6 +81,11 @@
         "appleId": "YOUR_APPLE_ID@example.com",
         "ascAppId": "YOUR_APP_STORE_CONNECT_APP_ID",
         "appleTeamId": "YOUR_APPLE_TEAM_ID"
+      },
+      "android": {
+        "serviceAccountKeyPath": "./google-play-service-account.json",
+        "track": "internal",
+        "releaseStatus": "draft"
       }
     }
   }
