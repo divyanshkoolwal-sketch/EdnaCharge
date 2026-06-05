@@ -1,6 +1,6 @@
 import { TRPCError } from '@trpc/server';
 import { z } from 'zod';
-import { createHash } from 'crypto';
+import { createHash, randomBytes } from 'crypto';
 import { router, protectedProcedure } from '../trpc.js';
 import { prisma } from '@edna/db';
 import {
@@ -450,10 +450,19 @@ export const bookingRouter = router({
             message: 'This Tier 3 charger has no OCPP credentials provisioned.',
           });
         }
+        // Anti-theft: mint a one-time idTag and stamp the authorization window
+        // BEFORE dispatching, so the CSMS can match the charger's Authorize /
+        // StartTransaction to THIS explicit tap. OCPP 1.6 idTag is CiString20 —
+        // 16 hex chars stays well under the limit and is unguessable.
+        const startToken = randomBytes(8).toString('hex');
+        await prisma.booking.update({
+          where: { id: b.id },
+          data: { ocppStartToken: startToken, ocppAuthorizedAt: new Date() },
+        });
         await ocppCommandsQueue.add('RemoteStartTransaction', {
           kind: 'RemoteStartTransaction',
           chargePointId: b.charger.ocppChargePointId,
-          idTag: `EDNA-${b.driverId.slice(0, 8)}`,
+          idTag: startToken,
         });
         return { status: 'dispatched' as const };
       }

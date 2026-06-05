@@ -27,13 +27,49 @@ export type Client = {
 
 type Ctx = { chargePointId: string };
 
+// Anti-theft authorization window: how long after the driver taps "Start
+// charging" the charger has to present the minted idTag. Generous enough for a
+// plug-in delay, short enough that a stale token can't be replayed later.
+const START_AUTH_WINDOW_MS = 15 * 60 * 1000;
+
 async function chargerByCpId(cpId: string) {
   return prisma.charger.findUnique({ where: { ocppChargePointId: cpId } });
+}
+
+/**
+ * The booking a charger is permitted to start RIGHT NOW, or null.
+ *
+ * A booking is startable only if the driver explicitly tapped "Start charging"
+ * (which mints `ocppStartToken` + stamps `ocppAuthorizedAt`) and the charger is
+ * presenting that exact token inside the window. This is what guarantees energy
+ * only flows on an authorized tap — an unsolicited local/RFID start carries an
+ * unknown idTag and is refused.
+ */
+async function authorizedBookingFor(chargerId: string, idTag?: string) {
+  if (!idTag) return null;
+  return prisma.booking.findFirst({
+    where: {
+      chargerId,
+      ocppStartToken: idTag,
+      status: { in: ['confirmed', 'active'] },
+      ocppAuthorizedAt: { gte: new Date(Date.now() - START_AUTH_WINDOW_MS) },
+    },
+  });
 }
 
 export function bindHandlers(client: Client, ctx: Ctx): void {
   client.handle('BootNotification', async ({ params }) => {
     logger.info({ cpId: ctx.chargePointId, params }, 'BootNotification');
+    // Defense-in-depth (physical layer): ask the charger to require central
+    // authorization before a remote-started transaction delivers energy, and to
+    // not free-vend on local plug-in. Best-effort and non-blocking — a charger
+    // may answer NotSupported; the CSMS-side idTag gate below is the real
+    // guarantee that we never start/bill an unauthorized session.
+    void Promise.resolve(
+      client.call('ChangeConfiguration', { key: 'AuthorizeRemoteTxRequests', value: 'true' }),
+    ).catch((err) =>
+      logger.info({ err, cpId: ctx.chargePointId }, 'ChangeConfiguration not applied (charger-dependent)'),
+    );
     return { currentTime: new Date().toISOString(), interval: 30, status: 'Accepted' };
   });
 
@@ -47,17 +83,46 @@ export function bindHandlers(client: Client, ctx: Ctx): void {
     return {};
   });
 
-  client.handle('Authorize', async () => ({ idTagInfo: { status: 'Accepted' } }));
+  // Only authorize idTags minted by an explicit "Start charging" tap. An
+  // unknown tag (local RFID swipe, plug-and-charge, replayed/old token) is
+  // refused, so the charger won't energize for an unauthorized driver.
+  client.handle('Authorize', async ({ params }) => {
+    const c = await chargerByCpId(ctx.chargePointId);
+    const idTag = (params as { idTag?: string }).idTag;
+    const ok = c ? await authorizedBookingFor(c.id, idTag) : null;
+    if (!ok) {
+      logger.warn({ cpId: ctx.chargePointId, idTag }, 'Authorize refused: no authorized booking');
+      return { idTagInfo: { status: 'Invalid' } };
+    }
+    return { idTagInfo: { status: 'Accepted' } };
+  });
 
   client.handle('StartTransaction', async ({ params }) => {
     const c = await chargerByCpId(ctx.chargePointId);
     if (!c) throw new Error('Unknown chargePointId');
-    const p = params as { meterStart?: number; timestamp?: string };
-    const booking = await prisma.booking.findFirst({
-      where: { chargerId: c.id, status: 'confirmed' },
-      orderBy: { startAt: 'asc' },
-    });
-    if (!booking) return { idTagInfo: { status: 'Invalid' }, transactionId: 0 };
+    const p = params as { meterStart?: number; timestamp?: string; idTag?: string };
+    // Energy may ONLY begin for the booking the driver explicitly started. No
+    // idTag match in-window → refuse (transactionId 0 stops a compliant charger
+    // from delivering energy) and never create a billable session.
+    const booking = await authorizedBookingFor(c.id, p.idTag);
+    if (!booking) {
+      logger.warn(
+        { cpId: ctx.chargePointId, idTag: p.idTag },
+        'StartTransaction refused: no authorized booking for this idTag (driver did not tap Start)',
+      );
+      return { idTagInfo: { status: 'Invalid' }, transactionId: 0 };
+    }
+    // One session per booking. A re-sent StartTransaction (network retry) is
+    // idempotent; a replay after the session already ended is refused so the
+    // same authorization can't be charged twice. (Booking.session is 1:1.)
+    const existing = await prisma.chargingSession.findUnique({ where: { bookingId: booking.id } });
+    if (existing) {
+      if (existing.endedAt) return { idTagInfo: { status: 'Invalid' }, transactionId: 0 };
+      return {
+        transactionId: existing.ocppTransactionId ?? 0,
+        idTagInfo: { status: 'Accepted' },
+      };
+    }
     const txId = Math.floor(Math.random() * 1_000_000_000);
     const session = await prisma.chargingSession.create({
       data: {
