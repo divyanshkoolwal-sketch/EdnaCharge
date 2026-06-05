@@ -12,9 +12,9 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // ─── Mocks ───────────────────────────────────────────────────────────────────
 
-const findUniqueOrThrow = vi.fn();
-const findFirst = vi.fn();
-const findUnique = vi.fn();
+const findCharger = vi.fn(); // prisma.charger.findUnique
+const findFirstBooking = vi.fn(); // prisma.booking.findFirst
+const findSession = vi.fn(); // prisma.chargingSession.findUnique
 const updateCharger = vi.fn();
 const updateBooking = vi.fn();
 const createSession = vi.fn();
@@ -24,10 +24,10 @@ const queueAdd = vi.fn();
 
 vi.mock('@edna/db', () => ({
   prisma: {
-    charger: { findUnique: findUnique, update: updateCharger },
-    booking: { findFirst: findFirst, update: updateBooking },
+    charger: { findUnique: findCharger, update: updateCharger },
+    booking: { findFirst: findFirstBooking, update: updateBooking },
     chargingSession: {
-      findUnique: vi.fn().mockImplementation((args) => findUnique({ table: 'session', ...args })),
+      findUnique: findSession,
       create: createSession,
       update: updateSession,
     },
@@ -66,11 +66,12 @@ const fakeClient = {
   on: vi.fn(),
   off: vi.fn(),
   close: vi.fn(),
-  call: vi.fn(),
+  call: vi.fn().mockResolvedValue({}),
 };
 
 beforeEach(() => {
   vi.clearAllMocks();
+  fakeClient.call.mockResolvedValue({});
   handler.byMethod = {};
 });
 
@@ -93,21 +94,40 @@ describe('OCPP 1.6 handlers', () => {
     expect(typeof result.currentTime).toBe('string');
   });
 
+  it('BootNotification asks the charger to require remote-tx authorization', async () => {
+    await bindAndCall('BootNotification', { chargePointVendor: 'v', chargePointModel: 'm' });
+    expect(fakeClient.call).toHaveBeenCalledWith('ChangeConfiguration', {
+      key: 'AuthorizeRemoteTxRequests',
+      value: 'true',
+    });
+  });
+
   it('Heartbeat returns current time', async () => {
     const result = (await bindAndCall('Heartbeat', {})) as { currentTime: string };
     expect(typeof result.currentTime).toBe('string');
     expect(new Date(result.currentTime).getTime()).toBeGreaterThan(0);
   });
 
-  it('Authorize accepts any idTag (Tier 3 trusts the booking flow)', async () => {
-    const result = (await bindAndCall('Authorize', { idTag: 'EDNA-abc' })) as {
+  it('Authorize accepts an idTag minted by an explicit Start tap', async () => {
+    findCharger.mockResolvedValue({ id: 'charger-1' });
+    findFirstBooking.mockResolvedValue({ id: 'booking-1' });
+    const result = (await bindAndCall('Authorize', { idTag: 'abc123' })) as {
       idTagInfo: { status: string };
     };
     expect(result.idTagInfo.status).toBe('Accepted');
   });
 
+  it('Authorize refuses an unknown idTag (no authorized booking)', async () => {
+    findCharger.mockResolvedValue({ id: 'charger-1' });
+    findFirstBooking.mockResolvedValue(null); // no booking matches the token/window
+    const result = (await bindAndCall('Authorize', { idTag: 'stolen-or-local-rfid' })) as {
+      idTagInfo: { status: string };
+    };
+    expect(result.idTagInfo.status).toBe('Invalid');
+  });
+
   it('StatusNotification → maps OCPP status to ChargerStatus enum + persists', async () => {
-    findUnique.mockResolvedValue({ id: 'charger-1' });
+    findCharger.mockResolvedValue({ id: 'charger-1' });
     await bindAndCall('StatusNotification', { status: 'Available' });
     expect(updateCharger).toHaveBeenCalledWith({
       where: { id: 'charger-1' },
@@ -128,17 +148,19 @@ describe('OCPP 1.6 handlers', () => {
   });
 
   it('StatusNotification with unknown chargePointId is a no-op (no throw)', async () => {
-    findUnique.mockResolvedValue(null);
+    findCharger.mockResolvedValue(null);
     await expect(bindAndCall('StatusNotification', { status: 'Available' })).resolves.toEqual({});
     expect(updateCharger).not.toHaveBeenCalled();
   });
 
-  it('StartTransaction creates a session + flips booking to active', async () => {
-    findUnique.mockResolvedValue({ id: 'charger-1' });
-    findFirst.mockResolvedValue({ id: 'booking-1' });
+  it('StartTransaction creates a session + flips booking to active (authorized idTag)', async () => {
+    findCharger.mockResolvedValue({ id: 'charger-1' });
+    findFirstBooking.mockResolvedValue({ id: 'booking-1' });
+    findSession.mockResolvedValue(null); // no prior session for this booking
     createSession.mockResolvedValue({ id: 'session-1', ocppTransactionId: 12345 });
 
     const result = (await bindAndCall('StartTransaction', {
+      idTag: 'abc123',
       meterStart: 0,
       timestamp: '2026-01-01T00:00:00Z',
     })) as { transactionId: number; idTagInfo: { status: string } };
@@ -158,11 +180,46 @@ describe('OCPP 1.6 handlers', () => {
     });
   });
 
-  it('StartTransaction with no confirmed booking returns Invalid + txn 0', async () => {
-    findUnique.mockResolvedValue({ id: 'charger-1' });
-    findFirst.mockResolvedValue(null);
+  it('StartTransaction with no authorized booking returns Invalid + txn 0 (anti-theft)', async () => {
+    findCharger.mockResolvedValue({ id: 'charger-1' });
+    findFirstBooking.mockResolvedValue(null); // unknown idTag → not authorized
 
     const result = (await bindAndCall('StartTransaction', {
+      idTag: 'unsolicited',
+      meterStart: 0,
+    })) as { transactionId: number; idTagInfo: { status: string } };
+
+    expect(result.idTagInfo.status).toBe('Invalid');
+    expect(result.transactionId).toBe(0);
+    expect(createSession).not.toHaveBeenCalled();
+  });
+
+  it('StartTransaction is idempotent on a network re-send (open session reused)', async () => {
+    findCharger.mockResolvedValue({ id: 'charger-1' });
+    findFirstBooking.mockResolvedValue({ id: 'booking-1' });
+    findSession.mockResolvedValue({ id: 'session-1', ocppTransactionId: 777, endedAt: null });
+
+    const result = (await bindAndCall('StartTransaction', {
+      idTag: 'abc123',
+      meterStart: 0,
+    })) as { transactionId: number; idTagInfo: { status: string } };
+
+    expect(result.idTagInfo.status).toBe('Accepted');
+    expect(result.transactionId).toBe(777);
+    expect(createSession).not.toHaveBeenCalled();
+  });
+
+  it('StartTransaction refuses a replay after the session already ended', async () => {
+    findCharger.mockResolvedValue({ id: 'charger-1' });
+    findFirstBooking.mockResolvedValue({ id: 'booking-1' });
+    findSession.mockResolvedValue({
+      id: 'session-1',
+      ocppTransactionId: 777,
+      endedAt: new Date('2026-01-01T01:00:00Z'),
+    });
+
+    const result = (await bindAndCall('StartTransaction', {
+      idTag: 'abc123',
       meterStart: 0,
     })) as { transactionId: number; idTagInfo: { status: string } };
 

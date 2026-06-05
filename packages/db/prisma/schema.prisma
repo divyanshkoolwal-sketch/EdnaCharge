@@ -224,6 +224,12 @@ model Booking {
   stripePaymentIntentId String? @unique
   preauthAmountCents    Int
   capturedAmountCents   Int?
+  /// Anti-theft: one-time idTag minted when the driver taps "Start charging".
+  /// The CSMS only authorizes an OCPP Authorize/StartTransaction that presents
+  /// this exact token within `ocppAuthorizedAt`'s window, so energy can never
+  /// flow (or be billed) for a session the driver didn't explicitly start.
+  ocppStartToken        String?  @unique
+  ocppAuthorizedAt      DateTime?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
   respondedAt     DateTime?
