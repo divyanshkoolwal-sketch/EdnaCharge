@@ -30,6 +30,7 @@
     "plugins": [
       "expo-router",
       "@react-native-firebase/app",
+      "./plugins/withIosModularHeaders",
       [
         "expo-build-properties",
         {
