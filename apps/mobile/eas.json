@@ -13,7 +13,6 @@
     },
     "preview": {
       "distribution": "internal",
-      "channel": "preview",
       "environment": "preview",
       "env": {
         "EXPO_PUBLIC_SUPABASE_URL": "https://mrjadsvmibkhqyfqhkvh.supabase.co",
@@ -44,7 +43,6 @@
     },
     "production": {
       "distribution": "store",
-      "channel": "production",
       "environment": "production",
       "env": {
         "EXPO_PUBLIC_SUPABASE_URL": "https://mrjadsvmibkhqyfqhkvh.supabase.co",
