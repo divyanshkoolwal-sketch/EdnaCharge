@@ -22,3 +22,7 @@ dump.rdb
 # the SDK-version drift that made the old committed ios/ folder go stale.
 apps/mobile/ios/
 apps/mobile/android/
+
+# App Store Connect API key (.p8 private key) — never commit
+apps/mobile/credentials/
+*.p8
