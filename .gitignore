@@ -17,11 +17,8 @@ supabase/.temp
 supabase/.branches
 dump.rdb
 
-# Expo prebuild artifacts (we generate these locally; CocoaPods deps live in Podfile.lock)
-apps/mobile/ios/Pods/
-apps/mobile/ios/build/
-apps/mobile/ios/Podfile.lock
-apps/mobile/ios/.xcode.env.local
-apps/mobile/android/build/
-apps/mobile/android/app/build/
-apps/mobile/android/.gradle/
+# Native projects are NOT committed — EAS (and local `expo prebuild`) regenerate
+# them from app config + config plugins. Keeping them out of git is what prevents
+# the SDK-version drift that made the old committed ios/ folder go stale.
+apps/mobile/ios/
+apps/mobile/android/
