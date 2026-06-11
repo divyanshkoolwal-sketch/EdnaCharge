@@ -5,6 +5,7 @@
     "version": "0.0.1",
     "scheme": "ednacharge",
     "orientation": "portrait",
+    "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": false,
     "ios": {
@@ -12,7 +13,11 @@
       "bundleIdentifier": "com.ednacharge.app",
       "buildNumber": "1",
       "infoPlist": {
-        "NSLocationWhenInUseUsageDescription": "We use your location to show nearby chargers and route you to bookings."
+        "NSLocationWhenInUseUsageDescription": "We use your location to show nearby chargers and route you to bookings.",
+        "ITSAppUsesNonExemptEncryption": false
+      },
+      "entitlements": {
+        "aps-environment": "development"
       }
     },
     "android": {
@@ -24,9 +29,13 @@
     },
     "plugins": [
       "expo-router",
+      "@react-native-firebase/app",
       [
         "expo-build-properties",
         {
+          "ios": {
+            "useFrameworks": "static"
+          },
           "android": {
             "compileSdkVersion": 35,
             "targetSdkVersion": 35,

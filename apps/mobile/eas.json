@@ -13,7 +13,6 @@
     },
     "preview": {
       "distribution": "internal",
-      "channel": "preview",
       "environment": "preview",
       "env": {
         "EXPO_PUBLIC_SUPABASE_URL": "https://mrjadsvmibkhqyfqhkvh.supabase.co",
@@ -44,7 +43,6 @@
     },
     "production": {
       "distribution": "store",
-      "channel": "production",
       "environment": "production",
       "env": {
         "EXPO_PUBLIC_SUPABASE_URL": "https://mrjadsvmibkhqyfqhkvh.supabase.co",
@@ -78,9 +76,11 @@
   "submit": {
     "production": {
       "ios": {
-        "appleId": "YOUR_APPLE_ID@example.com",
-        "ascAppId": "YOUR_APP_STORE_CONNECT_APP_ID",
-        "appleTeamId": "YOUR_APPLE_TEAM_ID"
+        "ascAppId": "6779337500",
+        "ascApiKeyPath": "./credentials/AuthKey_QPQWQFNGJ2.p8",
+        "ascApiKeyId": "QPQWQFNGJ2",
+        "ascApiKeyIssuerId": "cc354e11-09e1-4fc1-8c8d-779b6b81013d",
+        "appleTeamId": "L5876Z5F62"
       },
       "android": {
         "serviceAccountKeyPath": "./google-play-service-account.json",
