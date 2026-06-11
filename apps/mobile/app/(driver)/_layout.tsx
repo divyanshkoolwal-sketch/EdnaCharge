@@ -12,7 +12,7 @@ const TABS: TabSpec[] = [
 
 export default function DriverTabs() {
   const router = useRouter();
-  const segments = useSegments();
+  const segments = useSegments() as string[];
   const currentKey = (() => {
     // segments are like ['(driver)', 'map'] or ['(driver)', 'charger', '[id]']
     const top = segments[1];

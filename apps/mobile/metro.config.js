@@ -12,7 +12,8 @@ config.resolver.nodeModulesPaths = [
   path.resolve(projectRoot, 'node_modules'),
   path.resolve(workspaceRoot, 'node_modules'),
 ];
-config.resolver.disableHierarchicalLookup = true;
+// SDK 52 / Metro: hierarchical lookup must stay enabled (Expo default = false
+// for disableHierarchicalLookup). Disabling it broke resolution under SDK 52.
 config.server.unstable_serverRoot = workspaceRoot;
 config.server.rewriteRequestUrl = (url) =>
   rewriteRequestUrl(url).replace(
