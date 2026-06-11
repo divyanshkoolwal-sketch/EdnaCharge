@@ -30,10 +30,12 @@
     "plugins": [
       "expo-router",
       "@react-native-firebase/app",
-      "./plugins/withIosModularHeaders",
       [
         "expo-build-properties",
         {
+          "ios": {
+            "useFrameworks": "static"
+          },
           "android": {
             "compileSdkVersion": 35,
             "targetSdkVersion": 35,
