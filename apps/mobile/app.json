@@ -14,6 +14,8 @@
       "buildNumber": "1",
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "We use your location to show nearby chargers and route you to bookings.",
+        "NSCameraUsageDescription": "EdnaCharge uses the camera to verify your identity (a photo of your ID and a selfie) for secure payments and charger access.",
+        "NSPhotoLibraryUsageDescription": "EdnaCharge needs photo access so you can upload identity documents for verification.",
         "ITSAppUsesNonExemptEncryption": false
       },
       "entitlements": {
