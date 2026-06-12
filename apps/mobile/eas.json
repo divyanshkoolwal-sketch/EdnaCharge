@@ -64,6 +64,7 @@
         "EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY": "pk_live_51TMzKPQ2D13ZAOHLvsDstgADoDCvcoWHBml36E8Fewig2UrWz3hs9LR4bSkE3C0FfKbHNNxB22JEDcETSn3Yy0iL00GYY0UFHq"
       },
       "ios": {
+        "image": "macos-sequoia-15.5-xcode-26.0",
         "resourceClass": "m-medium",
         "autoIncrement": true
       },
