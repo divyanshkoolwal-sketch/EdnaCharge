@@ -17,7 +17,7 @@ import Mapbox, {
 import type { CameraRef } from '@rnmapbox/maps/lib/typescript/src/components/Camera';
 import type { FeatureCollection, Feature, Point, Geometry } from 'geojson';
 import { trpc } from '../../src/lib/trpc';
-import { supabase } from '../../src/lib/supabase';
+import { openRealtimeChannel } from '../../src/lib/realtime';
 import { useTheme } from '../../src/theme/useTheme';
 import { useUserLocation } from '../../src/state/userLocation';
 import { Search, Recenter, Bolt } from '../../src/components/icons/Icon';
@@ -126,28 +126,20 @@ export default function Map() {
   // as a host publishes via charger.create, every driver with the map open
   // sees the new pin within ~1 second.
   useEffect(() => {
-    const client = supabase;
-    if (!client) return undefined;
-    const channel = client
-      .channel('public:charger-inserts')
-      .on(
-        'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'Charger' },
-        () => {
-          utils.charger.nearby.invalidate();
-        },
-      )
-      .on(
-        'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'Charger' },
-        () => {
-          utils.charger.nearby.invalidate();
-        },
-      )
-      .subscribe();
-    return () => {
-      void client.removeChannel(channel);
+    // Unique topic per mount — a host→driver role switch (or tab/route
+    // re-entry) re-mounts this screen, and re-using a fixed channel topic made
+    // Supabase re-attach `.on()` to an already-subscribed channel and throw,
+    // which crashed the app on the way into the map. See src/lib/realtime.ts.
+    const sub = openRealtimeChannel('charger-inserts');
+    if (!sub) return undefined;
+    const invalidate = () => {
+      utils.charger.nearby.invalidate();
     };
+    sub.channel
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'Charger' }, invalidate)
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'Charger' }, invalidate)
+      .subscribe();
+    return sub.remove;
   }, [utils]);
 
   const features: FeatureCollection<Point> = useMemo(
