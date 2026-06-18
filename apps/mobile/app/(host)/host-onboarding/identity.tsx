@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { View, Pressable, ScrollView, Alert } from 'react-native';
+import { View, Pressable, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import { handleError } from '../../../src/lib/errors';
 import {
@@ -54,14 +54,10 @@ export default function Identity() {
   };
 
   return (
-    <Screen keyboardAvoiding>
+    <Screen keyboardAvoiding contentStyle={{ paddingBottom: 130 }}>
       <Pressable onPress={() => router.back()} style={{ paddingTop: 8 }}>
         <ChevronLeft />
       </Pressable>
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingBottom: 130 }}
-      >
         <View style={{ marginTop: 12 }}>
           <Stepper count={4} current={0} label="STEP 1 OF 4" />
         </View>
@@ -101,7 +97,6 @@ export default function Identity() {
             </View>
           </View>
         </View>
-      </ScrollView>
       <CTABar>
         <Button label="Continue" loading={mut.isPending} onPress={submit} />
       </CTABar>
