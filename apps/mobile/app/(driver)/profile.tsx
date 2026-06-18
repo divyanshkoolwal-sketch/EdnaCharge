@@ -16,6 +16,7 @@ import { useTheme } from '../../src/theme/useTheme';
 import { trpc } from '../../src/lib/trpc';
 import { useAuth } from '../../src/state/auth';
 import { useRole } from '../../src/state/role';
+import { hostStage, hostEntryRoute } from '../../src/lib/hostEntry';
 import { VerifiedPill } from '../../src/components/VerificationBanner';
 
 const ITEMS: { key: string; label: string; icon: 'verify' | 'card' | 'bell' | 'gear' | 'help'; path: string; params?: Record<string, string> }[] = [
@@ -40,7 +41,7 @@ export default function Profile() {
   const me = trpc.auth.getSession.useQuery();
   const setRole = useRole((s) => s.setRole);
   const signOut = useAuth((s) => s.signOut);
-  const isHost = me.data?.roles.includes('host');
+  const stage = hostStage(me.data);
 
   return (
     <Screen scroll contentStyle={{ paddingBottom: 40 }}>
@@ -58,11 +59,13 @@ export default function Profile() {
       {/* Become a host card */}
       <Pressable
         onPress={() => {
-          if (isHost) {
+          if (stage === 'complete') {
             setRole('host');
             router.replace('/(host)/home');
           } else {
-            router.push('/(host)/host-onboarding/intro');
+            // Resume onboarding at the next unfinished step (or start it) — never
+            // send a partially-onboarded host back to the "Get started" intro.
+            router.push(hostEntryRoute(me.data) as never);
           }
         }}
         style={({ pressed }) => ({
@@ -90,10 +93,18 @@ export default function Profile() {
           </View>
           <View style={{ flex: 1 }}>
             <Text style={{ fontSize: 16, fontWeight: '700', color: '#0F0F10' }}>
-              {isHost ? 'Switch to host' : 'Become a host'}
+              {stage === 'complete'
+                ? 'Switch to host'
+                : stage === 'in_progress'
+                  ? 'Finish host setup'
+                  : 'Become a host'}
             </Text>
             <Text style={{ fontSize: 12, color: 'rgba(15,15,16,0.7)', marginTop: 2 }}>
-              {isHost ? 'Open your host dashboard' : 'Earn $40–$200/mo on your home charger'}
+              {stage === 'complete'
+                ? 'Open your host dashboard'
+                : stage === 'in_progress'
+                  ? 'Pick up where you left off'
+                  : 'Earn $40–$200/mo on your home charger'}
             </Text>
           </View>
           <ChevronRight color="#0F0F10" />
