@@ -8,7 +8,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { darkColors } from '../../../src/theme/tokens';
 import { trpc } from '../../../src/lib/trpc';
-import { supabase } from '../../../src/lib/supabase';
+import { openRealtimeChannel } from '../../../src/lib/realtime';
 import { Close, Sparkline } from '../../../src/components/icons/Icon';
 import { handleError } from '../../../src/lib/errors';
 
@@ -34,10 +34,12 @@ export default function LiveSession() {
   );
 
   useEffect(() => {
-    const client = supabase;
-    if (!id || !client) return;
-    const ch = client
-      .channel(`session:${id}`)
+    if (!id) return;
+    // Unique topic per mount so re-entering a session never re-attaches to an
+    // already-subscribed channel (same crash class as the map). See realtime.ts.
+    const sub = openRealtimeChannel(`session:${id}`);
+    if (!sub) return;
+    sub.channel
       .on('broadcast', { event: 'meter_value' }, ({ payload }) => {
         latestRef.current = payload as MeterSample;
       })
@@ -50,7 +52,7 @@ export default function LiveSession() {
     }, 500);
     return () => {
       clearInterval(flush);
-      void client.removeChannel(ch);
+      sub.remove();
     };
   }, [id]);
 
