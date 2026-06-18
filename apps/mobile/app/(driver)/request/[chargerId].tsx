@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { View, Pressable, ActivityIndicator, ScrollView, Platform } from 'react-native';
+import { View, Pressable, ActivityIndicator, Platform } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { handleError } from '../../../src/lib/errors';
@@ -94,15 +94,11 @@ export default function RequestBooking() {
   const totalCents = energyCents + feeCents;
 
   return (
-    <Screen keyboardAvoiding>
+    <Screen keyboardAvoiding contentStyle={{ paddingBottom: 130 }}>
       <Pressable onPress={() => router.back()} style={{ paddingTop: 8 }}>
         <ChevronLeft />
       </Pressable>
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingBottom: 130 }}
-      >
-        <H1 style={{ marginTop: 14 }}>Request{'\n'}booking</H1>
+      <H1 style={{ marginTop: 14 }}>Request{'\n'}booking</H1>
 
         <FrameSoft style={{ marginTop: 16 }}>
           <Row gap={10}>
@@ -185,7 +181,6 @@ export default function RequestBooking() {
             Your card is held — you'll only be charged for what you actually use.
           </Muted>
         </Card>
-      </ScrollView>
       <CTABar>
         <Button
           label="Send request"

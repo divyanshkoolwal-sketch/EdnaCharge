@@ -67,7 +67,7 @@ export default function SignIn() {
   };
 
   return (
-    <Screen>
+    <Screen keyboardAvoiding contentStyle={{ paddingBottom: 24 }}>
       <Pressable onPress={() => router.back()} style={{ paddingTop: 8 }}>
         <ChevronLeft />
       </Pressable>

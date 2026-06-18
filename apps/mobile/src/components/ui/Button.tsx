@@ -1,4 +1,14 @@
-import { Pressable, Text, ActivityIndicator, View, type GestureResponderEvent, type PressableProps } from 'react-native';
+import { useEffect, useState } from 'react';
+import {
+  Pressable,
+  Text,
+  ActivityIndicator,
+  View,
+  Keyboard,
+  Platform,
+  type GestureResponderEvent,
+  type PressableProps,
+} from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { useTheme } from '../../theme/useTheme';
 
@@ -143,19 +153,45 @@ export function IconCircle({
   );
 }
 
-// CTA bar — bottom-pinned button (or button stack) with a soft fade behind.
+// CTA bar — bottom-pinned button (or button stack).
+//
+// Keyboard-aware: when the software keyboard is up it rises to sit directly
+// above it, so the primary action is never hidden behind the keyboard (the
+// root cause of the "can't reach submit / dead-end form" bug). Because the bar
+// is absolutely positioned, a plain KeyboardAvoidingView could not lift it —
+// this tracks the keyboard height directly instead.
 export function CTABar({ children }: { children: React.ReactNode }) {
   const { c } = useTheme();
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+
+  useEffect(() => {
+    // iOS fires Will* slightly ahead of the animation (smoother); Android only
+    // reliably fires Did*.
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const show = Keyboard.addListener(showEvent, (e) =>
+      setKeyboardHeight(e.endCoordinates?.height ?? 0),
+    );
+    const hide = Keyboard.addListener(hideEvent, () => setKeyboardHeight(0));
+    return () => {
+      show.remove();
+      hide.remove();
+    };
+  }, []);
+
+  const lifted = keyboardHeight > 0;
   return (
     <View
       style={{
         position: 'absolute',
         left: 0,
         right: 0,
-        bottom: 0,
+        // Sit just above the keyboard when it's open; otherwise pin to the
+        // bottom with the safe-area gap.
+        bottom: lifted ? keyboardHeight : 0,
         paddingHorizontal: 24,
         paddingTop: 16,
-        paddingBottom: 32,
+        paddingBottom: lifted ? 12 : 32,
         backgroundColor: c.bg,
         gap: 10,
       }}

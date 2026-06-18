@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Pressable, View, ScrollView } from 'react-native';
+import { Pressable, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { handleError } from '../../src/lib/errors';
 import {
@@ -48,14 +48,10 @@ export default function DriverProfile() {
   });
 
   return (
-    <Screen keyboardAvoiding>
+    <Screen keyboardAvoiding contentStyle={{ paddingBottom: 130 }}>
       <Pressable onPress={() => router.back()} style={{ paddingTop: 8 }}>
         <ChevronLeft />
       </Pressable>
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingBottom: 130 }}
-      >
         <View style={{ marginTop: 16 }}>
           <H1>Tell us about{'\n'}your ride.</H1>
         </View>
@@ -96,7 +92,6 @@ export default function DriverProfile() {
             autoCapitalize="characters"
           />
         </View>
-      </ScrollView>
       <CTABar>
         <Button
           label="Continue to map"

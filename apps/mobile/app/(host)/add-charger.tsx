@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { View, Pressable, ScrollView, Alert, useColorScheme } from 'react-native';
+import { View, Pressable, Alert, useColorScheme } from 'react-native';
 import { useRouter } from 'expo-router';
 import Mapbox, {
   MapView,
@@ -114,11 +114,10 @@ export default function AddCharger() {
   };
 
   return (
-    <Screen keyboardAvoiding>
+    <Screen keyboardAvoiding contentStyle={{ paddingBottom: 130 }}>
       <Pressable onPress={() => router.back()} style={{ paddingTop: 8 }}>
         <ChevronLeft />
       </Pressable>
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 130 }}>
         <View style={{ marginTop: 12 }}>
           <Stepper count={5} current={3} label="STEP 4 OF 5" />
         </View>
@@ -259,7 +258,6 @@ export default function AddCharger() {
             </Muted>
           </View>
         </View>
-      </ScrollView>
       <CTABar>
         <Button label="Publish charger" loading={create.isPending} onPress={submit} />
       </CTABar>
