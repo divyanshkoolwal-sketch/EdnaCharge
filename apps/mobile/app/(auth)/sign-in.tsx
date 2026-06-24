@@ -6,6 +6,7 @@ import { ChevronLeft } from '../../src/components/icons/Icon';
 import { trpc } from '../../src/lib/trpc';
 import { authErrorMessage, useAuth } from '../../src/state/auth';
 import { useTheme } from '../../src/theme/useTheme';
+import { MIN_PASSWORD_LENGTH, validateNewPassword } from '../../src/lib/passwordPolicy';
 
 export default function SignIn() {
   const router = useRouter();
@@ -18,14 +19,25 @@ export default function SignIn() {
   const createAccountWithEmail = useAuth((s) => s.createAccountWithEmail);
   const sendPasswordReset = useAuth((s) => s.sendPasswordReset);
   const utils = trpc.useUtils();
-  const passwordTooShort = password.length > 0 && password.length < 6;
-  const canSubmit = email.trim().length > 3 && password.length >= 6;
+  // Strong policy only at account CREATION. Sign-in keeps a low bar so existing
+  // users with shorter (pre-policy) passwords are never locked out.
+  const minLen = mode === 'create' ? MIN_PASSWORD_LENGTH : 6;
+  const passwordTooShort = password.length > 0 && password.length < minLen;
+  const canSubmit = email.trim().length > 3 && password.length >= minLen;
 
   const submit = async () => {
     if (!canSubmit) return;
     try {
       setBusy(true);
       if (mode === 'create') {
+        // Min-length + breached-password (HIBP k-anonymity) screening before
+        // we ever hand the password to Firebase. Fails open on network error.
+        const pwError = await validateNewPassword(password);
+        if (pwError) {
+          Alert.alert('Choose a stronger password', pwError);
+          setBusy(false);
+          return;
+        }
         await createAccountWithEmail(email, password);
       } else {
         await signInWithEmail(email, password);
@@ -92,12 +104,12 @@ export default function SignIn() {
           label="Password"
           value={password}
           onChangeText={setPassword}
-          placeholder="At least 6 characters"
+          placeholder={mode === 'create' ? `At least ${MIN_PASSWORD_LENGTH} characters` : 'Your password'}
           autoCapitalize="none"
           autoComplete={mode === 'create' ? 'new-password' : 'password'}
           secureTextEntry
           textContentType={mode === 'create' ? 'newPassword' : 'password'}
-          error={passwordTooShort ? 'Use at least 6 characters.' : undefined}
+          error={passwordTooShort ? `Use at least ${minLen} characters.` : undefined}
         />
         <View style={{ gap: 14 }}>
           {mode === 'sign-in' ? (
