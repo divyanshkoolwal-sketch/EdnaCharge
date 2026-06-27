@@ -21,7 +21,7 @@ import { openRealtimeChannel } from '../../src/lib/realtime';
 import { useTheme } from '../../src/theme/useTheme';
 import { useUserLocation } from '../../src/state/userLocation';
 import { Search, Recenter, Bolt } from '../../src/components/icons/Icon';
-import { IconCircle } from '../../src/components/ui';
+import { IconCircle, useToast } from '../../src/components/ui';
 import { VerificationBanner } from '../../src/components/VerificationBanner';
 
 const MAPBOX_TOKEN = process.env.EXPO_PUBLIC_MAPBOX_TOKEN ?? '';
@@ -113,6 +113,12 @@ export default function Map() {
       refetchOnWindowFocus: true,
     },
   );
+
+  // Surface nearby-charger load failures (previously silent → blank map).
+  const toast = useToast();
+  useEffect(() => {
+    if (nearby.isError) toast.show('Could not load nearby chargers. Retrying…', 'error');
+  }, [nearby.isError, toast]);
 
   // Refetch whenever the user returns to the Map tab so a charger they (or
   // another host) just published shows up without manual refresh.

@@ -12,6 +12,9 @@ import {
   type Status,
   Button,
   SectionHeader,
+  ListSkeleton,
+  EmptyState,
+  ErrorState,
 } from '../../src/components/ui';
 import { Bolt } from '../../src/components/icons/Icon';
 import { useTheme } from '../../src/theme/useTheme';
@@ -62,9 +65,22 @@ export default function HostHome() {
 
       <SectionHeader>Your chargers</SectionHeader>
       <View style={{ gap: 10 }}>
-        {(chargers.data ?? []).map((ch: { id: string; title: string; connectorType: string; powerKw: number; status: string }) => (
+        {chargers.isLoading ? (
+          <ListSkeleton count={2} />
+        ) : chargers.isError ? (
+          <ErrorState onRetry={() => chargers.refetch()} />
+        ) : (chargers.data ?? []).length === 0 ? (
+          <EmptyState
+            compact
+            title="No chargers yet"
+            subtitle="List your home charger to start receiving bookings and earning."
+          />
+        ) : (
+          (chargers.data ?? []).map((ch: { id: string; title: string; connectorType: string; powerKw: number; status: string }) => (
           <Pressable
             key={ch.id}
+            accessibilityRole="button"
+            accessibilityLabel={`${ch.title}, ${ch.connectorType.toUpperCase()} ${ch.powerKw} kilowatts, status ${ch.status}`}
             onPress={() =>
               router.push({ pathname: '/(host)/charger/[id]', params: { id: ch.id } })
             }
@@ -93,10 +109,8 @@ export default function HostHome() {
               </Row>
             </Card>
           </Pressable>
-        ))}
-        {(chargers.data ?? []).length === 0 ? (
-          <Muted>No chargers yet.</Muted>
-        ) : null}
+          ))
+        )}
       </View>
 
       <Button

@@ -1,15 +1,18 @@
 import { View, Pressable, Text } from 'react-native';
+import { useState } from 'react';
 import { useRouter } from 'expo-router';
 import {
   Screen,
   H1,
   Avatar,
   Row,
-  Body,
   Muted,
   StatusPill,
   type Status,
   List,
+  ListSkeleton,
+  EmptyState,
+  ErrorState,
 } from '../../src/components/ui';
 import { useTheme } from '../../src/theme/useTheme';
 import { trpc } from '../../src/lib/trpc';
@@ -19,6 +22,17 @@ export default function Chats() {
   const { c } = useTheme();
   const q = trpc.chat.listThreads.useQuery(undefined, { refetchInterval: 10000 });
   type Thread = NonNullable<typeof q.data>[number];
+  // Manual pull-to-refresh state (kept separate from the 10s background poll so
+  // the spinner only shows on an explicit pull, not on every interval tick).
+  const [refreshing, setRefreshing] = useState(false);
+  const onRefresh = async () => {
+    setRefreshing(true);
+    try {
+      await q.refetch();
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   return (
     <Screen flush>
@@ -30,16 +44,33 @@ export default function Chats() {
         keyExtractor={(t) => t.id}
         estimatedItemSize={76}
         contentContainerStyle={{ paddingHorizontal: 24, paddingBottom: 16 }}
+        refreshing={refreshing}
+        onRefresh={onRefresh}
         ListEmptyComponent={
-          <Muted style={{ textAlign: 'center', marginTop: 40 }}>
-            {q.isLoading ? 'Loading…' : 'No conversations yet.'}
-          </Muted>
+          q.isLoading ? (
+            <View style={{ paddingTop: 8 }}>
+              <ListSkeleton count={5} />
+            </View>
+          ) : q.isError ? (
+            <ErrorState onRetry={() => q.refetch()} />
+          ) : (
+            <EmptyState
+              title="No conversations yet"
+              subtitle="Chats open up once you book a charger. Find one nearby to get started."
+              actionLabel="Find a charger"
+              onAction={() => router.replace('/(driver)/map')}
+            />
+          )
         }
         renderItem={({ item }) => {
           const last = item.messages[0];
           const counterpartyName = item.booking.charger.title;
           return (
             <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`Chat about ${counterpartyName}. ${
+                last?.body ? `Last message: ${last.body}` : 'No messages yet'
+              }`}
               onPress={() =>
                 router.push({
                   pathname: '/(driver)/chat/[bookingId]',
