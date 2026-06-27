@@ -21,6 +21,7 @@ export function H1(props: TextProps) {
   const { c, fontSize, fontWeight } = useTheme();
   return (
     <Text
+      accessibilityRole="header"
       {...props}
       style={[
         {
@@ -40,6 +41,7 @@ export function H1Lg(props: TextProps) {
   const { c, fontSize, fontWeight } = useTheme();
   return (
     <Text
+      accessibilityRole="header"
       {...props}
       style={[
         {
@@ -59,6 +61,7 @@ export function H2(props: TextProps) {
   const { c, fontSize, fontWeight } = useTheme();
   return (
     <Text
+      accessibilityRole="header"
       {...props}
       style={[
         {

@@ -75,6 +75,17 @@ export function Button({
       {...rest}
       onPress={handlePress}
       disabled={isDisabled}
+      // a11y on the primitive → every button in the app is screen-reader
+      // friendly without per-call-site work. State announces disabled/busy.
+      accessibilityRole="button"
+      accessibilityLabel={rest.accessibilityLabel ?? label}
+      accessibilityState={{ disabled: !!isDisabled, busy: !!loading }}
+      accessibilityHint={
+        rest.accessibilityHint ??
+        (variant === 'destructive' || variant === 'destructive-outline'
+          ? 'Performs a destructive action'
+          : undefined)
+      }
       style={({ pressed }) => [
         {
           backgroundColor: bg,

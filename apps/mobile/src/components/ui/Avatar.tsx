@@ -28,6 +28,8 @@ export function Avatar({
     .toUpperCase();
   return (
     <View
+      accessible
+      accessibilityLabel={name && name !== 'EC' ? `${name}, avatar` : 'Avatar'}
       style={{
         width: box,
         height: box,

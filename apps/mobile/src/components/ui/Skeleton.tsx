@@ -1,10 +1,27 @@
-import { View, type ViewStyle, type DimensionValue } from 'react-native';
+import { useEffect, useRef } from 'react';
+import { Animated, type ViewStyle, type DimensionValue } from 'react-native';
 import { useTheme } from '../../theme/useTheme';
 
 /**
- * Static skeleton placeholder (no animation library → safe on any build).
- * Replaces blank screens / bare spinners while a query is loading.
+ * Skeleton placeholder with a gentle opacity pulse (RN Animated, native driver
+ * — no Reanimated worklets). A pulsing skeleton reads as "loading" far better
+ * than a static gray block or a bare spinner, and lowers perceived latency.
  */
+function usePulse() {
+  const v = useRef(new Animated.Value(0.5)).current;
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(v, { toValue: 1, duration: 700, useNativeDriver: true }),
+        Animated.timing(v, { toValue: 0.5, duration: 700, useNativeDriver: true }),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [v]);
+  return v;
+}
+
 export function Skeleton({
   width = '100%',
   height = 14,
@@ -17,9 +34,15 @@ export function Skeleton({
   style?: ViewStyle;
 }) {
   const { c, radius } = useTheme();
+  const opacity = usePulse();
   return (
-    <View
-      style={[{ width, height, borderRadius: r ?? radius.input, backgroundColor: c.chip }, style]}
+    <Animated.View
+      accessibilityElementsHidden
+      importantForAccessibility="no-hide-descendants"
+      style={[
+        { width, height, borderRadius: r ?? radius.input, backgroundColor: c.chip, opacity },
+        style,
+      ]}
     />
   );
 }
@@ -28,7 +51,9 @@ export function Skeleton({
 export function SkeletonCard() {
   const { c, radius } = useTheme();
   return (
-    <View
+    <Animated.View
+      accessibilityElementsHidden
+      importantForAccessibility="no-hide-descendants"
       style={{
         backgroundColor: c.card,
         borderRadius: radius.card,
@@ -41,17 +66,21 @@ export function SkeletonCard() {
       <Skeleton width="60%" height={14} />
       <Skeleton width="40%" height={11} />
       <Skeleton width={84} height={22} radius={999} />
-    </View>
+    </Animated.View>
   );
 }
 
 /** A stack of skeleton cards for a list's loading state. */
 export function ListSkeleton({ count = 4 }: { count?: number }) {
   return (
-    <View style={{ gap: 10 }}>
+    <Animated.View
+      accessibilityLabel="Loading"
+      accessibilityRole="progressbar"
+      style={{ gap: 10 }}
+    >
       {Array.from({ length: count }).map((_, i) => (
         <SkeletonCard key={i} />
       ))}
-    </View>
+    </Animated.View>
   );
 }

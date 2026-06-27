@@ -29,6 +29,12 @@ export function Chip({ label, variant = 'default', selected, iconLeft, onPress, 
   return (
     <Pressable
       onPress={onPress}
+      // Interactive chips read as buttons (with selected state); a Chip with no
+      // onPress (e.g. StatusPill) reads as plain text so status is announced by
+      // label, never by color alone.
+      accessibilityRole={onPress ? 'button' : 'text'}
+      accessibilityLabel={label}
+      accessibilityState={onPress ? { selected: !!selected } : undefined}
       {...rest}
       style={({ pressed }) => [
         {
