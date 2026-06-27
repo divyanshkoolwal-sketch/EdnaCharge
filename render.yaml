@@ -77,6 +77,13 @@ services:
     runtime: node
     region: oregon
     plan: starter
+    # ⚠️ MUST stay a SINGLE instance. The CSMS holds the charge-point registry
+    # in memory (apps/csms/src/lib/registry.ts) and consumes the ocpp-commands
+    # queue to route RemoteStart to a live WebSocket. A 2nd instance would
+    # fragment the registry and consume commands for chargers whose socket it
+    # doesn't hold → silent RemoteStart failures. Scale VERTICALLY (bigger plan)
+    # until a Redis-backed registry exists. Do not enable autoscaling here.
+    numInstances: 1
     branch: main
     autoDeploy: true
     buildCommand: corepack enable && corepack prepare pnpm@10.28.0 --activate && pnpm install --prod=false --frozen-lockfile && pnpm --filter @edna/db generate

@@ -87,7 +87,10 @@ async function main() {
   // OCPP websocket upgrade); fall back to the configured port locally.
   const port = Number(process.env.PORT) || env.CSMS_PORT;
   await app.listen({ port, host: '0.0.0.0' });
-  logger.info({ port }, 'csms listening (OCPP + HTTP)');
+  logger.info(
+    { port, singleInstance: true },
+    'csms listening (OCPP + HTTP) — single-instance only (in-memory registry); do not horizontally scale (see lib/registry.ts)',
+  );
 
   startCommandConsumer(env.REDIS_URL);
   logger.info('ocpp-commands consumer started');
