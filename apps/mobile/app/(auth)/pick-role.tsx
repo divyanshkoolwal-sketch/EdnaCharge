@@ -4,6 +4,7 @@ import { Screen, H1, Body, Muted, Label } from '../../src/components/ui';
 import { Bolt } from '../../src/components/icons/Icon';
 import { useTheme } from '../../src/theme/useTheme';
 import { useRole } from '../../src/state/role';
+import { haptics } from '../../src/lib/haptics';
 
 export default function PickRole() {
   const router = useRouter();
@@ -11,11 +12,13 @@ export default function PickRole() {
   const setRole = useRole((s) => s.setRole);
 
   const pickDriver = () => {
+    haptics.selection();
     setRole('driver');
     router.replace('/(auth)/driver-profile');
   };
 
   const pickHost = () => {
+    haptics.selection();
     setRole('host');
     router.replace('/(host)/host-onboarding/intro');
   };
@@ -30,8 +33,10 @@ export default function PickRole() {
 
       <Pressable
         onPress={pickDriver}
+        accessibilityRole="button"
+        accessibilityLabel="I want to charge. Find chargers near you and book in seconds."
         style={({ pressed }) => ({
-          backgroundColor: '#0F0F10',
+          backgroundColor: c.ink,
           borderRadius: 22,
           padding: 22,
           minHeight: 140,
@@ -63,11 +68,13 @@ export default function PickRole() {
 
       <Pressable
         onPress={pickHost}
+        accessibilityRole="button"
+        accessibilityLabel="I want to host my charger. Earn 40 to 200 dollars a month on your home charger."
         style={({ pressed }) => ({
-          backgroundColor: '#C9E8C7',
+          backgroundColor: c.greenPill,
           borderRadius: 22,
           borderWidth: 1,
-          borderColor: '#6BB36C',
+          borderColor: c.green2,
           padding: 22,
           minHeight: 140,
           justifyContent: 'space-between',

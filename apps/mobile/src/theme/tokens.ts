@@ -19,6 +19,13 @@ export type ColorTokens = {
   redPill: string;
   yellow: string;
   chip: string;
+  // Semantic aliases (status/feedback). Screens were hardcoding these hexes;
+  // naming them keeps feedback colors consistent and themeable.
+  success: string;
+  warning: string;
+  warningPill: string;
+  error: string;
+  info: string;
 };
 
 export const lightColors: ColorTokens = {
@@ -39,6 +46,11 @@ export const lightColors: ColorTokens = {
   redPill: 'rgba(226,107,92,0.15)',
   yellow: '#F4E58A',
   chip: '#F2F1ED',
+  success: '#6BB36C',
+  warning: '#D8954E',
+  warningPill: 'rgba(216,149,78,0.18)',
+  error: '#E26B5C',
+  info: '#4A86C5',
 };
 
 export const darkColors: ColorTokens = {
@@ -59,6 +71,11 @@ export const darkColors: ColorTokens = {
   redPill: 'rgba(200,88,76,0.20)',
   yellow: '#B5A75A',
   chip: '#232325',
+  success: '#A9DCAA',
+  warning: '#D8954E',
+  warningPill: 'rgba(216,149,78,0.22)',
+  error: '#C8584C',
+  info: '#6AA6E0',
 };
 
 export const radius = {

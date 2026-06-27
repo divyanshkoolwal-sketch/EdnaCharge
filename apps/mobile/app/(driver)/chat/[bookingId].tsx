@@ -173,6 +173,7 @@ export default function ChatThread() {
             onChangeText={setDraft}
             placeholder="Message…"
             placeholderTextColor={c.muted2}
+            accessibilityLabel="Message"
             multiline
             style={{
               flex: 1,
@@ -188,6 +189,9 @@ export default function ChatThread() {
             }}
           />
           <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Send message"
+            accessibilityState={{ disabled: !draft.trim() }}
             onPress={() =>
               q.data?.id && draft.trim() && send.mutate({ threadId: q.data.id, body: draft.trim() })
             }

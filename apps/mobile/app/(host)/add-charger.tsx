@@ -17,9 +17,9 @@ import {
   H1,
   Muted,
   Label,
-  Stepper,
   Chip,
   Row,
+  useToast,
 } from '../../src/components/ui';
 import { ChevronLeft } from '../../src/components/icons/Icon';
 import { useTheme } from '../../src/theme/useTheme';
@@ -41,12 +41,15 @@ export default function AddCharger() {
   const session = trpc.auth.getSession.useQuery();
   const utils = trpc.useUtils();
   const userCoords = useUserLocation((s) => s.coords);
+  const toast = useToast();
   const cameraRef = useRef<CameraRef>(null);
   const create = trpc.charger.create.useMutation({
     onSuccess: (ch) => {
       utils.charger.nearby.invalidate();
       utils.charger.myChargers.invalidate();
       utils.auth.getSession.invalidate();
+      // Toast persists across navigation (provider is above the navigator).
+      toast.show('Charger published', 'success');
       // v1 is OCPP-only: every charger lands on its detail screen, where the
       // host connects it to the CSMS.
       router.replace({ pathname: '/(host)/charger/[id]', params: { id: ch.id } });
@@ -118,8 +121,10 @@ export default function AddCharger() {
       <Pressable onPress={() => router.back()} style={{ paddingTop: 8 }}>
         <ChevronLeft />
       </Pressable>
+        {/* This is a single-screen form, not a 5-step wizard — the old
+            "STEP 4 OF 5" stepper was misleading. */}
         <View style={{ marginTop: 12 }}>
-          <Stepper count={5} current={3} label="STEP 4 OF 5" />
+          <Label>LIST YOUR CHARGER</Label>
         </View>
         <H1 style={{ marginTop: 14 }}>Set your price</H1>
         <Card padding={18} style={{ marginTop: 16, alignItems: 'center' }}>

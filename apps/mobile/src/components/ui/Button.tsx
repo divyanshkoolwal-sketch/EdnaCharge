@@ -75,6 +75,17 @@ export function Button({
       {...rest}
       onPress={handlePress}
       disabled={isDisabled}
+      // a11y on the primitive → every button in the app is screen-reader
+      // friendly without per-call-site work. State announces disabled/busy.
+      accessibilityRole="button"
+      accessibilityLabel={rest.accessibilityLabel ?? label}
+      accessibilityState={{ disabled: !!isDisabled, busy: !!loading }}
+      accessibilityHint={
+        rest.accessibilityHint ??
+        (variant === 'destructive' || variant === 'destructive-outline'
+          ? 'Performs a destructive action'
+          : undefined)
+      }
       style={({ pressed }) => [
         {
           backgroundColor: bg,
@@ -121,18 +132,23 @@ export function IconCircle({
   variant = 'card',
   onPress,
   style,
+  accessibilityLabel,
 }: {
   children: React.ReactNode;
   size?: number;
   variant?: 'card' | 'dark';
   onPress?: () => void;
   style?: PressableProps['style'];
+  /** Icon-only buttons must be labeled for screen readers. */
+  accessibilityLabel?: string;
 }) {
   const { c, shadow } = useTheme();
   return (
     <Pressable
       onPress={onPress}
       hitSlop={8}
+      accessibilityRole={onPress ? 'button' : undefined}
+      accessibilityLabel={accessibilityLabel}
       style={({ pressed }) => [
         {
           width: size,

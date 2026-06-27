@@ -12,7 +12,10 @@ export function Stepper({
 }) {
   const { c, fontSize, fontWeight } = useTheme();
   return (
-    <View>
+    <View
+      accessibilityRole="progressbar"
+      accessibilityLabel={`Step ${Math.min(current + 1, count)} of ${count}`}
+    >
       {label ? (
         <Text
           style={{

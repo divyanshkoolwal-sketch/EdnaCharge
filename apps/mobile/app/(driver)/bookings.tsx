@@ -13,10 +13,13 @@ import {
   type Status,
   List,
   ListSkeleton,
+  EmptyState,
+  ErrorState,
 } from '../../src/components/ui';
 import { ChevronRight } from '../../src/components/icons/Icon';
 import { useTheme } from '../../src/theme/useTheme';
 import { trpc } from '../../src/lib/trpc';
+import { haptics } from '../../src/lib/haptics';
 
 type Filter = 'all' | 'upcoming' | 'past';
 
@@ -24,6 +27,11 @@ export default function Bookings() {
   const router = useRouter();
   const { c } = useTheme();
   const [filter, setFilter] = useState<Filter>('all');
+  const [refreshing, setRefreshing] = useState(false);
+  const selectFilter = (f: Filter) => {
+    haptics.selection();
+    setFilter(f);
+  };
   const q = trpc.booking.list.useInfiniteQuery(
     { role: 'driver' },
     { getNextPageParam: (last) => last.nextCursor ?? undefined },
@@ -44,9 +52,9 @@ export default function Bookings() {
       <View style={{ paddingHorizontal: 24, paddingTop: 8 }}>
         <H1 style={{ marginTop: 14 }}>Your bookings</H1>
         <Row gap={6} style={{ marginTop: 14 }}>
-          <Chip label="All" selected={filter === 'all'} variant="outline" onPress={() => setFilter('all')} />
-          <Chip label="Upcoming" selected={filter === 'upcoming'} variant="outline" onPress={() => setFilter('upcoming')} />
-          <Chip label="Past" selected={filter === 'past'} variant="outline" onPress={() => setFilter('past')} />
+          <Chip label="All" selected={filter === 'all'} variant="outline" onPress={() => selectFilter('all')} />
+          <Chip label="Upcoming" selected={filter === 'upcoming'} variant="outline" onPress={() => selectFilter('upcoming')} />
+          <Chip label="Past" selected={filter === 'past'} variant="outline" onPress={() => selectFilter('past')} />
         </Row>
       </View>
       <List
@@ -59,13 +67,31 @@ export default function Bookings() {
         onEndReached={() => {
           if (q.hasNextPage && !q.isFetchingNextPage) q.fetchNextPage();
         }}
+        refreshing={refreshing}
+        onRefresh={async () => {
+          setRefreshing(true);
+          try {
+            await q.refetch();
+          } finally {
+            setRefreshing(false);
+          }
+        }}
         ListEmptyComponent={
           q.isLoading ? (
             <ListSkeleton />
+          ) : q.isError ? (
+            <ErrorState onRetry={() => q.refetch()} />
           ) : (
-            <Muted style={{ textAlign: 'center', marginTop: 40 }}>
-              No bookings yet — find a charger →
-            </Muted>
+            <EmptyState
+              title={filter === 'all' ? 'No bookings yet' : `No ${filter} bookings`}
+              subtitle={
+                filter === 'all'
+                  ? 'Your charging sessions will show up here once you book a charger.'
+                  : 'Nothing here for this filter.'
+              }
+              actionLabel={filter === 'all' ? 'Find a charger' : undefined}
+              onAction={filter === 'all' ? () => router.replace('/(driver)/map') : undefined}
+            />
           )
         }
         ListFooterComponent={
@@ -75,6 +101,10 @@ export default function Bookings() {
         }
         renderItem={({ item }) => (
           <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`Booking at ${item.charger.title}, ${new Date(
+              item.startAt,
+            ).toLocaleString()}, status ${item.status}`}
             onPress={() => router.push({ pathname: '/(driver)/booking/[id]', params: { id: item.id } })}
           >
             <Card padding={14}>

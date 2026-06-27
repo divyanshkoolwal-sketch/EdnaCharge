@@ -10,6 +10,8 @@ import {
   Row,
   SectionHeader,
   Chip,
+  EmptyState,
+  ErrorState,
 } from '../../src/components/ui';
 import { ChevronRight, Star } from '../../src/components/icons/Icon';
 import { useTheme } from '../../src/theme/useTheme';
@@ -86,11 +88,27 @@ export default function Earnings() {
         scrollEnabled={false}
         data={q.data?.rows ?? []}
         keyExtractor={(b) => b.id}
-        ListEmptyComponent={<Muted>No completed sessions yet.</Muted>}
+        ListEmptyComponent={
+          q.isError ? (
+            <ErrorState onRetry={() => q.refetch()} />
+          ) : (
+            <EmptyState
+              compact
+              title="No completed sessions yet"
+              subtitle="Earnings from finished charging sessions will appear here."
+            />
+          )
+        }
         renderItem={({ item }) => {
           const myReview = item.reviews?.[0] ?? null;
           return (
             <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`Session at ${item.charger.title}, ${new Date(
+                item.startAt,
+              ).toLocaleDateString()}, earned $${((item.capturedAmountCents ?? 0) / 100).toFixed(2)}${
+                myReview ? `, rated ${myReview.stars} stars` : ', not yet rated'
+              }`}
               onPress={() =>
                 router.push({
                   pathname: '/(host)/review/[bookingId]',
