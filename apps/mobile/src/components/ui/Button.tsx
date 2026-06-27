@@ -132,18 +132,23 @@ export function IconCircle({
   variant = 'card',
   onPress,
   style,
+  accessibilityLabel,
 }: {
   children: React.ReactNode;
   size?: number;
   variant?: 'card' | 'dark';
   onPress?: () => void;
   style?: PressableProps['style'];
+  /** Icon-only buttons must be labeled for screen readers. */
+  accessibilityLabel?: string;
 }) {
   const { c, shadow } = useTheme();
   return (
     <Pressable
       onPress={onPress}
       hitSlop={8}
+      accessibilityRole={onPress ? 'button' : undefined}
+      accessibilityLabel={accessibilityLabel}
       style={({ pressed }) => [
         {
           width: size,

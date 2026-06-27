@@ -18,17 +18,21 @@ import {
 import { Close, Star } from '../../../src/components/icons/Icon';
 import { useTheme } from '../../../src/theme/useTheme';
 import { trpc } from '../../../src/lib/trpc';
+import { haptics } from '../../../src/lib/haptics';
+import { useToast } from '../../../src/components/ui';
 
 export default function Receipt() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const { c } = useTheme();
   const utils = trpc.useUtils();
+  const toast = useToast();
   const q = trpc.booking.get.useQuery({ id: id! }, { enabled: !!id, refetchInterval: 3000 });
   const review = trpc.review.create.useMutation({
     onSuccess: () => {
       utils.booking.list.invalidate();
       utils.charger.get.invalidate();
+      toast.show('Thanks for your review', 'success');
       router.replace('/(driver)/bookings');
     },
     onError: (e) => handleError(e, { feature: 'Review' }),
@@ -109,10 +113,19 @@ export default function Receipt() {
 
       <SectionHeader>Rate your host</SectionHeader>
       <Card padding={14}>
-        <Row gap={6} style={{ justifyContent: 'center' }}>
+        <Row gap={6} style={{ justifyContent: 'center' }} accessibilityRole="radiogroup">
           {[1, 2, 3, 4, 5].map((n) => (
-            <Pressable key={n} onPress={() => setStars(n)}>
-              <Star size={28} color={n <= stars ? '#F2A66A' : c.line2} />
+            <Pressable
+              key={n}
+              onPress={() => {
+                haptics.selection();
+                setStars(n);
+              }}
+              accessibilityRole="radio"
+              accessibilityState={{ selected: n === stars }}
+              accessibilityLabel={`${n} star${n === 1 ? '' : 's'}`}
+            >
+              <Star size={28} color={n <= stars ? c.orange : c.line2} />
             </Pressable>
           ))}
         </Row>

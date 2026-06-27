@@ -274,6 +274,7 @@ export default function Map() {
     <View style={{ flex: 1, backgroundColor: theme.c.bg }}>
       <MapView
         style={{ flex: 1 }}
+        accessibilityLabel="Map of nearby chargers"
         styleURL={scheme === 'dark' ? STYLES.dark : STYLES.light}
         compassEnabled={false}
         scaleBarEnabled={false}
@@ -472,7 +473,7 @@ export default function Map() {
 
       {/* Recenter FAB */}
       <View style={{ position: 'absolute', right: 16, bottom: 24 }}>
-        <IconCircle size={48} onPress={recenter}>
+        <IconCircle size={48} onPress={recenter} accessibilityLabel="Recenter map on my location">
           <Recenter size={18} color={theme.c.ink} />
         </IconCircle>
       </View>
