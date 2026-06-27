@@ -1,14 +1,20 @@
+import { useEffect } from 'react';
 import { View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Screen, Button, H1Lg, Body } from '../../../src/components/ui';
 import { SuccessCheckIllo } from '../../../src/components/illustrations/HomeCharger';
 import { useRole } from '../../../src/state/role';
 import { trpc } from '../../../src/lib/trpc';
+import { haptics } from '../../../src/lib/haptics';
 
 export default function Done() {
   const router = useRouter();
   const setRole = useRole((s) => s.setRole);
   const utils = trpc.useUtils();
+  // Celebrate completion — a success haptic on the milestone screen.
+  useEffect(() => {
+    haptics.success();
+  }, []);
   return (
     <Screen style={{ paddingHorizontal: 24, paddingBottom: 30 }}>
       <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>

@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { View, Pressable, Alert } from 'react-native';
+import { View, Pressable, Alert, Platform, Text } from 'react-native';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { useRouter } from 'expo-router';
 import { handleError } from '../../../src/lib/errors';
 import {
@@ -13,11 +14,22 @@ import {
 } from '../../../src/components/ui';
 import { ChevronLeft } from '../../../src/components/icons/Icon';
 import { trpc } from '../../../src/lib/trpc';
+import { useTheme } from '../../../src/theme/useTheme';
+
+// Must be 18+ for Stripe Connect payouts → cap the picker at 18 years ago.
+const MAX_DOB = (() => {
+  const d = new Date();
+  d.setFullYear(d.getFullYear() - 18);
+  return d;
+})();
 
 export default function Identity() {
   const router = useRouter();
+  const { c, radius } = useTheme();
   const [legalName, setName] = useState('');
-  const [dob, setDob] = useState('');
+  // Native date picker instead of a free-text "YYYY-MM-DD" field (error-prone).
+  const [dobDate, setDobDate] = useState<Date | null>(null);
+  const [showDob, setShowDob] = useState(false);
   const [addressLine1, setA1] = useState('');
   const [city, setCity] = useState('');
   const [stateAbbr, setStateAbbr] = useState('');
@@ -39,12 +51,12 @@ export default function Identity() {
   });
 
   const submit = () => {
-    if (!legalName || !dob || !addressLine1 || !city || !stateAbbr || !postalCode) {
+    if (!legalName || !dobDate || !addressLine1 || !city || !stateAbbr || !postalCode) {
       return Alert.alert('Missing info', 'Fill in every field.');
     }
     mut.mutate({
       legalName,
-      dob: new Date(`${dob}T00:00:00Z`).toISOString(),
+      dob: dobDate.toISOString(),
       addressLine1,
       city,
       state: stateAbbr,
@@ -59,7 +71,7 @@ export default function Identity() {
         <ChevronLeft />
       </Pressable>
         <View style={{ marginTop: 12 }}>
-          <Stepper count={4} current={0} label="STEP 1 OF 4" />
+          <Stepper count={3} current={0} label="STEP 1 OF 3" />
         </View>
         <H1 style={{ marginTop: 14 }}>Identity</H1>
         <Muted style={{ marginTop: 6, fontSize: 13 }}>
@@ -67,12 +79,43 @@ export default function Identity() {
         </Muted>
         <View style={{ marginTop: 18, gap: 10 }}>
           <Input value={legalName} onChangeText={setName} placeholder="Legal full name" />
-          <Input
-            value={dob}
-            onChangeText={setDob}
-            placeholder="Date of birth (YYYY-MM-DD)"
-            keyboardType="numbers-and-punctuation"
-          />
+          <Pressable
+            onPress={() => setShowDob((s) => !s)}
+            accessibilityRole="button"
+            accessibilityLabel={
+              dobDate ? `Date of birth, ${dobDate.toLocaleDateString()}` : 'Select date of birth'
+            }
+            style={{
+              height: 52,
+              borderRadius: radius.input,
+              backgroundColor: c.chip,
+              paddingHorizontal: 16,
+              justifyContent: 'center',
+            }}
+          >
+            <Text style={{ fontSize: 15, color: dobDate ? c.ink : c.muted2 }}>
+              {dobDate
+                ? dobDate.toLocaleDateString(undefined, {
+                    year: 'numeric',
+                    month: 'long',
+                    day: 'numeric',
+                  })
+                : 'Date of birth'}
+            </Text>
+          </Pressable>
+          {showDob ? (
+            <DateTimePicker
+              value={dobDate ?? MAX_DOB}
+              mode="date"
+              display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+              maximumDate={MAX_DOB}
+              onChange={(_, d) => {
+                // Android closes after a pick; iOS spinner stays for adjustment.
+                setShowDob(Platform.OS === 'ios');
+                if (d) setDobDate(d);
+              }}
+            />
+          ) : null}
           <Input value={addressLine1} onChangeText={setA1} placeholder="Street address" />
           <View style={{ flexDirection: 'row', gap: 8 }}>
             <View style={{ flex: 2 }}>
