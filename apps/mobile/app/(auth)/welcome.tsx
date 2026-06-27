@@ -130,6 +130,14 @@ export default function Welcome() {
           onPress={() => continueWithProvider('apple', signInWithApple, 'Apple sign-in')}
           style={{ marginTop: 10 }}
         />
+        {/* Group fast OAuth above; email/phone below — clearer first-run choice. */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 14 }}>
+          <View style={{ flex: 1, height: 1, backgroundColor: c.line }} />
+          <Muted style={{ fontSize: 11 }} accessibilityElementsHidden>
+            or
+          </Muted>
+          <View style={{ flex: 1, height: 1, backgroundColor: c.line }} />
+        </View>
         <Button
           label="Continue with email"
           variant="secondary"

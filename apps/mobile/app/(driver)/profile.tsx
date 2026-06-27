@@ -1,4 +1,5 @@
-import { View, Pressable, Text } from 'react-native';
+import { View, Pressable, Text, Alert } from 'react-native';
+import Constants from 'expo-constants';
 import { useRouter } from 'expo-router';
 import {
   Screen,
@@ -17,6 +18,7 @@ import { trpc } from '../../src/lib/trpc';
 import { useAuth } from '../../src/state/auth';
 import { useRole } from '../../src/state/role';
 import { hostStage, hostEntryRoute } from '../../src/lib/hostEntry';
+import { haptics } from '../../src/lib/haptics';
 import { VerifiedPill } from '../../src/components/VerificationBanner';
 
 const ITEMS: { key: string; label: string; icon: 'verify' | 'card' | 'bell' | 'gear' | 'help'; path: string; params?: Record<string, string> }[] = [
@@ -118,7 +120,12 @@ export default function Profile() {
           return (
             <Pressable
               key={it.key}
-              onPress={() => router.push(it.params ? { pathname: it.path, params: it.params } as never : it.path as never)}
+              accessibilityRole="button"
+              accessibilityLabel={it.label}
+              onPress={() => {
+                haptics.selection();
+                router.push(it.params ? { pathname: it.path, params: it.params } as never : it.path as never);
+              }}
               style={{
                 flexDirection: 'row',
                 alignItems: 'center',
@@ -140,12 +147,26 @@ export default function Profile() {
       <Button
         label="Sign out"
         variant="destructive-outline"
-        onPress={async () => {
-          await signOut();
-          router.replace('/(auth)/welcome');
+        onPress={() => {
+          // Confirm before signing out — an accidental tap here is a real
+          // friction point (user has to re-auth through the whole flow).
+          Alert.alert('Sign out?', 'You can sign back in anytime.', [
+            { text: 'Cancel', style: 'cancel' },
+            {
+              text: 'Sign out',
+              style: 'destructive',
+              onPress: async () => {
+                await signOut();
+                router.replace('/(auth)/welcome');
+              },
+            },
+          ]);
         }}
         style={{ marginTop: 18 }}
       />
+      <Muted style={{ textAlign: 'center', marginTop: 16, fontSize: 11 }}>
+        EdnaCharge v{Constants.expoConfig?.version ?? '0.0.1'}
+      </Muted>
     </Screen>
   );
 }
