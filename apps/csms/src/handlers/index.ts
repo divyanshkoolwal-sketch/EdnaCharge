@@ -1,3 +1,4 @@
+import { randomInt } from 'node:crypto';
 import { prisma } from '@edna/db';
 import IORedis from 'ioredis';
 import { Queue } from 'bullmq';
@@ -123,7 +124,10 @@ export function bindHandlers(client: Client, ctx: Ctx): void {
         idTagInfo: { status: 'Accepted' },
       };
     }
-    const txId = Math.floor(Math.random() * 1_000_000_000);
+    // Cryptographically-random, non-guessable transaction id (int32 range so
+    // it fits chargers that expect a 32-bit int). A guessable id would let a
+    // second charger target another session's txId.
+    const txId = randomInt(1, 2_147_483_647);
     const session = await prisma.chargingSession.create({
       data: {
         bookingId: booking.id,
@@ -146,11 +150,24 @@ export function bindHandlers(client: Client, ctx: Ctx): void {
       }>;
     };
     if (!p.transactionId || !p.meterValue) return {};
+    const c = await chargerByCpId(ctx.chargePointId);
+    if (!c) return {};
     const session = await prisma.chargingSession.findUnique({
       where: { ocppTransactionId: p.transactionId },
     });
     if (!session) return {};
-    for (const mv of p.meterValue) {
+    // SECURITY: a charger may only report meter values for ITS OWN session.
+    // Without this, any authenticated charger could inject/distort another
+    // charger's session by guessing/observing its transactionId.
+    if (session.chargerId !== c.id) {
+      logger.warn(
+        { cpId: ctx.chargePointId, transactionId: p.transactionId, sessionChargerId: session.chargerId },
+        'MeterValues refused: transactionId belongs to a different charger',
+      );
+      return {};
+    }
+    // Bound the array so a compromised charger can't amplify DB writes/broadcasts.
+    for (const mv of p.meterValue.slice(0, 100)) {
       const energy = mv.sampledValue.find(
         (s) => s.measurand === 'Energy.Active.Import.Register' || !s.measurand,
       );
@@ -180,6 +197,7 @@ export function bindHandlers(client: Client, ctx: Ctx): void {
   client.handle('StopTransaction', async ({ params }) => {
     const p = params as { transactionId?: number; meterStop?: number; timestamp?: string };
     if (!p.transactionId) return { idTagInfo: { status: 'Accepted' } };
+    const c = await chargerByCpId(ctx.chargePointId);
     // AUDIT H3: StartTransaction's DB insert may not yet have committed when a
     // StopTransaction arrives under heavy load / network flip. Short-retry
     // with exponential backoff so we don't silently drop the stop and leave
@@ -205,8 +223,25 @@ export function bindHandlers(client: Client, ctx: Ctx): void {
       // StartTransaction can be reconciled by a background job.
       await bookingsQueue().add(
         'settle_session_by_txid',
-        { transactionId: p.transactionId, meterStop: p.meterStop, timestamp: p.timestamp },
+        {
+          transactionId: p.transactionId,
+          meterStop: p.meterStop,
+          timestamp: p.timestamp,
+          // Pass the connecting charger so the deferred settle can verify the
+          // stop came from the charger that actually owns the session.
+          chargePointId: ctx.chargePointId,
+        },
         { delay: 5_000 },
+      );
+      return { idTagInfo: { status: 'Accepted' } };
+    }
+    // SECURITY: a charger may only stop ITS OWN session. Reject a stop for a
+    // transactionId that belongs to a different charger (free-charging / metering
+    // sabotage via a guessed/observed txId).
+    if (c && session.chargerId !== c.id) {
+      logger.warn(
+        { cpId: ctx.chargePointId, transactionId: p.transactionId, sessionChargerId: session.chargerId },
+        'StopTransaction refused: transactionId belongs to a different charger',
       );
       return { idTagInfo: { status: 'Accepted' } };
     }
