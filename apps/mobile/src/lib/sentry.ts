@@ -33,12 +33,30 @@ export function parseDsn(dsn: string): Dsn | null {
 }
 
 const SENSITIVE = /(password|passwd|pwd|secret|token|authorization|api[_-]?key)/i;
+
+// Value-level redaction. Key-based scrubbing misses sensitive data that lands
+// inside a free-text string — an error message or a stack frame can carry an
+// email, a JWT/Firebase ID token, or a `Bearer <token>` header. Redact those
+// patterns from any string we ship.
+const VALUE_PATTERNS: Array<[RegExp, string]> = [
+  // JWT / Firebase ID token (three base64url segments).
+  [/\b[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b/g, '[jwt-scrubbed]'],
+  // Authorization: Bearer <token>
+  [/\bBearer\s+[A-Za-z0-9._-]+/gi, 'Bearer [scrubbed]'],
+  // Email addresses.
+  [/\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g, '[email-scrubbed]'],
+];
+function scrubText(s: string): string {
+  return VALUE_PATTERNS.reduce((acc, [re, repl]) => acc.replace(re, repl), s);
+}
+
 function scrub(obj: unknown, depth = 0): void {
   if (depth > 6 || obj == null || typeof obj !== 'object') return;
   for (const key of Object.keys(obj as Record<string, unknown>)) {
     const rec = obj as Record<string, unknown>;
     if (SENSITIVE.test(key)) rec[key] = '[scrubbed]';
     else if (rec[key] && typeof rec[key] === 'object') scrub(rec[key], depth + 1);
+    else if (typeof rec[key] === 'string') rec[key] = scrubText(rec[key] as string);
   }
 }
 

@@ -44,4 +44,17 @@ describe('buildEvent', () => {
     const e = buildEvent({ foo: 'bar' });
     expect(e.message).toBe('{"foo":"bar"}');
   });
+  it('redacts emails, JWTs, and bearer tokens from message + stack values', () => {
+    const jwt = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.SflKxwRJSMeKKF2QT4fwpMeJf36';
+    const e = buildEvent(new Error(`login failed for user@example.com with ${jwt}`));
+    const value = (e.exception as any).values[0].value as string;
+    expect(value).not.toContain('user@example.com');
+    expect(value).not.toContain(jwt);
+    expect(value).toContain('[email-scrubbed]');
+    expect(value).toContain('[jwt-scrubbed]');
+
+    const msg = buildEvent('Authorization: Bearer abc.def.ghi123456');
+    expect(msg.message).not.toContain('abc.def.ghi123456');
+    expect(msg.message as string).toContain('[scrubbed]');
+  });
 });
