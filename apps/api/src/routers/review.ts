@@ -17,6 +17,11 @@ export const reviewRouter = router({
       throw new TRPCError({ code: 'FORBIDDEN' });
     }
     const subjectId = ctx.userId === driverId ? hostId : driverId;
+    // Defense-in-depth against a self-booking (host booking their own charger):
+    // never let someone review themselves and inflate their own rating.
+    if (subjectId === ctx.userId || hostId === driverId) {
+      throw new TRPCError({ code: 'BAD_REQUEST', message: 'You cannot review your own booking.' });
+    }
     if (b.status !== 'completed') {
       throw new TRPCError({ code: 'BAD_REQUEST', message: 'Booking not completed.' });
     }

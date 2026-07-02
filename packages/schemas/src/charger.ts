@@ -15,8 +15,11 @@ const ChargerCreateFieldsZ = z
     connectorType: ConnectorTypeZ,
     powerKw: z.number().positive().max(50),
     hardwareTier: HardwareTierZ,
-    pricePerKwhCents: z.number().int().nonnegative().optional(),
-    pricePerHourCents: z.number().int().nonnegative().optional(),
+    // Bounded: positive (no accidental $0 free-charging listings) and capped
+    // well above real-world prices so a malicious/misconfigured host can't list
+    // an absurd rate that puts a huge pre-auth hold on a driver's card.
+    pricePerKwhCents: z.number().int().positive().max(2000).optional(), // ≤ $20/kWh
+    pricePerHourCents: z.number().int().positive().max(10000).optional(), // ≤ $100/hr
     houseRules: z.string().max(500).optional(),
     gateCode: z.string().max(32).optional(),
     instantAvailable: z.boolean().default(false),
