@@ -23,6 +23,7 @@ CREATE TABLE IF NOT EXISTS "Notification" (
   "id"        UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   "userId"    UUID NOT NULL,
   "kind"      "NotificationKind" NOT NULL,
+  "recipientRole" TEXT,
   "title"     TEXT NOT NULL,
   "body"      TEXT NOT NULL,
   "bookingId" UUID,

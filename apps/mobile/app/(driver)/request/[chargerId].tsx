@@ -17,6 +17,7 @@ import {
   Avatar,
   Divider,
   Input,
+  ErrorState,
 } from '../../../src/components/ui';
 import { ChevronLeft } from '../../../src/components/icons/Icon';
 import { useTheme } from '../../../src/theme/useTheme';
@@ -76,10 +77,20 @@ export default function RequestBooking() {
     onError: (e) => handleError(e, { feature: 'Booking' }),
   });
 
-  if (!charger.data) {
+  if (charger.isLoading) {
     return (
       <Screen style={{ alignItems: 'center', justifyContent: 'center' }}>
         <ActivityIndicator />
+      </Screen>
+    );
+  }
+  if (charger.isError || !charger.data) {
+    return (
+      <Screen>
+        <Pressable onPress={() => router.back()} style={{ paddingTop: 8 }} hitSlop={10}>
+          <ChevronLeft />
+        </Pressable>
+        <ErrorState onRetry={() => charger.refetch()} />
       </Screen>
     );
   }

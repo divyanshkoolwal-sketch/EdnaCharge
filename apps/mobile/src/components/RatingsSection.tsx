@@ -33,7 +33,9 @@ export function RatingsSection({ userId }: { userId?: string }) {
     <>
       <SectionHeader>Your ratings</SectionHeader>
       <Card padding={14}>
-        {count > 0 && typeof avg === 'number' ? (
+        {summary.isError || list.isError ? (
+          <Muted style={{ fontSize: 13 }}>Couldn’t load your ratings. Pull to refresh.</Muted>
+        ) : count > 0 && typeof avg === 'number' ? (
           <Row gap={8} style={{ alignItems: 'center' }}>
             <Star size={16} />
             <Body style={{ fontWeight: '800', fontSize: 20 }}>{avg.toFixed(1)}</Body>

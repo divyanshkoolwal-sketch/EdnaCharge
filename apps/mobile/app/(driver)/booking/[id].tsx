@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { View, Pressable, Platform } from 'react-native';
+import { View, Pressable, Platform, ActivityIndicator } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { handleError } from '../../../src/lib/errors';
@@ -16,6 +16,7 @@ import {
   Body,
   Divider,
   SectionHeader,
+  ErrorState,
 } from '../../../src/components/ui';
 import { ChevronLeft } from '../../../src/components/icons/Icon';
 import { useTheme } from '../../../src/theme/useTheme';
@@ -70,7 +71,23 @@ export default function BookingDetail() {
     onError: (e) => handleError(e, { feature: 'Booking' }),
   });
 
-  if (!q.data) return <Screen><View /></Screen>;
+  if (q.isLoading) {
+    return (
+      <Screen style={{ alignItems: 'center', justifyContent: 'center' }}>
+        <ActivityIndicator />
+      </Screen>
+    );
+  }
+  if (q.isError || !q.data) {
+    return (
+      <Screen>
+        <Pressable onPress={() => router.back()} style={{ paddingTop: 8 }} hitSlop={10}>
+          <ChevronLeft />
+        </Pressable>
+        <ErrorState onRetry={() => q.refetch()} />
+      </Screen>
+    );
+  }
   const b = q.data;
   const startable = b.status === 'confirmed';
   const hasSession = b.session !== null;

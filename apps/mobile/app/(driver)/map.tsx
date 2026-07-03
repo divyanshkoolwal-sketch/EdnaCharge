@@ -261,7 +261,7 @@ export default function Map() {
             ))}
             {!nearby.isLoading && (nearby.data ?? []).length === 0 ? (
               <Text style={{ color: theme.c.muted, marginTop: 24, textAlign: 'center' }}>
-                No nearby chargers found.
+                {nearby.isError ? 'Could not load chargers. Pull to refresh.' : 'No nearby chargers found.'}
               </Text>
             ) : null}
           </ScrollView>

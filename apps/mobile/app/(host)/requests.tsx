@@ -101,7 +101,10 @@ export default function Requests() {
           const remainingMs =
             new Date(item.autoDeclineAt).getTime() - Date.now();
           const remaining = Math.max(0, Math.floor(remainingMs / 60_000));
-          const urgent = remainingMs < 30 * 60_000;
+          // The auto-decline window is ~30 min, so only flag "urgent" when a
+          // request is close to expiring (was `< 30min`, which fired for every
+          // request the moment it arrived).
+          const urgent = remainingMs < 5 * 60_000;
           return (
             <Pressable
               accessibilityRole="button"

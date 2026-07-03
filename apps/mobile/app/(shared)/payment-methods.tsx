@@ -11,6 +11,7 @@ import {
   Muted,
   Row,
   Chip,
+  ErrorState,
 } from '../../src/components/ui';
 import { ChevronLeft } from '../../src/components/icons/Icon';
 import { useTheme } from '../../src/theme/useTheme';
@@ -125,9 +126,17 @@ export default function PaymentMethods() {
         keyExtractor={(pm) => pm.id}
         contentContainerStyle={{ paddingTop: 18, paddingBottom: 130, gap: 10 }}
         ListEmptyComponent={
-          <Muted style={{ textAlign: 'center', marginTop: 40 }}>
-            {list.isLoading ? 'Loading…' : 'No cards yet.'}
-          </Muted>
+          list.isError ? (
+            <ErrorState
+              title="Couldn't load your cards"
+              subtitle="Check your connection and try again."
+              onRetry={() => list.refetch()}
+            />
+          ) : (
+            <Muted style={{ textAlign: 'center', marginTop: 40 }}>
+              {list.isLoading ? 'Loading…' : 'No cards yet.'}
+            </Muted>
+          )
         }
         renderItem={({ item }) => {
           const isDefault = list.data?.defaultPaymentMethodId === item.id;

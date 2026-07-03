@@ -33,6 +33,14 @@ async function assertHost(userId: string) {
 export const chargerRouter = router({
   nearby: protectedProcedure.input(NearbyInputZ).query(async ({ input }) => {
     const { lat, lng, radiusMeters, filters } = input;
+    // Pricing is demand-based and uniform across chargers at a given instant, so
+    // a driver's max-price filter is evaluated against the current demand rate,
+    // NOT the (now-unused, null-for-new-chargers) stored price column. If the
+    // current rate already exceeds the cap, nothing qualifies.
+    const currentRateCents = demandRateCents(new Date());
+    if (typeof filters.maxPriceCents === 'number' && currentRateCents > filters.maxPriceCents) {
+      return [];
+    }
     // AUDIT C1: all filter values are bound as positional parameters — no string
     // interpolation of user input into raw SQL. connectorType is enum-validated
     // by zod upstream, but parameterizing it removes the injection surface even
@@ -53,12 +61,8 @@ export const chargerRouter = router({
     if (filters.availableNow) {
       conds.push(`status = 'available'`);
     }
-    if (typeof filters.maxPriceCents === 'number') {
-      params.push(filters.maxPriceCents);
-      conds.push(
-        `("pricePerKwhCents" is null or "pricePerKwhCents" <= $${params.length})`,
-      );
-    }
+    // maxPriceCents is handled above against the demand rate (uniform), so no
+    // per-charger price predicate here.
     const sql = `
       select id, title, "photoUrl", lat, lng, "connectorType", "powerKw",
              "pricePerKwhCents", "pricePerHourCents", status,
@@ -83,10 +87,8 @@ export const chargerRouter = router({
         distanceM: number;
       }>
     >(sql, ...params);
-    // Pricing is demand-based and server-computed — attach the current $/kWh
-    // rate (same for all chargers at a given moment) so the map/list shows a
-    // live rate instead of a stale host-entered number.
-    const currentRateCents = demandRateCents(new Date());
+    // Attach the current demand rate (computed above) so the map/list shows a
+    // live $/kWh instead of a stale host-entered number.
     return rows.map((r) => ({ ...r, currentRateCents }));
   }),
 

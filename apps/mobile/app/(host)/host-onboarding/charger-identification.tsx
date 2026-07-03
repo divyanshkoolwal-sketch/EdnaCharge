@@ -113,7 +113,10 @@ export default function ChargerIdentification() {
       ) : null}
         {isInputStep ? (
           <View style={{ marginTop: 12 }}>
-            <Stepper count={3} current={stepIndex} label={`STEP ${stepIndex + 1} OF 3`} />
+            {/* Step 2 of the overall onboarding flow (identity → charger →
+                payouts). The brand/connector/power sub-steps are content within
+                this one step, so the top progress bar stays at 2 of 3. */}
+            <Stepper count={3} current={1} label="STEP 2 OF 3" />
           </View>
         ) : null}
 

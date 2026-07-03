@@ -101,12 +101,15 @@ export default function Earnings() {
         }
         renderItem={({ item }) => {
           const myReview = item.reviews?.[0] ?? null;
+          // Host NET (their 85%), consistent with the request/review screens —
+          // not the gross the driver paid.
+          const netCents = Math.max(0, (item.capturedAmountCents ?? 0) - item.platformFeeCents);
           return (
             <Pressable
               accessibilityRole="button"
               accessibilityLabel={`Session at ${item.charger.title}, ${new Date(
                 item.startAt,
-              ).toLocaleDateString()}, earned $${((item.capturedAmountCents ?? 0) / 100).toFixed(2)}${
+              ).toLocaleDateString()}, earned $${(netCents / 100).toFixed(2)}${
                 myReview ? `, rated ${myReview.stars} stars` : ', not yet rated'
               }`}
               onPress={() =>
@@ -141,9 +144,7 @@ export default function Earnings() {
                 </Row>
               </View>
               <Row gap={6}>
-                <Body style={{ fontWeight: '700' }}>
-                  ${((item.capturedAmountCents ?? 0) / 100).toFixed(2)}
-                </Body>
+                <Body style={{ fontWeight: '700' }}>${(netCents / 100).toFixed(2)}</Body>
                 <ChevronRight color={c.muted2} />
               </Row>
             </Pressable>

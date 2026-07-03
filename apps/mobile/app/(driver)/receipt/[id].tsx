@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { View, Pressable } from 'react-native';
+import { View, Pressable, ActivityIndicator } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { handleError } from '../../../src/lib/errors';
 import {
@@ -14,6 +14,7 @@ import {
   Row,
   Divider,
   Input,
+  ErrorState,
 } from '../../../src/components/ui';
 import { Close, Star } from '../../../src/components/icons/Icon';
 import { useTheme } from '../../../src/theme/useTheme';
@@ -54,7 +55,23 @@ export default function Receipt() {
     return () => clearTimeout(t);
   }, [q.data?.capturedAmountCents, settleStartedAt]);
 
-  if (!q.data) return <Screen><View /></Screen>;
+  if (q.isLoading) {
+    return (
+      <Screen style={{ alignItems: 'center', justifyContent: 'center' }}>
+        <ActivityIndicator />
+      </Screen>
+    );
+  }
+  if (q.isError || !q.data) {
+    return (
+      <Screen>
+        <Pressable onPress={() => router.replace('/(driver)/bookings')} style={{ paddingTop: 8 }} hitSlop={10}>
+          <Close />
+        </Pressable>
+        <ErrorState onRetry={() => q.refetch()} />
+      </Screen>
+    );
+  }
   const b = q.data;
   const captured = b.capturedAmountCents ?? null;
   const kwh = b.session?.finalKwh ?? 0;

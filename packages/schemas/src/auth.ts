@@ -13,15 +13,13 @@ export const VerifyOtpInputZ = z.object({
   code: OtpCodeZ,
 });
 
-// Edit-profile: update display name and/or avatar after onboarding.
-export const UpdateProfileInputZ = z
-  .object({
-    fullName: z.string().min(1).max(100).optional(),
-    avatarUrl: z.string().url().optional(),
-  })
-  .refine((v) => v.fullName !== undefined || v.avatarUrl !== undefined, {
-    message: 'Nothing to update.',
-  });
+// Edit-profile: update the display name. Avatars are set ONLY via uploadAvatar
+// (which stores to our own bucket) — we deliberately do NOT accept an arbitrary
+// avatarUrl here, so a client can't point another user's rendered avatar at an
+// attacker-controlled URL (tracking beacon / arbitrary content).
+export const UpdateProfileInputZ = z.object({
+  fullName: z.string().min(1).max(100),
+});
 export type UpdateProfileInput = z.infer<typeof UpdateProfileInputZ>;
 
 // Avatar upload: a base64-encoded image sent to the API, which stores it in

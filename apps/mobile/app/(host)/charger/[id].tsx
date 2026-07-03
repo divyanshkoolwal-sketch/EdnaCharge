@@ -13,6 +13,7 @@ import {
   TierBadge,
   Button,
   SectionHeader,
+  ErrorState,
 } from '../../../src/components/ui';
 import { ChevronLeft } from '../../../src/components/icons/Icon';
 import { ChargerIllo } from '../../../src/components/illustrations/HomeCharger';
@@ -177,6 +178,16 @@ export default function HostChargerEdit() {
     onError: (e) => handleError(e, { feature: 'Unlist' }),
   });
 
+  if (q.isError) {
+    return (
+      <Screen>
+        <Pressable onPress={() => router.back()} style={{ paddingTop: 8 }} hitSlop={10}>
+          <ChevronLeft />
+        </Pressable>
+        <ErrorState onRetry={() => q.refetch()} />
+      </Screen>
+    );
+  }
   if (!q.data) return <Screen><View /></Screen>;
   const ch = q.data;
   const isUnlisted = !ch.published;

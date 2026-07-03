@@ -30,16 +30,13 @@ export const authRouter = router({
     });
   }),
 
-  // Edit profile: update display name and/or avatar after onboarding.
+  // Edit profile: update the display name (avatars go through uploadAvatar).
   updateProfile: protectedProcedure
     .input(UpdateProfileInputZ)
     .mutation(async ({ ctx, input }) => {
       return prisma.user.update({
         where: { id: ctx.userId },
-        data: {
-          ...(input.fullName !== undefined ? { fullName: input.fullName.trim() } : {}),
-          ...(input.avatarUrl !== undefined ? { avatarUrl: input.avatarUrl } : {}),
-        },
+        data: { fullName: input.fullName.trim() },
         select: USER_PUBLIC_SELECT,
       });
     }),
@@ -49,12 +46,9 @@ export const authRouter = router({
   uploadAvatar: protectedProcedure
     .input(UploadAvatarInputZ)
     .mutation(async ({ ctx, input }) => {
-      let bytes: Buffer;
-      try {
-        bytes = Buffer.from(input.base64, 'base64');
-      } catch {
-        throw new TRPCError({ code: 'BAD_REQUEST', message: 'Invalid image data.' });
-      }
+      // Buffer.from with 'base64' never throws (it drops invalid chars); the
+      // size guard below is the real validation.
+      const bytes = Buffer.from(input.base64, 'base64');
       // Hard cap ~3MB decoded to protect Storage + the DB.
       if (bytes.length === 0 || bytes.length > 3_000_000) {
         throw new TRPCError({ code: 'BAD_REQUEST', message: 'Image must be under 3MB.' });

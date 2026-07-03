@@ -12,7 +12,9 @@ export const notificationRouter = router({
     .query(async ({ ctx, input }) => {
       const rows = await prisma.notification.findMany({
         where: { userId: ctx.userId },
-        orderBy: { createdAt: 'desc' },
+        // `id` tiebreaker so same-createdAt rows (a booking flow can fire several
+        // in the same ms) can't drop/duplicate across a cursor page boundary.
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
         take: PAGE,
         ...(input.cursor ? { cursor: { id: input.cursor }, skip: 1 } : {}),
       });

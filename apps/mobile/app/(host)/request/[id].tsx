@@ -15,6 +15,7 @@ import {
   CTABar,
   SectionHeader,
   ListSkeleton,
+  ErrorState,
   useToast,
 } from '../../../src/components/ui';
 import { ChevronLeft, Star } from '../../../src/components/icons/Icon';
@@ -55,6 +56,16 @@ export default function HostRequestReview() {
     ]);
   };
 
+  if (q.isError) {
+    return (
+      <Screen>
+        <Pressable onPress={() => router.back()} style={{ paddingTop: 8 }} hitSlop={10}>
+          <ChevronLeft />
+        </Pressable>
+        <ErrorState onRetry={() => q.refetch()} />
+      </Screen>
+    );
+  }
   if (!q.data) {
     return (
       <Screen scroll contentStyle={{ paddingTop: 24 }}>

@@ -43,9 +43,10 @@ export async function uploadAvatar(
     _bucketReady = true;
   }
 
-  const ext = mime === 'image/png' ? 'png' : mime === 'image/webp' ? 'webp' : 'jpg';
-  // Deterministic path per user so a new upload replaces the old one (upsert).
-  const path = `${userId}.${ext}`;
+  // Fixed, extension-less path per user so a new upload always REPLACES the old
+  // object (even across formats) — no orphaned files. The content type is
+  // carried by the upload metadata + the ?v= cache-bust on the returned URL.
+  const path = userId;
   const { error: upErr } = await sb.storage
     .from(AVATAR_BUCKET)
     .upload(path, bytes, { contentType: mime, upsert: true });
