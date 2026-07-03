@@ -13,6 +13,7 @@ import {
 } from '@edna/schemas';
 import { stripe, devBypassStripe } from '../lib/stripe.js';
 import { estimateBooking } from '../lib/pricing.js';
+import { demandRateCents } from '../lib/demand-pricing.js';
 import { ocppCommandsQueue, notificationsQueue, bookingsQueue } from '../lib/queues.js';
 import { logger } from '../logger.js';
 import { Sentry } from '../sentry.js';
@@ -122,7 +123,12 @@ export const bookingRouter = router({
 
       const start = new Date(input.startAt);
       const end = new Date(input.endAt);
-      const est = estimateBooking(charger, start, end);
+      // Demand-based pricing: compute + LOCK the $/kWh rate for this booking.
+      // Both the pre-auth here and the final capture in the worker use this
+      // locked rate, so a demand shift between request and settlement can't
+      // over/undercharge.
+      const rate = demandRateCents(start);
+      const est = estimateBooking(rate, charger.powerKw, start, end);
 
       // AUDIT C3: deterministic idempotency key so client retries /
       // double-submits don't create N pre-auths + N booking rows.
@@ -164,6 +170,7 @@ export const bookingRouter = router({
           estimatedKwh: est.estimatedKwh,
           estimatedCostCents: est.energyCostCents,
           platformFeeCents: est.platformFeeCents,
+          ratePerKwhCents: est.ratePerKwhCents,
           preauthAmountCents: est.totalCents,
           driverMessage: input.message,
           stripePaymentIntentId,
@@ -215,7 +222,9 @@ export const bookingRouter = router({
 
       const start = new Date(input.startAt);
       const end = new Date(input.endAt);
-      const est = estimateBooking(b.charger, start, end);
+      // Re-quote at the current demand rate for the new window and re-lock it.
+      const rate = demandRateCents(start);
+      const est = estimateBooking(rate, b.charger.powerKw, start, end);
       const isDev = devBypassStripe();
 
       // New deterministic idempotency key keyed on the NEW window so retries of
@@ -274,6 +283,7 @@ export const bookingRouter = router({
           estimatedKwh: est.estimatedKwh,
           estimatedCostCents: est.energyCostCents,
           platformFeeCents: est.platformFeeCents,
+          ratePerKwhCents: est.ratePerKwhCents,
           preauthAmountCents: est.totalCents,
           stripePaymentIntentId,
         },

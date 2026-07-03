@@ -85,11 +85,10 @@ export default function RequestBooking() {
   }
   const ch = charger.data;
   const estKwh = ch.powerKw * hours;
-  const energyCents = ch.pricePerKwhCents
-    ? ch.pricePerKwhCents * estKwh
-    : ch.pricePerHourCents
-      ? ch.pricePerHourCents * hours
-      : 0;
+  // Demand-based $/kWh, computed server-side. The final locked rate is set when
+  // the request is submitted; this is a live preview at the current rate.
+  const rateCents = ch.currentRateCents ?? 0;
+  const energyCents = rateCents * estKwh;
   const feeCents = energyCents * 0.15;
   const totalCents = energyCents + feeCents;
 
@@ -107,7 +106,7 @@ export default function RequestBooking() {
           </Row>
           <Muted style={{ marginTop: 4 }}>
             {ch.connectorType.toUpperCase()} · {ch.powerKw} kW ·{' '}
-            {ch.pricePerKwhCents ? `$${(ch.pricePerKwhCents / 100).toFixed(2)}/kWh` : '—'}
+            {ch.currentRateCents != null ? `$${(ch.currentRateCents / 100).toFixed(2)}/kWh` : '—'}
           </Muted>
         </FrameSoft>
 

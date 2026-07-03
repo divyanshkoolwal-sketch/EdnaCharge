@@ -238,15 +238,14 @@ export default function HostChargerEdit() {
       <FrameSoft>
         <Row between>
           <Body style={{ fontWeight: '700' }}>
-            $
-            {ch.pricePerKwhCents
-              ? (ch.pricePerKwhCents / 100).toFixed(2)
-              : ch.pricePerHourCents
-                ? (ch.pricePerHourCents / 100).toFixed(2)
-                : '—'}
+            ${ch.currentRateCents != null ? (ch.currentRateCents / 100).toFixed(2) : '—'}
           </Body>
-          <Muted>{ch.pricePerKwhCents ? '/kWh' : '/hour'}</Muted>
+          <Muted>/kWh now</Muted>
         </Row>
+        <Muted style={{ fontSize: 12, marginTop: 8 }}>
+          Set automatically by demand — you earn more at peak hours. You keep 85% of every
+          session.
+        </Muted>
       </FrameSoft>
 
       {ch.hardwareTier === 'tier_3_native' ? <ConnectChargerCard chargerId={ch.id} /> : null}

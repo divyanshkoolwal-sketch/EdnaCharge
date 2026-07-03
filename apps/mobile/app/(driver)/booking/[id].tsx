@@ -82,11 +82,10 @@ export default function BookingDetail() {
   const editHours = Math.max(0.25, (ee.getTime() - es.getTime()) / 3_600_000);
   const ch = b.charger;
   const editKwh = ch.powerKw * editHours;
-  const editEnergyCents = ch.pricePerKwhCents
-    ? ch.pricePerKwhCents * editKwh
-    : ch.pricePerHourCents
-      ? ch.pricePerHourCents * editHours
-      : 0;
+  // Preview at the rate locked on this booking; the server re-quotes at the
+  // current demand rate when the modify is submitted.
+  const editRateCents = b.ratePerKwhCents ?? 0;
+  const editEnergyCents = editRateCents * editKwh;
   const editFeeCents = editEnergyCents * 0.15;
   const editTotalCents = editEnergyCents + editFeeCents;
 

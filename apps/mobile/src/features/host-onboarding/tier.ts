@@ -20,7 +20,7 @@ export function tierCopy(tier: HardwareTier): { title: string; body: string } {
     case 'tier_4_unmetered':
       return {
         title: 'No metering required.',
-        body: "You can still list, but you'll price by the hour instead of per kWh.",
+        body: 'You can still list. Pricing is set automatically by demand.',
       };
   }
 }

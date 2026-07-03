@@ -85,15 +85,11 @@ export default function LiveSession() {
 
   const kwh = latest ? latest.energyWh / 1000 : 0;
   const kw = latest ? latest.powerW / 1000 : 0;
-  // Real running cost: prefer per-kWh, fall back to per-hour pro-rated by elapsed.
+  // Real running cost at the demand rate LOCKED on this booking (falls back to
+  // the charger's stored rate for legacy bookings).
   const charger = sessionInfo.data?.booking.charger;
-  const pricePerKwh = charger?.pricePerKwhCents ?? 0;
-  const pricePerHour = charger?.pricePerHourCents ?? 0;
-  const cost = pricePerKwh
-    ? (kwh * pricePerKwh) / 100
-    : pricePerHour
-      ? ((elapsed / 3600) * pricePerHour) / 100
-      : 0;
+  const rateCents = sessionInfo.data?.booking.ratePerKwhCents ?? charger?.pricePerKwhCents ?? 0;
+  const cost = (kwh * rateCents) / 100;
   const title = charger?.title ?? '';
 
   return (

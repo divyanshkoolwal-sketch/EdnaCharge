@@ -10,6 +10,7 @@ import {
   NearbyInputZ,
   ChargerWaitlistInputZ,
 } from '@edna/schemas';
+import { demandRateCents } from '../lib/demand-pricing.js';
 
 async function assertHost(userId: string) {
   const user = await prisma.user.findUniqueOrThrow({
@@ -82,7 +83,11 @@ export const chargerRouter = router({
         distanceM: number;
       }>
     >(sql, ...params);
-    return rows;
+    // Pricing is demand-based and server-computed — attach the current $/kWh
+    // rate (same for all chargers at a given moment) so the map/list shows a
+    // live rate instead of a stale host-entered number.
+    const currentRateCents = demandRateCents(new Date());
+    return rows.map((r) => ({ ...r, currentRateCents }));
   }),
 
   get: protectedProcedure
@@ -111,7 +116,8 @@ export const chargerRouter = router({
       void _h;
       void _cc;
       void _g;
-      return { ...safe, hostReviews: reviews };
+      // Demand-based rate is computed server-side, not host-entered.
+      return { ...safe, currentRateCents: demandRateCents(new Date()), hostReviews: reviews };
     }),
 
   myChargers: protectedProcedure.query(async ({ ctx }) => {
@@ -304,7 +310,7 @@ export const chargerRouter = router({
     }),
 });
 
-// CSMS public websocket base, e.g. wss://csms.endacharges.com. Set
+// CSMS public websocket base, e.g. wss://csms.ednacharge.com. Set
 // CSMS_PUBLIC_URL in every environment; the dev fallback only applies locally.
 function csmsPublicBase(): string {
   return process.env.CSMS_PUBLIC_URL ?? 'ws://localhost:3100';

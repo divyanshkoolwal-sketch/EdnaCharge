@@ -15,8 +15,10 @@ const ChargerCreateFieldsZ = z
     connectorType: ConnectorTypeZ,
     powerKw: z.number().positive().max(50),
     hardwareTier: HardwareTierZ,
-    pricePerKwhCents: z.number().int().nonnegative().optional(),
-    pricePerHourCents: z.number().int().nonnegative().optional(),
+    // NOTE: hosts do NOT set pricing. The $/kWh rate is computed server-side
+    // from demand (see apps/api/src/lib/demand-pricing.ts) and locked on each
+    // booking. Price fields were intentionally removed from the create/update
+    // shapes so a host can never set or patch a rate.
     houseRules: z.string().max(500).optional(),
     gateCode: z.string().max(32).optional(),
     instantAvailable: z.boolean().default(false),
@@ -31,26 +33,7 @@ const ChargerCreateFieldsZ = z
       .default([]),
   });
 
-// AUDIT M10: tier-specific consistency checks beyond the basic pricing rule.
-// - Tier 4 (unmetered) MUST NOT carry a per-kWh price (can't meter → can't bill).
-// - Non-tier-4 tiers MUST NOT carry a per-hour price (metered tiers bill by kWh).
-export const ChargerCreateInputZ = ChargerCreateFieldsZ
-  .refine(
-    (c) =>
-      (c.hardwareTier === 'tier_4_unmetered' && typeof c.pricePerHourCents === 'number') ||
-      (c.hardwareTier !== 'tier_4_unmetered' && typeof c.pricePerKwhCents === 'number'),
-    { message: 'Tier 4 must price per hour; other tiers must price per kWh.' },
-  )
-  .refine(
-    (c) =>
-      !(c.hardwareTier === 'tier_4_unmetered' && typeof c.pricePerKwhCents === 'number'),
-    { message: 'Tier 4 (unmetered) cannot set pricePerKwhCents.' },
-  )
-  .refine(
-    (c) =>
-      !(c.hardwareTier !== 'tier_4_unmetered' && typeof c.pricePerHourCents === 'number'),
-    { message: 'Only Tier 4 can set pricePerHourCents.' },
-  );
+export const ChargerCreateInputZ = ChargerCreateFieldsZ;
 export type ChargerCreateInput = z.infer<typeof ChargerCreateInputZ>;
 
 // AUDIT H4: fields hosts must NOT be able to set via a partial update patch.
