@@ -39,12 +39,12 @@ export default function Identity() {
   const mut = trpc.auth.submitHostIdentity.useMutation({
     onSuccess: () => {
       utils.auth.getSession.invalidate();
-      // Drop the host into the ID verification flow before they hit charger
-      // identification. They can skip and verify later — listing is gated
-      // server-side until they're verified.
+      // Host account setup is identity → payouts (Stripe). Charger onboarding is
+      // a SEPARATE step the host does from their dashboard AFTER the account +
+      // payouts exist — never during signup. So go straight to Stripe Connect.
       router.push({
         pathname: '/(shared)/identity-verification',
-        params: { next: '/(host)/host-onboarding/charger-identification' },
+        params: { next: '/(host)/host-onboarding/stripe-connect' },
       } as never);
     },
     onError: (e) => handleError(e, { feature: 'Identity' }),

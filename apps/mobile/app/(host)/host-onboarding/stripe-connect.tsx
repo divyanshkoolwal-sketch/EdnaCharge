@@ -1,9 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { View, Pressable, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { WebView } from 'react-native-webview';
 import { useRouter } from 'expo-router';
-import { Screen, Button, Body, Muted, Stepper } from '../../../src/components/ui';
+import { Screen, Body, Muted, Stepper } from '../../../src/components/ui';
 import { ChevronLeft } from '../../../src/components/icons/Icon';
 import { useTheme } from '../../../src/theme/useTheme';
 import { trpc } from '../../../src/lib/trpc';
@@ -20,6 +20,15 @@ export default function StripeConnect() {
   });
 
   const utils = trpc.useUtils();
+  // Advance to "done" exactly once, whether we get there via the Stripe redirect
+  // (host finished the form) or the status poll (account fully enabled).
+  const advanced = useRef(false);
+  const finish = () => {
+    if (advanced.current) return;
+    advanced.current = true;
+    utils.auth.getSession.invalidate();
+    router.replace('/(host)/host-onboarding/done');
+  };
 
   useEffect(() => {
     start.mutate(undefined, {
@@ -27,8 +36,7 @@ export default function StripeConnect() {
         // Dev bypass: server already flipped the host role + onboarding flag.
         // Skip the WebView entirely and let the user proceed.
         if (d.devBypass) {
-          utils.auth.getSession.invalidate();
-          router.replace('/(host)/host-onboarding/done');
+          finish();
           return;
         }
         setUrl(d.url);
@@ -39,11 +47,9 @@ export default function StripeConnect() {
   }, []);
 
   useEffect(() => {
-    if (status.data?.status === 'complete') {
-      utils.auth.getSession.invalidate();
-      router.replace('/(host)/host-onboarding/done');
-    }
-  }, [status.data?.status, router, utils]);
+    if (status.data?.status === 'complete') finish();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status.data?.status]);
 
   if (!url) {
     return (
@@ -77,16 +83,27 @@ export default function StripeConnect() {
           <Stepper count={3} current={2} label="STEP 3 OF 3" />
         </View>
       </SafeAreaView>
-      <WebView source={{ uri: url }} style={{ flex: 1 }} />
-      <View style={{ padding: 16 }}>
-        <Button
-          label="I'm done — check status"
-          variant="secondary"
-          height={44}
-          fontSize={13}
-          onPress={() => status.refetch()}
-        />
-      </View>
+      <WebView
+        source={{ uri: url }}
+        style={{ flex: 1 }}
+        onNavigationStateChange={(nav) => {
+          // Stripe redirects to our return URL when the host finishes the payout
+          // form — advance automatically (no manual "I'm done" tap needed). The
+          // status poll above is the backup once the account is fully enabled.
+          if (nav.url.includes('/stripe/onboarding/return')) {
+            finish();
+          } else if (nav.url.includes('/stripe/onboarding/refresh')) {
+            // Link expired → fetch a fresh onboarding link.
+            setUrl(null);
+            start.mutate(undefined, {
+              onSuccess: (d) => {
+                if (!d.devBypass) setUrl(d.url);
+              },
+              onError: (e) => handleError(e, { feature: 'Stripe' }),
+            });
+          }
+        }}
+      />
     </View>
   );
 }

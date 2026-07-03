@@ -20,17 +20,21 @@ export default function Done() {
       <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
         <SuccessCheckIllo size={140} />
         <H1Lg style={{ marginTop: 22 }}>You're a host.</H1Lg>
-        <Body style={{ marginTop: 8 }}>Let's list your first charger.</Body>
+        <Body style={{ marginTop: 8, textAlign: 'center' }}>
+          Your account and payouts are set up. List a charger anytime from your dashboard.
+        </Body>
       </View>
       <Button
-        label="Add charger"
+        label="Go to dashboard"
         onPress={async () => {
           setRole('host');
           // Force a fresh session read before the host tab bar mounts so the
           // role flip is visible immediately (otherwise the user may see the
           // old driver tabs for a tick).
           await utils.auth.getSession.invalidate();
-          router.replace('/(host)/add-charger');
+          // Land on the dashboard — charger onboarding is a deliberate step from
+          // here ("+ Add a charger"), not an automatic part of signup.
+          router.replace('/(host)/home');
         }}
       />
     </Screen>
