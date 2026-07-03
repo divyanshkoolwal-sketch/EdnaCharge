@@ -13,7 +13,7 @@ import { StatusBar } from 'expo-status-bar';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useTheme } from '../../../src/theme/useTheme';
 import { Avatar, Chip } from '../../../src/components/ui';
-import { ChevronLeft, Plus, Send } from '../../../src/components/icons/Icon';
+import { ChevronLeft, Send } from '../../../src/components/icons/Icon';
 import { trpc } from '../../../src/lib/trpc';
 
 const STATIC_HOST_REPLIES = ['Confirmed ✓', 'Plug into the right side', 'See you soon'];
@@ -168,23 +168,12 @@ export default function HostChatThread() {
             paddingBottom: 18,
           }}
         >
-          <View
-            style={{
-              width: 36,
-              height: 36,
-              borderRadius: 18,
-              backgroundColor: c.chip,
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            <Plus size={16} color={c.ink} />
-          </View>
           <TextInput
             value={draft}
             onChangeText={setDraft}
             placeholder="Message…"
             placeholderTextColor={c.muted2}
+            accessibilityLabel="Message"
             multiline
             style={{
               flex: 1,
@@ -200,6 +189,9 @@ export default function HostChatThread() {
             }}
           />
           <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Send message"
+            accessibilityState={{ disabled: !draft.trim() }}
             onPress={() =>
               q.data?.id && draft.trim() && send.mutate({ threadId: q.data.id, body: draft.trim() })
             }

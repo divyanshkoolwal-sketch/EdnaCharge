@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { View, Pressable, ScrollView } from 'react-native';
+import { View, Pressable } from 'react-native';
 import { useRouter } from 'expo-router';
 import { handleError } from '../../../src/lib/errors';
 import {
@@ -105,16 +105,18 @@ export default function ChargerIdentification() {
   const stepIndex = step === 'brand' ? 0 : step === 'connector' ? 1 : step === 'power' ? 2 : 0;
 
   return (
-    <Screen keyboardAvoiding>
+    <Screen keyboardAvoiding contentStyle={{ paddingBottom: 130 }}>
       {step !== 'done' && step !== 'waitlisted' ? (
         <Pressable onPress={() => router.back()} style={{ paddingTop: 8 }}>
           <ChevronLeft />
         </Pressable>
       ) : null}
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 130 }}>
         {isInputStep ? (
           <View style={{ marginTop: 12 }}>
-            <Stepper count={3} current={stepIndex} label={`STEP ${stepIndex + 1} OF 3`} />
+            {/* Step 2 of the overall onboarding flow (identity → charger →
+                payouts). The brand/connector/power sub-steps are content within
+                this one step, so the top progress bar stays at 2 of 3. */}
+            <Stepper count={3} current={1} label="STEP 2 OF 3" />
           </View>
         ) : null}
 
@@ -274,8 +276,6 @@ export default function ChargerIdentification() {
             </Body>
           </View>
         ) : null}
-      </ScrollView>
-
       {step === 'brand' ? (
         <CTABar>
           <Button

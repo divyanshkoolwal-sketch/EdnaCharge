@@ -1,5 +1,16 @@
-import { Pressable, Text, ActivityIndicator, View, type GestureResponderEvent, type PressableProps } from 'react-native';
+import { useEffect, useState } from 'react';
+import {
+  Pressable,
+  Text,
+  ActivityIndicator,
+  View,
+  Keyboard,
+  Platform,
+  type GestureResponderEvent,
+  type PressableProps,
+} from 'react-native';
 import * as Haptics from 'expo-haptics';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../../theme/useTheme';
 
 type Variant = 'primary' | 'secondary' | 'destructive' | 'destructive-outline';
@@ -65,6 +76,17 @@ export function Button({
       {...rest}
       onPress={handlePress}
       disabled={isDisabled}
+      // a11y on the primitive → every button in the app is screen-reader
+      // friendly without per-call-site work. State announces disabled/busy.
+      accessibilityRole="button"
+      accessibilityLabel={rest.accessibilityLabel ?? label}
+      accessibilityState={{ disabled: !!isDisabled, busy: !!loading }}
+      accessibilityHint={
+        rest.accessibilityHint ??
+        (variant === 'destructive' || variant === 'destructive-outline'
+          ? 'Performs a destructive action'
+          : undefined)
+      }
       style={({ pressed }) => [
         {
           backgroundColor: bg,
@@ -111,18 +133,23 @@ export function IconCircle({
   variant = 'card',
   onPress,
   style,
+  accessibilityLabel,
 }: {
   children: React.ReactNode;
   size?: number;
   variant?: 'card' | 'dark';
   onPress?: () => void;
   style?: PressableProps['style'];
+  /** Icon-only buttons must be labeled for screen readers. */
+  accessibilityLabel?: string;
 }) {
   const { c, shadow } = useTheme();
   return (
     <Pressable
       onPress={onPress}
       hitSlop={8}
+      accessibilityRole={onPress ? 'button' : undefined}
+      accessibilityLabel={accessibilityLabel}
       style={({ pressed }) => [
         {
           width: size,
@@ -143,19 +170,67 @@ export function IconCircle({
   );
 }
 
-// CTA bar — bottom-pinned button (or button stack) with a soft fade behind.
-export function CTABar({ children }: { children: React.ReactNode }) {
+// CTA bar — bottom button (or button stack).
+//
+// Two modes:
+//  - `inFlow` (set by <Screen> on scrollable/keyboard-aware screens): a normal
+//    flex sibling below the ScrollView. The parent KeyboardAvoidingView lifts
+//    the whole stack, so the bar sits flush above the keyboard and can NEVER
+//    overlap the form. This is the correct, coordinated behavior.
+//  - default (non-scrollable screens): classic absolute bottom-pinned bar that
+//    tracks the keyboard height itself.
+export function CTABar({ children, inFlow }: { children: React.ReactNode; inFlow?: boolean }) {
   const { c } = useTheme();
+  const insets = useSafeAreaInsets();
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+
+  useEffect(() => {
+    // In-flow bars are lifted by the parent KeyboardAvoidingView — no listener.
+    if (inFlow) return;
+    // iOS fires Will* slightly ahead of the animation (smoother); Android only
+    // reliably fires Did*.
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const show = Keyboard.addListener(showEvent, (e) =>
+      setKeyboardHeight(e.endCoordinates?.height ?? 0),
+    );
+    const hide = Keyboard.addListener(hideEvent, () => setKeyboardHeight(0));
+    return () => {
+      show.remove();
+      hide.remove();
+    };
+  }, [inFlow]);
+
+  if (inFlow) {
+    // Normal flex sibling — the KeyboardAvoidingView in <Screen> handles lift.
+    // Parent already applies horizontal padding, so only pad top/bottom.
+    return (
+      <View
+        style={{
+          paddingTop: 16,
+          paddingBottom: Math.max(16, insets.bottom),
+          backgroundColor: c.bg,
+          gap: 10,
+        }}
+      >
+        {children}
+      </View>
+    );
+  }
+
+  const lifted = keyboardHeight > 0;
   return (
     <View
       style={{
         position: 'absolute',
         left: 0,
         right: 0,
-        bottom: 0,
+        // Sit just above the keyboard when it's open; otherwise pin to the
+        // bottom with the safe-area gap.
+        bottom: lifted ? keyboardHeight : 0,
         paddingHorizontal: 24,
         paddingTop: 16,
-        paddingBottom: 32,
+        paddingBottom: lifted ? 12 : 32,
         backgroundColor: c.bg,
         gap: 10,
       }}

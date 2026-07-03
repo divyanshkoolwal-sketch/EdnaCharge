@@ -5,6 +5,7 @@
     "version": "0.0.1",
     "scheme": "ednacharge",
     "orientation": "portrait",
+    "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": false,
     "ios": {
@@ -12,7 +13,13 @@
       "bundleIdentifier": "com.ednacharge.app",
       "buildNumber": "1",
       "infoPlist": {
-        "NSLocationWhenInUseUsageDescription": "We use your location to show nearby chargers and route you to bookings."
+        "NSLocationWhenInUseUsageDescription": "We use your location to show nearby chargers and route you to bookings.",
+        "NSCameraUsageDescription": "EdnaCharge uses the camera to verify your identity (a photo of your ID and a selfie) for secure payments and charger access.",
+        "NSPhotoLibraryUsageDescription": "EdnaCharge needs photo access so you can upload identity documents for verification.",
+        "ITSAppUsesNonExemptEncryption": false
+      },
+      "entitlements": {
+        "aps-environment": "production"
       }
     },
     "android": {
@@ -24,9 +31,14 @@
     },
     "plugins": [
       "expo-router",
+      "@react-native-firebase/app",
+      "@react-native-firebase/auth",
       [
         "expo-build-properties",
         {
+          "ios": {
+            "useFrameworks": "static"
+          },
           "android": {
             "compileSdkVersion": 35,
             "targetSdkVersion": 35,
@@ -46,6 +58,12 @@
           "locationWhenInUsePermission": "Allow EdnaCharge to use your location to find nearby chargers.",
           "isIosBackgroundLocationEnabled": false,
           "isAndroidBackgroundLocationEnabled": false
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "EdnaCharge needs access to your photos so you can set a profile picture."
         }
       ]
     ],

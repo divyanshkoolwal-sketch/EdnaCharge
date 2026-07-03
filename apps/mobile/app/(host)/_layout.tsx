@@ -1,6 +1,7 @@
 // Host tab navigator using the design's custom tab bar.
 import { Tabs, useRouter, useSegments } from 'expo-router';
 import { TabBar, type TabSpec } from '../../src/components/ui/TabBar';
+import { trpc } from '../../src/lib/trpc';
 
 const TABS: TabSpec[] = [
   { key: 'home', label: 'Home', icon: 'home', href: '/(host)/home' },
@@ -25,12 +26,21 @@ export default function HostTabs() {
       ? top
       : 'home';
 
+  // Surface pending booking requests as a tab badge so hosts notice them
+  // without opening the tab (the action that earns them money).
+  const pending = trpc.booking.list.useQuery(
+    { role: 'host', status: 'pending' },
+    { refetchInterval: 30_000 },
+  );
+  const pendingCount = pending.data?.rows.length ?? 0;
+  const tabs = TABS.map((t) => (t.key === 'requests' ? { ...t, badge: pendingCount } : t));
+
   return (
     <Tabs
       screenOptions={{ headerShown: false, tabBarStyle: { display: 'none' } }}
       tabBar={() => (
         <TabBar
-          tabs={TABS}
+          tabs={tabs}
           activeKey={currentKey}
           onPress={(t) => router.replace(t.href as never)}
         />

@@ -1,4 +1,4 @@
-import { View, Pressable } from 'react-native';
+import { View, Pressable, Alert } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { handleError } from '../../../src/lib/errors';
 import {
@@ -14,11 +14,18 @@ import {
   Button,
   CTABar,
   SectionHeader,
-  Chip,
+  ListSkeleton,
+  ErrorState,
+  useToast,
 } from '../../../src/components/ui';
 import { ChevronLeft, Star } from '../../../src/components/icons/Icon';
 import { trpc } from '../../../src/lib/trpc';
 import { useTheme } from '../../../src/theme/useTheme';
+import { haptics } from '../../../src/lib/haptics';
+
+// Real decline reasons → the host isn't railroaded into a single hardcoded
+// "not available", and the driver gets a useful signal.
+const DECLINE_REASONS = ['Not available then', 'Charger needs maintenance', 'Already booked', 'Other'];
 
 export default function HostRequestReview() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -26,17 +33,46 @@ export default function HostRequestReview() {
   const { c } = useTheme();
   const q = trpc.booking.get.useQuery({ id: id! }, { enabled: !!id });
   const utils = trpc.useUtils();
+  const toast = useToast();
   const respond = trpc.booking.respond.useMutation({
-    onSuccess: () => {
+    onSuccess: (_data, vars) => {
       utils.booking.list.invalidate();
       utils.booking.get.invalidate({ id: id! });
       utils.chat.getThread.invalidate();
+      toast.show(vars.decision === 'accept' ? 'Booking accepted' : 'Request declined', 'success');
       router.back();
     },
     onError: (e) => handleError(e, { feature: 'Booking' }),
   });
 
-  if (!q.data) return <Screen><View /></Screen>;
+  const confirmDecline = (bookingId: string) => {
+    haptics.warning();
+    Alert.alert('Decline this request?', 'Pick a reason — the driver will be notified.', [
+      ...DECLINE_REASONS.map((reason) => ({
+        text: reason,
+        onPress: () => respond.mutate({ bookingId, decision: 'decline' as const, reason }),
+      })),
+      { text: 'Cancel', style: 'cancel' as const },
+    ]);
+  };
+
+  if (q.isError) {
+    return (
+      <Screen>
+        <Pressable onPress={() => router.back()} style={{ paddingTop: 8 }} hitSlop={10}>
+          <ChevronLeft />
+        </Pressable>
+        <ErrorState onRetry={() => q.refetch()} />
+      </Screen>
+    );
+  }
+  if (!q.data) {
+    return (
+      <Screen scroll contentStyle={{ paddingTop: 24 }}>
+        <ListSkeleton count={3} />
+      </Screen>
+    );
+  }
   const b = q.data;
 
   return (
@@ -104,16 +140,18 @@ export default function HostRequestReview() {
         <Button
           label="Accept"
           loading={respond.isPending}
-          onPress={() => respond.mutate({ bookingId: b.id, decision: 'accept' })}
+          onPress={() => {
+            haptics.medium();
+            respond.mutate({ bookingId: b.id, decision: 'accept' });
+          }}
         />
         <Button
           label="Decline"
           variant="destructive-outline"
           height={44}
           fontSize={14}
-          onPress={() =>
-            respond.mutate({ bookingId: b.id, decision: 'decline', reason: 'not available' })
-          }
+          disabled={respond.isPending}
+          onPress={() => confirmDecline(b.id)}
         />
       </CTABar>
     </Screen>

@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import { View, Pressable, ActivityIndicator } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { WebView } from 'react-native-webview';
 import { useRouter } from 'expo-router';
-import { Screen, Button, Body, Muted } from '../../../src/components/ui';
+import { Screen, Button, Body, Muted, Stepper } from '../../../src/components/ui';
 import { ChevronLeft } from '../../../src/components/icons/Icon';
 import { useTheme } from '../../../src/theme/useTheme';
 import { trpc } from '../../../src/lib/trpc';
@@ -71,6 +72,11 @@ export default function StripeConnect() {
 
   return (
     <View style={{ flex: 1, backgroundColor: c.bg }}>
+      <SafeAreaView edges={['top']} style={{ backgroundColor: c.bg }}>
+        <View style={{ paddingHorizontal: 24, paddingTop: 4, paddingBottom: 10 }}>
+          <Stepper count={3} current={2} label="STEP 3 OF 3" />
+        </View>
+      </SafeAreaView>
       <WebView source={{ uri: url }} style={{ flex: 1 }} />
       <View style={{ padding: 16 }}>
         <Button

@@ -65,6 +65,17 @@ enum PayoutStatus {
   failed
 }
 
+enum NotificationKind {
+  new_booking_request
+  booking_accepted
+  booking_declined
+  booking_auto_declined
+  new_chat_message
+  session_started
+  session_stopped
+  review_left
+}
+
 /// ------------------------------------------------------------------
 /// Users & profiles
 /// ------------------------------------------------------------------
@@ -93,6 +104,7 @@ model User {
   reviewsReceived Review[]       @relation("SubjectReviews")
   payouts         Payout[]
   chargerWaitlist ChargerWaitlist[] @relation("UserChargerWaitlist")
+  notifications   Notification[]
 
   @@index([email])
   @@index([firebaseUid])
@@ -217,6 +229,12 @@ model Booking {
   estimatedKwh    Float
   estimatedCostCents Int
   platformFeeCents   Int
+  /// Demand-based $/kWh rate LOCKED at request/modify time (cents). Pricing is
+  /// set automatically by demand + time of day, so the rate can change between
+  /// bookings — we snapshot it here so the pre-auth and the final capture both
+  /// use the exact rate the driver was quoted. Nullable for rows created before
+  /// dynamic pricing; settlement falls back to the charger rate if null.
+  ratePerKwhCents Int?
   /// Driver's optional note attached at request time.
   driverMessage   String?
   /// Host's optional decline reason.
@@ -350,6 +368,35 @@ model Payout {
   booking        Booking  @relation(fields: [bookingId], references: [id])
 
   @@index([hostId, status])
+}
+
+/// ------------------------------------------------------------------
+/// Notifications — persisted feed backing the in-app notifications screen.
+/// The worker writes one row per push it sends (see apps/worker notify()),
+/// and the API exposes list / markRead / unreadCount.
+/// ------------------------------------------------------------------
+model Notification {
+  id             String           @id @default(uuid()) @db.Uuid
+  userId         String           @db.Uuid
+  kind           NotificationKind
+  /// Which interface the RECIPIENT was acting as for this notification
+  /// ('driver' | 'host'). Set at write time so a tap deep-links to the correct
+  /// side even for dual-role users (every host is also a driver).
+  recipientRole  String?
+  title          String
+  body           String
+  /// Deep-link payload — the relevant id for this kind (one is set), so a tap
+  /// can route to the booking / chat thread / session.
+  bookingId      String?          @db.Uuid
+  threadId       String?          @db.Uuid
+  sessionId      String?          @db.Uuid
+  readAt         DateTime?
+  createdAt      DateTime         @default(now())
+
+  user           User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([userId, readAt])
 }
 
 /// AUDIT H8: Stripe webhook event de-duplication. Insert-on-receive; unique

@@ -13,8 +13,9 @@ import {
   TierBadge,
   Button,
   SectionHeader,
+  ErrorState,
 } from '../../../src/components/ui';
-import { ChevronLeft, Edit } from '../../../src/components/icons/Icon';
+import { ChevronLeft } from '../../../src/components/icons/Icon';
 import { ChargerIllo } from '../../../src/components/illustrations/HomeCharger';
 import { useTheme } from '../../../src/theme/useTheme';
 import { trpc } from '../../../src/lib/trpc';
@@ -177,6 +178,16 @@ export default function HostChargerEdit() {
     onError: (e) => handleError(e, { feature: 'Unlist' }),
   });
 
+  if (q.isError) {
+    return (
+      <Screen>
+        <Pressable onPress={() => router.back()} style={{ paddingTop: 8 }} hitSlop={10}>
+          <ChevronLeft />
+        </Pressable>
+        <ErrorState onRetry={() => q.refetch()} />
+      </Screen>
+    );
+  }
   if (!q.data) return <Screen><View /></Screen>;
   const ch = q.data;
   const isUnlisted = !ch.published;
@@ -198,14 +209,18 @@ export default function HostChargerEdit() {
 
   return (
     <Screen scroll contentStyle={{ paddingBottom: 30 }}>
-      <Row between style={{ paddingTop: 8 }}>
-        <Pressable onPress={() => router.back()}>
-          <ChevronLeft />
-        </Pressable>
-        <Pressable>
-          <Edit color={c.ink} />
-        </Pressable>
-      </Row>
+      {/* Removed a non-functional "Edit" button (had no onPress → a dead-end
+          control). A proper charger-edit screen (title/price/gate code via the
+          existing charger.update mutation) is a tracked follow-up; shipping a
+          no-op button is worse UX than none. */}
+      <Pressable
+        onPress={() => router.back()}
+        accessibilityRole="button"
+        accessibilityLabel="Go back"
+        style={{ paddingTop: 8 }}
+      >
+        <ChevronLeft />
+      </Pressable>
 
       <View style={{ marginTop: 14 }}>
         <ChargerIllo height={140} />
@@ -234,15 +249,14 @@ export default function HostChargerEdit() {
       <FrameSoft>
         <Row between>
           <Body style={{ fontWeight: '700' }}>
-            $
-            {ch.pricePerKwhCents
-              ? (ch.pricePerKwhCents / 100).toFixed(2)
-              : ch.pricePerHourCents
-                ? (ch.pricePerHourCents / 100).toFixed(2)
-                : '—'}
+            ${ch.currentRateCents != null ? (ch.currentRateCents / 100).toFixed(2) : '—'}
           </Body>
-          <Muted>{ch.pricePerKwhCents ? '/kWh' : '/hour'}</Muted>
+          <Muted>/kWh now</Muted>
         </Row>
+        <Muted style={{ fontSize: 12, marginTop: 8 }}>
+          Set automatically by demand — you earn more at peak hours. You keep 85% of every
+          session.
+        </Muted>
       </FrameSoft>
 
       {ch.hardwareTier === 'tier_3_native' ? <ConnectChargerCard chargerId={ch.id} /> : null}

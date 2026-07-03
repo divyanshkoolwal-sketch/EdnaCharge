@@ -15,6 +15,7 @@ import {
   Avatar,
   Divider,
   Input,
+  ErrorState,
 } from '../../../src/components/ui';
 import { ChevronLeft, Star } from '../../../src/components/icons/Icon';
 import { useTheme } from '../../../src/theme/useTheme';
@@ -41,6 +42,16 @@ export default function HostReviewDriver() {
   const [stars, setStars] = useState(5);
   const [text, setText] = useState('');
 
+  if (q.isError) {
+    return (
+      <Screen>
+        <Pressable onPress={() => router.back()} style={{ paddingTop: 8 }} hitSlop={10}>
+          <ChevronLeft />
+        </Pressable>
+        <ErrorState onRetry={() => q.refetch()} />
+      </Screen>
+    );
+  }
   if (!q.data || mine.isLoading) return <Screen><View /></Screen>;
   const b = q.data;
   const driverName = b.driver?.fullName ?? 'Driver';

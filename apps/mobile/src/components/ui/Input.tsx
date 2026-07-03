@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { TextInput, View, Text, type TextInputProps } from 'react-native';
 import { useTheme } from '../../theme/useTheme';
 
@@ -6,8 +7,14 @@ type Props = TextInputProps & {
   error?: string;
 };
 
-export function Input({ label, error, style, ...rest }: Props) {
+export function Input({ label, error, style, onFocus, onBlur, ...rest }: Props) {
   const { c, radius, fontSize, fontWeight } = useTheme();
+  // Focus ring: a visible focus state is both a polish cue and an a11y aid
+  // (users can see which field is active before typing).
+  const [focused, setFocused] = useState(false);
+  const borderColor = error ? c.red : focused ? c.ink : 'transparent';
+  const borderWidth = error || focused ? 1.5 : 0;
+
   return (
     <View>
       {label ? (
@@ -25,6 +32,17 @@ export function Input({ label, error, style, ...rest }: Props) {
       ) : null}
       <TextInput
         placeholderTextColor={c.muted2}
+        // a11y: label the field + surface the error to assistive tech.
+        accessibilityLabel={rest.accessibilityLabel ?? label}
+        accessibilityState={{ disabled: rest.editable === false }}
+        onFocus={(e) => {
+          setFocused(true);
+          onFocus?.(e);
+        }}
+        onBlur={(e) => {
+          setFocused(false);
+          onBlur?.(e);
+        }}
         {...rest}
         style={[
           {
@@ -35,14 +53,19 @@ export function Input({ label, error, style, ...rest }: Props) {
             paddingHorizontal: 16,
             fontSize: fontSize.input,
             color: c.ink,
-            borderWidth: error ? 1 : 0,
-            borderColor: error ? c.red : 'transparent',
+            borderWidth,
+            borderColor,
           },
           style,
         ]}
       />
       {error ? (
-        <Text style={{ color: c.red, fontSize: 12, marginTop: 6 }}>{error}</Text>
+        <Text
+          accessibilityLiveRegion="polite"
+          style={{ color: c.red, fontSize: 12, marginTop: 6 }}
+        >
+          {error}
+        </Text>
       ) : null}
     </View>
   );

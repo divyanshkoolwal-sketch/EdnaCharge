@@ -11,6 +11,7 @@ import {
   Muted,
   Row,
   Chip,
+  ErrorState,
 } from '../../src/components/ui';
 import { ChevronLeft } from '../../src/components/icons/Icon';
 import { useTheme } from '../../src/theme/useTheme';
@@ -31,9 +32,31 @@ export default function PaymentMethods() {
     },
     onError: (e) => handleError(e, { feature: 'Payment methods' }),
   });
+  const detach = trpc.payment.detachPaymentMethod.useMutation({
+    onSuccess: () => {
+      list.refetch();
+      utils.auth.getSession.invalidate();
+    },
+    onError: (e) => handleError(e, { feature: 'Payment methods' }),
+  });
   const { initPaymentSheet, presentPaymentSheet } = useStripe();
   const utils = trpc.useUtils();
   const isDevBypass = list.data?.devBypass ?? false;
+
+  const confirmRemove = (paymentMethodId: string, last4: string) => {
+    Alert.alert(
+      'Remove card?',
+      `Remove the card ending in ${last4}? You can add it again anytime.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: () => detach.mutate({ paymentMethodId }),
+        },
+      ],
+    );
+  };
 
   const addCard = async () => {
     try {
@@ -103,22 +126,37 @@ export default function PaymentMethods() {
         keyExtractor={(pm) => pm.id}
         contentContainerStyle={{ paddingTop: 18, paddingBottom: 130, gap: 10 }}
         ListEmptyComponent={
-          <Muted style={{ textAlign: 'center', marginTop: 40 }}>
-            {list.isLoading ? 'Loading…' : 'No cards yet.'}
-          </Muted>
+          list.isError ? (
+            <ErrorState
+              title="Couldn't load your cards"
+              subtitle="Check your connection and try again."
+              onRetry={() => list.refetch()}
+            />
+          ) : (
+            <Muted style={{ textAlign: 'center', marginTop: 40 }}>
+              {list.isLoading ? 'Loading…' : 'No cards yet.'}
+            </Muted>
+          )
         }
         renderItem={({ item }) => {
           const isDefault = list.data?.defaultPaymentMethodId === item.id;
           return (
-            <Pressable
-              onPress={() =>
-                isDevBypass
-                  ? undefined
-                  : setDefault.mutate({ paymentMethodId: item.id })
-              }
-            >
-              <Card padding={14}>
-                <Row gap={12}>
+            <Card padding={14}>
+              <Row gap={12}>
+                {/* Tapping the card body sets it as the default payment method. */}
+                <Pressable
+                  onPress={() =>
+                    isDevBypass ? undefined : setDefault.mutate({ paymentMethodId: item.id })
+                  }
+                  disabled={isDevBypass || isDefault}
+                  accessibilityRole="button"
+                  accessibilityLabel={
+                    isDefault
+                      ? `Card ending ${item.last4}, default`
+                      : `Set card ending ${item.last4} as default`
+                  }
+                  style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 12 }}
+                >
                   <View
                     style={{
                       width: 44,
@@ -134,17 +172,31 @@ export default function PaymentMethods() {
                     </Body>
                   </View>
                   <View style={{ flex: 1 }}>
-                    <Body style={{ fontWeight: '600', fontSize: 14 }}>
-                      •••• {item.last4}
-                    </Body>
+                    <Body style={{ fontWeight: '600', fontSize: 14 }}>•••• {item.last4}</Body>
                     <Muted style={{ fontSize: 11 }}>
                       Exp {String(item.expMonth).padStart(2, '0')}/{String(item.expYear).slice(-2)}
                     </Muted>
                   </View>
-                  {isDefault ? <Chip label="Default" variant="green" /> : null}
-                </Row>
-              </Card>
-            </Pressable>
+                  {isDefault ? (
+                    <Chip label="Default" variant="green" />
+                  ) : !isDevBypass ? (
+                    <Muted style={{ fontSize: 11, fontWeight: '600', color: c.muted2 }}>
+                      Set default
+                    </Muted>
+                  ) : null}
+                </Pressable>
+                {!isDevBypass ? (
+                  <Pressable
+                    onPress={() => confirmRemove(item.id, item.last4)}
+                    hitSlop={10}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Remove card ending ${item.last4}`}
+                  >
+                    <Body style={{ color: c.red, fontSize: 13, fontWeight: '600' }}>Remove</Body>
+                  </Pressable>
+                ) : null}
+              </Row>
+            </Card>
           );
         }}
       />

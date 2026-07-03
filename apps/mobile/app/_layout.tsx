@@ -12,6 +12,8 @@ import { initAnalytics } from '../src/lib/analytics';
 import { registerPushToken } from '../src/lib/push';
 import { bootstrapAuthListener, refreshAuthToken, useAuth } from '../src/state/auth';
 import { useRole } from '../src/state/role';
+import { ErrorBoundary } from '../src/components/ErrorBoundary';
+import { ToastProvider } from '../src/components/ui';
 
 initSentry();
 initAnalytics();
@@ -88,7 +90,11 @@ export default function RootLayout() {
         <StripeProvider publishableKey={stripeKey} merchantIdentifier="merchant.com.ednacharge">
           <trpc.Provider client={trpcClient} queryClient={queryClient}>
             <QueryClientProvider client={queryClient}>
-              <Stack screenOptions={{ headerShown: false }} />
+              <ToastProvider>
+                <ErrorBoundary>
+                  <Stack screenOptions={{ headerShown: false }} />
+                </ErrorBoundary>
+              </ToastProvider>
             </QueryClientProvider>
           </trpc.Provider>
         </StripeProvider>

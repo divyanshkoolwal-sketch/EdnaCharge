@@ -8,7 +8,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { darkColors } from '../../../src/theme/tokens';
 import { trpc } from '../../../src/lib/trpc';
-import { supabase } from '../../../src/lib/supabase';
+import { openRealtimeChannel } from '../../../src/lib/realtime';
 import { Close, Sparkline } from '../../../src/components/icons/Icon';
 import { handleError } from '../../../src/lib/errors';
 
@@ -34,10 +34,12 @@ export default function LiveSession() {
   );
 
   useEffect(() => {
-    const client = supabase;
-    if (!id || !client) return;
-    const ch = client
-      .channel(`session:${id}`)
+    if (!id) return;
+    // Unique topic per mount so re-entering a session never re-attaches to an
+    // already-subscribed channel (same crash class as the map). See realtime.ts.
+    const sub = openRealtimeChannel(`session:${id}`);
+    if (!sub) return;
+    sub.channel
       .on('broadcast', { event: 'meter_value' }, ({ payload }) => {
         latestRef.current = payload as MeterSample;
       })
@@ -50,7 +52,7 @@ export default function LiveSession() {
     }, 500);
     return () => {
       clearInterval(flush);
-      void client.removeChannel(ch);
+      sub.remove();
     };
   }, [id]);
 
@@ -83,15 +85,11 @@ export default function LiveSession() {
 
   const kwh = latest ? latest.energyWh / 1000 : 0;
   const kw = latest ? latest.powerW / 1000 : 0;
-  // Real running cost: prefer per-kWh, fall back to per-hour pro-rated by elapsed.
+  // Real running cost at the demand rate LOCKED on this booking (falls back to
+  // the charger's stored rate for legacy bookings).
   const charger = sessionInfo.data?.booking.charger;
-  const pricePerKwh = charger?.pricePerKwhCents ?? 0;
-  const pricePerHour = charger?.pricePerHourCents ?? 0;
-  const cost = pricePerKwh
-    ? (kwh * pricePerKwh) / 100
-    : pricePerHour
-      ? ((elapsed / 3600) * pricePerHour) / 100
-      : 0;
+  const rateCents = sessionInfo.data?.booking.ratePerKwhCents ?? charger?.pricePerKwhCents ?? 0;
+  const cost = (kwh * rateCents) / 100;
   const title = charger?.title ?? '';
 
   return (

@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { View, Pressable, Platform } from 'react-native';
+import { View, Pressable, Platform, ActivityIndicator } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { handleError } from '../../../src/lib/errors';
@@ -16,6 +16,7 @@ import {
   Body,
   Divider,
   SectionHeader,
+  ErrorState,
 } from '../../../src/components/ui';
 import { ChevronLeft } from '../../../src/components/icons/Icon';
 import { useTheme } from '../../../src/theme/useTheme';
@@ -43,6 +44,9 @@ export default function BookingDetail() {
     { id: id! },
     { enabled: !!id, refetchInterval: editing ? false : 4000 },
   );
+  // Whether the driver has already rated their host on this booking (drives the
+  // durable "Rate host" affordance on a completed booking).
+  const myReview = trpc.review.mine.useQuery({ bookingId: id! }, { enabled: !!id });
   const modify = trpc.booking.modify.useMutation({
     onSuccess: () => {
       utils.booking.get.invalidate({ id: id! });
@@ -67,7 +71,23 @@ export default function BookingDetail() {
     onError: (e) => handleError(e, { feature: 'Booking' }),
   });
 
-  if (!q.data) return <Screen><View /></Screen>;
+  if (q.isLoading) {
+    return (
+      <Screen style={{ alignItems: 'center', justifyContent: 'center' }}>
+        <ActivityIndicator />
+      </Screen>
+    );
+  }
+  if (q.isError || !q.data) {
+    return (
+      <Screen>
+        <Pressable onPress={() => router.back()} style={{ paddingTop: 8 }} hitSlop={10}>
+          <ChevronLeft />
+        </Pressable>
+        <ErrorState onRetry={() => q.refetch()} />
+      </Screen>
+    );
+  }
   const b = q.data;
   const startable = b.status === 'confirmed';
   const hasSession = b.session !== null;
@@ -82,11 +102,10 @@ export default function BookingDetail() {
   const editHours = Math.max(0.25, (ee.getTime() - es.getTime()) / 3_600_000);
   const ch = b.charger;
   const editKwh = ch.powerKw * editHours;
-  const editEnergyCents = ch.pricePerKwhCents
-    ? ch.pricePerKwhCents * editKwh
-    : ch.pricePerHourCents
-      ? ch.pricePerHourCents * editHours
-      : 0;
+  // Preview at the rate locked on this booking; the server re-quotes at the
+  // current demand rate when the modify is submitted.
+  const editRateCents = b.ratePerKwhCents ?? 0;
+  const editEnergyCents = editRateCents * editKwh;
   const editFeeCents = editEnergyCents * 0.15;
   const editTotalCents = editEnergyCents + editFeeCents;
 
@@ -231,11 +250,20 @@ export default function BookingDetail() {
             {startable && !hasSession ? (
               <Button label="Start session" onPress={() => start.mutate({ bookingId: b.id })} loading={start.isPending} />
             ) : null}
-            {b.session ? (
+            {b.session && b.status !== 'completed' ? (
               <Button
                 label="View live session"
                 onPress={() =>
                   router.push({ pathname: '/(driver)/session/[id]', params: { id: b.session!.id } })
+                }
+              />
+            ) : null}
+            {b.status === 'completed' ? (
+              <Button
+                label={myReview.data ? `You rated your host ${myReview.data.stars}★` : 'Rate your host'}
+                variant={myReview.data ? 'secondary' : 'primary'}
+                onPress={() =>
+                  router.push({ pathname: '/(driver)/receipt/[id]', params: { id: b.id } })
                 }
               />
             ) : null}

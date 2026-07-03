@@ -17,11 +17,11 @@ import Mapbox, {
 import type { CameraRef } from '@rnmapbox/maps/lib/typescript/src/components/Camera';
 import type { FeatureCollection, Feature, Point, Geometry } from 'geojson';
 import { trpc } from '../../src/lib/trpc';
-import { supabase } from '../../src/lib/supabase';
+import { openRealtimeChannel } from '../../src/lib/realtime';
 import { useTheme } from '../../src/theme/useTheme';
 import { useUserLocation } from '../../src/state/userLocation';
-import { Search, Recenter, Bolt } from '../../src/components/icons/Icon';
-import { IconCircle } from '../../src/components/ui';
+import { Search, Recenter } from '../../src/components/icons/Icon';
+import { IconCircle, useToast } from '../../src/components/ui';
 import { VerificationBanner } from '../../src/components/VerificationBanner';
 
 const MAPBOX_TOKEN = process.env.EXPO_PUBLIC_MAPBOX_TOKEN ?? '';
@@ -114,6 +114,12 @@ export default function Map() {
     },
   );
 
+  // Surface nearby-charger load failures (previously silent → blank map).
+  const toast = useToast();
+  useEffect(() => {
+    if (nearby.isError) toast.show('Could not load nearby chargers. Retrying…', 'error');
+  }, [nearby.isError, toast]);
+
   // Refetch whenever the user returns to the Map tab so a charger they (or
   // another host) just published shows up without manual refresh.
   useFocusEffect(
@@ -126,28 +132,20 @@ export default function Map() {
   // as a host publishes via charger.create, every driver with the map open
   // sees the new pin within ~1 second.
   useEffect(() => {
-    const client = supabase;
-    if (!client) return undefined;
-    const channel = client
-      .channel('public:charger-inserts')
-      .on(
-        'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'Charger' },
-        () => {
-          utils.charger.nearby.invalidate();
-        },
-      )
-      .on(
-        'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'Charger' },
-        () => {
-          utils.charger.nearby.invalidate();
-        },
-      )
-      .subscribe();
-    return () => {
-      void client.removeChannel(channel);
+    // Unique topic per mount — a host→driver role switch (or tab/route
+    // re-entry) re-mounts this screen, and re-using a fixed channel topic made
+    // Supabase re-attach `.on()` to an already-subscribed channel and throw,
+    // which crashed the app on the way into the map. See src/lib/realtime.ts.
+    const sub = openRealtimeChannel('charger-inserts');
+    if (!sub) return undefined;
+    const invalidate = () => {
+      utils.charger.nearby.invalidate();
     };
+    sub.channel
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'Charger' }, invalidate)
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'Charger' }, invalidate)
+      .subscribe();
+    return sub.remove;
   }, [utils]);
 
   const features: FeatureCollection<Point> = useMemo(
@@ -263,7 +261,7 @@ export default function Map() {
             ))}
             {!nearby.isLoading && (nearby.data ?? []).length === 0 ? (
               <Text style={{ color: theme.c.muted, marginTop: 24, textAlign: 'center' }}>
-                No nearby chargers found.
+                {nearby.isError ? 'Could not load chargers. Pull to refresh.' : 'No nearby chargers found.'}
               </Text>
             ) : null}
           </ScrollView>
@@ -276,6 +274,7 @@ export default function Map() {
     <View style={{ flex: 1, backgroundColor: theme.c.bg }}>
       <MapView
         style={{ flex: 1 }}
+        accessibilityLabel="Map of nearby chargers"
         styleURL={scheme === 'dark' ? STYLES.dark : STYLES.light}
         compassEnabled={false}
         scaleBarEnabled={false}
@@ -410,9 +409,6 @@ export default function Map() {
           <Search size={16} color={theme.c.muted} />
           <Text style={{ color: theme.c.muted, fontSize: 13 }}>{locationLabel}</Text>
         </View>
-        <IconCircle size={44}>
-          <Bolt size={18} color={theme.c.ink} />
-        </IconCircle>
       </View>
 
       {/* Verification banner — only shows when not verified */}
@@ -455,6 +451,42 @@ export default function Map() {
         </View>
       ) : null}
 
+      {/* Empty-area indicator — non-blocking. Shows only after a settled fetch
+          that returned zero chargers in the searched radius; disappears the
+          instant a pin arrives. pointerEvents="none" so it never blocks gestures. */}
+      {!nearby.isLoading && !nearby.isError && (nearby.data ?? []).length === 0 ? (
+        <View
+          pointerEvents="none"
+          style={{
+            position: 'absolute',
+            top: 0,
+            bottom: 0,
+            left: 0,
+            right: 0,
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <View
+            style={{
+              backgroundColor: theme.c.card,
+              paddingHorizontal: 16,
+              height: 40,
+              borderRadius: 20,
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 8,
+              ...theme.shadow.cardLight,
+            }}
+          >
+            <Search size={14} color={theme.c.muted} />
+            <Text style={{ color: theme.c.muted, fontWeight: '600', fontSize: 13 }}>
+              No chargers in this area
+            </Text>
+          </View>
+        </View>
+      ) : null}
+
       {/* Loading badge */}
       {nearby.isFetching ? (
         <View
@@ -474,7 +506,7 @@ export default function Map() {
 
       {/* Recenter FAB */}
       <View style={{ position: 'absolute', right: 16, bottom: 24 }}>
-        <IconCircle size={48} onPress={recenter}>
+        <IconCircle size={48} onPress={recenter} accessibilityLabel="Recenter map on my location">
           <Recenter size={18} color={theme.c.ink} />
         </IconCircle>
       </View>

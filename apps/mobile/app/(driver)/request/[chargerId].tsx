@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { View, Pressable, ActivityIndicator, ScrollView, Platform } from 'react-native';
+import { View, Pressable, ActivityIndicator, Platform } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { handleError } from '../../../src/lib/errors';
@@ -17,6 +17,7 @@ import {
   Avatar,
   Divider,
   Input,
+  ErrorState,
 } from '../../../src/components/ui';
 import { ChevronLeft } from '../../../src/components/icons/Icon';
 import { useTheme } from '../../../src/theme/useTheme';
@@ -76,33 +77,38 @@ export default function RequestBooking() {
     onError: (e) => handleError(e, { feature: 'Booking' }),
   });
 
-  if (!charger.data) {
+  if (charger.isLoading) {
     return (
       <Screen style={{ alignItems: 'center', justifyContent: 'center' }}>
         <ActivityIndicator />
       </Screen>
     );
   }
+  if (charger.isError || !charger.data) {
+    return (
+      <Screen>
+        <Pressable onPress={() => router.back()} style={{ paddingTop: 8 }} hitSlop={10}>
+          <ChevronLeft />
+        </Pressable>
+        <ErrorState onRetry={() => charger.refetch()} />
+      </Screen>
+    );
+  }
   const ch = charger.data;
   const estKwh = ch.powerKw * hours;
-  const energyCents = ch.pricePerKwhCents
-    ? ch.pricePerKwhCents * estKwh
-    : ch.pricePerHourCents
-      ? ch.pricePerHourCents * hours
-      : 0;
+  // Demand-based $/kWh, computed server-side. The final locked rate is set when
+  // the request is submitted; this is a live preview at the current rate.
+  const rateCents = ch.currentRateCents ?? 0;
+  const energyCents = rateCents * estKwh;
   const feeCents = energyCents * 0.15;
   const totalCents = energyCents + feeCents;
 
   return (
-    <Screen keyboardAvoiding>
+    <Screen keyboardAvoiding contentStyle={{ paddingBottom: 130 }}>
       <Pressable onPress={() => router.back()} style={{ paddingTop: 8 }}>
         <ChevronLeft />
       </Pressable>
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingBottom: 130 }}
-      >
-        <H1 style={{ marginTop: 14 }}>Request{'\n'}booking</H1>
+      <H1 style={{ marginTop: 14 }}>Request{'\n'}booking</H1>
 
         <FrameSoft style={{ marginTop: 16 }}>
           <Row gap={10}>
@@ -111,7 +117,7 @@ export default function RequestBooking() {
           </Row>
           <Muted style={{ marginTop: 4 }}>
             {ch.connectorType.toUpperCase()} · {ch.powerKw} kW ·{' '}
-            {ch.pricePerKwhCents ? `$${(ch.pricePerKwhCents / 100).toFixed(2)}/kWh` : '—'}
+            {ch.currentRateCents != null ? `$${(ch.currentRateCents / 100).toFixed(2)}/kWh` : '—'}
           </Muted>
         </FrameSoft>
 
@@ -185,7 +191,6 @@ export default function RequestBooking() {
             Your card is held — you'll only be charged for what you actually use.
           </Muted>
         </Card>
-      </ScrollView>
       <CTABar>
         <Button
           label="Send request"

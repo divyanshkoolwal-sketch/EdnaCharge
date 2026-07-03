@@ -1,4 +1,5 @@
-import { View, Pressable } from 'react-native';
+import { View, Pressable, RefreshControl } from 'react-native';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'expo-router';
 import {
   Screen,
@@ -12,8 +13,9 @@ import {
   StatusPill,
   List,
   ListSkeleton,
+  EmptyState,
 } from '../../src/components/ui';
-import { ChevronRight, Star } from '../../src/components/icons/Icon';
+import { ChevronRight } from '../../src/components/icons/Icon';
 import { useTheme } from '../../src/theme/useTheme';
 import { trpc } from '../../src/lib/trpc';
 
@@ -26,6 +28,24 @@ export default function Requests() {
   );
   const rows = q.data?.pages.flatMap((p) => p.rows) ?? [];
   const count = rows.length;
+
+  // Tick every 30s so each request's "X min left" countdown updates live
+  // instead of freezing until the next data refetch.
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => setTick((n) => n + 1), 30_000);
+    return () => clearInterval(t);
+  }, []);
+
+  const [refreshing, setRefreshing] = useState(false);
+  const onRefresh = async () => {
+    setRefreshing(true);
+    try {
+      await q.refetch();
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   return (
     <Screen flush>
@@ -60,11 +80,16 @@ export default function Requests() {
         onEndReached={() => {
           if (q.hasNextPage && !q.isFetchingNextPage) q.fetchNextPage();
         }}
+        refreshing={refreshing}
+        onRefresh={onRefresh}
         ListEmptyComponent={
           q.isLoading ? (
             <ListSkeleton />
           ) : (
-            <Muted style={{ textAlign: 'center', marginTop: 40 }}>No pending requests.</Muted>
+            <EmptyState
+              title="No pending requests"
+              subtitle="When a driver requests one of your chargers, it'll appear here to accept or decline."
+            />
           )
         }
         ListFooterComponent={
@@ -76,9 +101,16 @@ export default function Requests() {
           const remainingMs =
             new Date(item.autoDeclineAt).getTime() - Date.now();
           const remaining = Math.max(0, Math.floor(remainingMs / 60_000));
-          const urgent = remainingMs < 30 * 60_000;
+          // The auto-decline window is ~30 min, so only flag "urgent" when a
+          // request is close to expiring (was `< 30min`, which fired for every
+          // request the moment it arrived).
+          const urgent = remainingMs < 5 * 60_000;
           return (
             <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`Request for ${item.charger.title}, ${new Date(
+                item.startAt,
+              ).toLocaleString()}, ${remaining} minutes left to respond`}
               onPress={() =>
                 router.push({ pathname: '/(host)/request/[id]', params: { id: item.id } })
               }
@@ -90,10 +122,7 @@ export default function Requests() {
                     <Body style={{ fontWeight: '700', fontSize: 14 }}>
                       {item.charger.title}
                     </Body>
-                    <Row gap={4}>
-                      <Star size={10} />
-                      <Muted style={{ fontSize: 11 }}>4.7</Muted>
-                    </Row>
+                    <Muted style={{ fontSize: 11, marginTop: 2 }}>Tap to review</Muted>
                   </View>
                   <ChevronRight color={c.muted2} />
                 </Row>
@@ -106,7 +135,7 @@ export default function Requests() {
                 </Muted>
                 <Row between style={{ marginTop: 10 }}>
                   <Chip
-                    label={`⏱ ${remaining}m left`}
+                    label={remaining > 0 ? `${remaining} min left` : 'Expiring'}
                     variant={urgent ? 'red' : 'outline'}
                   />
                   <StatusPill status="pending" />

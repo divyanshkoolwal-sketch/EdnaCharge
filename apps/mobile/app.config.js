@@ -15,7 +15,7 @@ module.exports = {
     ios: {
       ...app.expo.ios,
       usesAppleSignIn: true,
-      googleServicesFile: './ios/EdnaCharge/GoogleService-Info.plist',
+      googleServicesFile: './GoogleService-Info.plist',
       infoPlist: {
         ...app.expo.ios.infoPlist,
         CFBundleURLTypes: [...baseUrlTypes, googleUrlType],

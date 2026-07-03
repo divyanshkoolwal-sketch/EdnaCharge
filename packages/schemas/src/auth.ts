@@ -13,6 +13,24 @@ export const VerifyOtpInputZ = z.object({
   code: OtpCodeZ,
 });
 
+// Edit-profile: update the display name. Avatars are set ONLY via uploadAvatar
+// (which stores to our own bucket) — we deliberately do NOT accept an arbitrary
+// avatarUrl here, so a client can't point another user's rendered avatar at an
+// attacker-controlled URL (tracking beacon / arbitrary content).
+export const UpdateProfileInputZ = z.object({
+  fullName: z.string().min(1).max(100),
+});
+export type UpdateProfileInput = z.infer<typeof UpdateProfileInputZ>;
+
+// Avatar upload: a base64-encoded image sent to the API, which stores it in
+// Supabase Storage and returns the public URL. Bounded so a client can't ship a
+// huge payload (avatars are picked small + compressed).
+export const UploadAvatarInputZ = z.object({
+  base64: z.string().min(1).max(4_000_000),
+  mime: z.enum(['image/jpeg', 'image/png', 'image/webp']).default('image/jpeg'),
+});
+export type UploadAvatarInput = z.infer<typeof UploadAvatarInputZ>;
+
 export const DriverProfileInputZ = z.object({
   fullName: z.string().min(1).max(100),
   vehicleMake: z.string().min(1).max(40),

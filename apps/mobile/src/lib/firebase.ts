@@ -1,9 +1,9 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { initializeApp, getApps, type FirebaseApp } from 'firebase/app';
 import * as FirebaseAuth from 'firebase/auth';
+import { secureAsyncStorage } from './secureStorage';
 
 type FirebaseAuthModule = typeof FirebaseAuth & {
-  getReactNativePersistence: (storage: typeof AsyncStorage) => FirebaseAuth.Persistence;
+  getReactNativePersistence: (storage: typeof secureAsyncStorage) => FirebaseAuth.Persistence;
 };
 
 const {
@@ -58,7 +58,8 @@ export function getFirebaseAuth(): FirebaseAuth.Auth {
   const firebaseApp = app();
   try {
     authInstance = initializeAuth(firebaseApp, {
-      persistence: firebaseAuth.getReactNativePersistence(AsyncStorage),
+      // Keychain/Keystore-backed persistence — never plaintext AsyncStorage.
+      persistence: firebaseAuth.getReactNativePersistence(secureAsyncStorage),
     });
   } catch (err) {
     if (String((err as { code?: string }).code) !== 'auth/already-initialized') throw err;

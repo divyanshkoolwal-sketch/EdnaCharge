@@ -10,6 +10,8 @@ import {
   Row,
   SectionHeader,
   Chip,
+  EmptyState,
+  ErrorState,
 } from '../../src/components/ui';
 import { ChevronRight, Star } from '../../src/components/icons/Icon';
 import { useTheme } from '../../src/theme/useTheme';
@@ -86,11 +88,30 @@ export default function Earnings() {
         scrollEnabled={false}
         data={q.data?.rows ?? []}
         keyExtractor={(b) => b.id}
-        ListEmptyComponent={<Muted>No completed sessions yet.</Muted>}
+        ListEmptyComponent={
+          q.isError ? (
+            <ErrorState onRetry={() => q.refetch()} />
+          ) : (
+            <EmptyState
+              compact
+              title="No completed sessions yet"
+              subtitle="Earnings from finished charging sessions will appear here."
+            />
+          )
+        }
         renderItem={({ item }) => {
           const myReview = item.reviews?.[0] ?? null;
+          // Host NET (their 85%), consistent with the request/review screens —
+          // not the gross the driver paid.
+          const netCents = Math.max(0, (item.capturedAmountCents ?? 0) - item.platformFeeCents);
           return (
             <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`Session at ${item.charger.title}, ${new Date(
+                item.startAt,
+              ).toLocaleDateString()}, earned $${(netCents / 100).toFixed(2)}${
+                myReview ? `, rated ${myReview.stars} stars` : ', not yet rated'
+              }`}
               onPress={() =>
                 router.push({
                   pathname: '/(host)/review/[bookingId]',
@@ -123,9 +144,7 @@ export default function Earnings() {
                 </Row>
               </View>
               <Row gap={6}>
-                <Body style={{ fontWeight: '700' }}>
-                  ${((item.capturedAmountCents ?? 0) / 100).toFixed(2)}
-                </Body>
+                <Body style={{ fontWeight: '700' }}>${(netCents / 100).toFixed(2)}</Body>
                 <ChevronRight color={c.muted2} />
               </Row>
             </Pressable>

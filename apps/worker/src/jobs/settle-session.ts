@@ -47,14 +47,16 @@ export async function settleSessionById(sessionId: string) {
   );
   const maxPlausibleKwh = charger.powerKw * elapsedHours * 1.25 + 2;
   const kwh = Math.min(Math.max(0, session.finalKwh ?? 0), maxPlausibleKwh);
+  // Bill at the demand rate LOCKED on the booking at request time — never the
+  // charger's current rate, which can differ once pricing moves with demand.
+  // Fall back to the charger's stored per-kWh (legacy rows), then legacy
+  // per-hour, so old bookings still settle.
+  const lockedRateCents = session.booking.ratePerKwhCents ?? charger.pricePerKwhCents;
   const energyCents =
-    charger.pricePerKwhCents != null
-      ? Math.round(charger.pricePerKwhCents * kwh)
+    lockedRateCents != null
+      ? Math.round(lockedRateCents * kwh)
       : charger.pricePerHourCents != null
-        ? Math.round(
-            charger.pricePerHourCents *
-              ((session.endedAt.getTime() - session.startedAt.getTime()) / 3_600_000),
-          )
+        ? Math.round(charger.pricePerHourCents * elapsedHours)
         : 0;
   // AUDIT H6: fee and total must be computed on the same base that Stripe will
   // actually capture. The PI was created with application_fee_amount =

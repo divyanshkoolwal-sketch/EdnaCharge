@@ -1,9 +1,21 @@
 // Screen scaffold matching the design canvas — handles safe area, theme bg,
-// status-bar tint, and keyboard avoidance for input-heavy screens.
+// status-bar tint, and keyboard handling for input-heavy screens.
+//
+// Keyboard handling (the reusable fix for "keyboard covers inputs / buttons →
+// dead-end form"):
+//  - When `scroll` OR `keyboardAvoiding` is set, the body + footer are wrapped
+//    in ONE KeyboardAvoidingView. The body renders in a flex:1 ScrollView and
+//    any <CTABar> renders as a normal flex sibling BELOW it (see CTABar's
+//    `inFlow`). When the keyboard opens, the KAV shrinks the container, the
+//    ScrollView shrinks (content stays scrollable), and the CTABar sits flush
+//    above the keyboard — so the submit button can never overlap the form.
+//  - Non-scrollable screens keep the classic pinned (absolute) CTABar.
+import { Children, isValidElement, cloneElement, type ReactElement } from 'react';
 import { View, ScrollView, KeyboardAvoidingView, Platform, type ViewStyle } from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { useTheme } from '../../theme/useTheme';
+import { CTABar } from './Button';
 
 export function Screen({
   children,
@@ -21,32 +33,44 @@ export function Screen({
   keyboardAvoiding?: boolean;
 }) {
   const { c, isDark } = useTheme();
-  const insets = useSafeAreaInsets();
+  // Either flag opts the body into the keyboard-aware scroll container. They're
+  // now synonyms (kept separate for call-site readability / back-compat).
+  const scrollable = scroll || keyboardAvoiding;
 
-  const inner = (
-    <View
-      style={[
-        {
-          flex: 1,
-          paddingHorizontal: flush ? 0 : 24,
-          paddingTop: flush ? 0 : 4,
-        },
-        style,
-      ]}
-    >
-      {scroll ? (
+  // Pull any CTABar out of the children. On scrollable screens it rides above
+  // the keyboard as an in-flow sibling; on non-scrollable screens it stays the
+  // classic pinned absolute bar.
+  const kids = Children.toArray(children);
+  const footerEls = kids.filter((k) => isValidElement(k) && k.type === CTABar) as ReactElement[];
+  const body = kids.filter((k) => !(isValidElement(k) && k.type === CTABar));
+  const footer = footerEls.map((el, i) =>
+    scrollable ? cloneElement(el, { key: el.key ?? i, inFlow: true }) : el,
+  );
+
+  const content = (
+    <>
+      {scrollable ? (
         <ScrollView
           style={{ flex: 1 }}
-          contentContainerStyle={contentStyle}
+          contentContainerStyle={[{ flexGrow: 1 }, contentStyle]}
           showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="interactive"
         >
-          {children}
+          {body}
         </ScrollView>
       ) : (
-        children
+        body
       )}
-    </View>
+      {footer}
+    </>
   );
+
+  const padStyle: ViewStyle = {
+    flex: 1,
+    paddingHorizontal: flush ? 0 : 24,
+    paddingTop: flush ? 0 : 4,
+  };
 
   return (
     <SafeAreaView
@@ -58,16 +82,15 @@ export function Screen({
       edges={['top']}
     >
       <StatusBar style={isDark ? 'light' : 'dark'} />
-      {keyboardAvoiding ? (
+      {scrollable ? (
         <KeyboardAvoidingView
-          style={{ flex: 1 }}
+          style={[padStyle, style]}
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          keyboardVerticalOffset={insets.top}
         >
-          {inner}
+          {content}
         </KeyboardAvoidingView>
       ) : (
-        inner
+        <View style={[padStyle, style]}>{content}</View>
       )}
     </SafeAreaView>
   );

@@ -2,7 +2,7 @@ import { TRPCError } from '@trpc/server';
 import { router, protectedProcedure } from '../trpc.js';
 import { prisma } from '@edna/db';
 import { stripe, devBypassStripe } from '../lib/stripe.js';
-import { SetDefaultPaymentMethodInputZ } from '@edna/schemas';
+import { SetDefaultPaymentMethodInputZ, DetachPaymentMethodInputZ } from '@edna/schemas';
 
 const DEV_PM_ID = 'pm_dev_card';
 const DEV_CUSTOMER_PREFIX = 'cus_dev_';
@@ -199,5 +199,49 @@ export const paymentRouter = router({
         data: { defaultPaymentMethodId: input.paymentMethodId },
       });
       return { ok: true };
+    }),
+
+  // Remove a saved card. Stripe has no "edit card" API — changing a card means
+  // detach + add a new one. If the removed card was the default, we reassign the
+  // default to a remaining card (or clear it) so a booking can never reference a
+  // detached payment method.
+  detachPaymentMethod: protectedProcedure
+    .input(DetachPaymentMethodInputZ)
+    .mutation(async ({ ctx, input }) => {
+      if (devBypassStripe()) {
+        // No real Stripe in dev bypass — the single fake card can't be removed.
+        return { ok: true as const };
+      }
+      const user = await prisma.user.findUniqueOrThrow({ where: { id: ctx.userId } });
+      if (!user.stripeCustomerId || user.stripeCustomerId.startsWith(DEV_CUSTOMER_PREFIX)) {
+        throw new TRPCError({ code: 'PRECONDITION_FAILED', message: 'No payment account yet.' });
+      }
+      const s = stripe();
+
+      // Ownership check — never let a user detach a PM that isn't theirs.
+      const pm = await s.paymentMethods.retrieve(input.paymentMethodId);
+      const customerId = typeof pm.customer === 'string' ? pm.customer : pm.customer?.id;
+      if (customerId !== user.stripeCustomerId) {
+        throw new TRPCError({
+          code: 'FORBIDDEN',
+          message: 'Payment method is not attached to this customer.',
+        });
+      }
+
+      await s.paymentMethods.detach(input.paymentMethodId);
+
+      // If we just removed the default card, promote another remaining card (or
+      // clear the default entirely) so nothing points at a dead PM.
+      if (user.defaultPaymentMethodId === input.paymentMethodId) {
+        const remaining = await s.paymentMethods.list({
+          customer: user.stripeCustomerId,
+          type: 'card',
+        });
+        await prisma.user.update({
+          where: { id: ctx.userId },
+          data: { defaultPaymentMethodId: remaining.data[0]?.id ?? null },
+        });
+      }
+      return { ok: true as const };
     }),
 });

@@ -273,14 +273,21 @@ export function authErrorMessage(error: unknown): string {
   if (code.includes('configuration-not-found') || raw.includes('CONFIGURATION_NOT_FOUND')) {
     return 'Firebase Authentication is not initialized for this Firebase project/API key. Open Firebase Console > Authentication, click Get started, then confirm Email/Password is enabled for project ednacharge-a13d8.';
   }
-  if (code.includes('invalid-credential') || code.includes('wrong-password')) {
-    return 'Email or password is incorrect.';
-  }
-  if (code.includes('user-not-found')) {
-    return 'No account exists for this email. Create an account first.';
+  // Anti-enumeration: never reveal whether an email is registered. A wrong
+  // password, a non-existent account, and a disabled/invalid credential all
+  // collapse to ONE generic message on the sign-in path.
+  if (
+    code.includes('invalid-credential') ||
+    code.includes('wrong-password') ||
+    code.includes('user-not-found')
+  ) {
+    return 'The email or password is incorrect.';
   }
   if (code.includes('email-already-in-use')) {
-    return 'An account already exists for this email. Sign in instead.';
+    // Sign-up path. We can't fully avoid signalling existence here (Firebase
+    // rejects the duplicate), but keep it neutral — enable Firebase's
+    // "Email enumeration protection" in the console to harden this further.
+    return "We couldn't create that account. If it's yours, try signing in instead.";
   }
   if (code.includes('weak-password')) {
     return 'Use a stronger password.';

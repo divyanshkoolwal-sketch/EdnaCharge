@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { View, Pressable, ScrollView, Alert, useColorScheme } from 'react-native';
+import { View, Pressable, Alert, useColorScheme } from 'react-native';
 import { useRouter } from 'expo-router';
 import Mapbox, {
   MapView,
@@ -17,11 +17,11 @@ import {
   H1,
   Muted,
   Label,
-  Stepper,
   Chip,
   Row,
+  useToast,
 } from '../../src/components/ui';
-import { ChevronLeft } from '../../src/components/icons/Icon';
+import { ChevronLeft, Bolt } from '../../src/components/icons/Icon';
 import { useTheme } from '../../src/theme/useTheme';
 import { useUserLocation } from '../../src/state/userLocation';
 import { trpc } from '../../src/lib/trpc';
@@ -41,12 +41,15 @@ export default function AddCharger() {
   const session = trpc.auth.getSession.useQuery();
   const utils = trpc.useUtils();
   const userCoords = useUserLocation((s) => s.coords);
+  const toast = useToast();
   const cameraRef = useRef<CameraRef>(null);
   const create = trpc.charger.create.useMutation({
     onSuccess: (ch) => {
       utils.charger.nearby.invalidate();
       utils.charger.myChargers.invalidate();
       utils.auth.getSession.invalidate();
+      // Toast persists across navigation (provider is above the navigator).
+      toast.show('Charger published', 'success');
       // v1 is OCPP-only: every charger lands on its detail screen, where the
       // host connects it to the CSMS.
       router.replace({ pathname: '/(host)/charger/[id]', params: { id: ch.id } });
@@ -80,7 +83,6 @@ export default function AddCharger() {
   }, [userCoords]);
   const [connector, setConn] = useState<ConnectorType>('j1772');
   const [powerKw, setPower] = useState('7.2');
-  const [pricePerKwh, setPKwh] = useState('28');
   const [gateCode, setGateCode] = useState('');
 
   useEffect(() => {
@@ -107,42 +109,34 @@ export default function AddCharger() {
       powerKw: Number(powerKw),
       // v1 is OCPP-only — always a metered, per-kWh Tier 3 charger.
       hardwareTier: 'tier_3_native',
-      pricePerKwhCents: Number(pricePerKwh),
+      // Pricing is set automatically by demand — hosts don't enter a rate.
       instantAvailable: true,
       availability: [],
     });
   };
 
   return (
-    <Screen keyboardAvoiding>
+    <Screen keyboardAvoiding contentStyle={{ paddingBottom: 130 }}>
       <Pressable onPress={() => router.back()} style={{ paddingTop: 8 }}>
         <ChevronLeft />
       </Pressable>
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 130 }}>
+        {/* This is a single-screen form, not a 5-step wizard — the old
+            "STEP 4 OF 5" stepper was misleading. */}
         <View style={{ marginTop: 12 }}>
-          <Stepper count={5} current={3} label="STEP 4 OF 5" />
+          <Label>LIST YOUR CHARGER</Label>
         </View>
-        <H1 style={{ marginTop: 14 }}>Set your price</H1>
-        <Card padding={18} style={{ marginTop: 16, alignItems: 'center' }}>
-          <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 4 }}>
-            <Muted>$</Muted>
-            <H1 style={{ fontSize: 56, fontWeight: '800', letterSpacing: -2 }}>
-              {(Number(pricePerKwh) / 100).toFixed(2)}
-            </H1>
-            <Muted>/kWh</Muted>
-          </View>
-          <View style={{ marginTop: 14, width: '100%' }}>
-            <Input
-              value={pricePerKwh}
-              onChangeText={setPKwh}
-              placeholder="28 (cents)"
-              keyboardType="number-pad"
-            />
-          </View>
+        <H1 style={{ marginTop: 14 }}>List your charger</H1>
+        <Card padding={16} style={{ marginTop: 16 }}>
+          <Row gap={8} style={{ alignItems: 'center', marginBottom: 6 }}>
+            <Bolt size={16} color={c.green2} />
+            <Label style={{ color: c.green2 }}>AUTOMATIC PRICING</Label>
+          </Row>
+          <Muted style={{ fontSize: 13, lineHeight: 20 }}>
+            EdnaCharge sets a fair market rate automatically based on demand and time of
+            day — you earn more at peak hours and never have to manage prices. Drivers pay
+            for the exact energy your charger meters, and you keep 85% of every session.
+          </Muted>
         </Card>
-        <Muted style={{ fontSize: 12, marginTop: 12 }}>
-          Drivers pay for the exact energy your charger meters — around $0.28/kWh on average.
-        </Muted>
 
         <View style={{ marginTop: 24, gap: 12 }}>
           <View>
@@ -259,7 +253,6 @@ export default function AddCharger() {
             </Muted>
           </View>
         </View>
-      </ScrollView>
       <CTABar>
         <Button label="Publish charger" loading={create.isPending} onPress={submit} />
       </CTABar>

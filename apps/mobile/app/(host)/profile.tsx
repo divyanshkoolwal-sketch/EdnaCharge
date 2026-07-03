@@ -1,4 +1,5 @@
-import { View, Pressable, Text } from 'react-native';
+import { View, Pressable, Text, Alert } from 'react-native';
+import Constants from 'expo-constants';
 import { useRouter } from 'expo-router';
 import {
   Screen,
@@ -23,15 +24,20 @@ import { useTheme } from '../../src/theme/useTheme';
 import { useRole } from '../../src/state/role';
 import { useAuth } from '../../src/state/auth';
 import { trpc } from '../../src/lib/trpc';
+import { haptics } from '../../src/lib/haptics';
 import { VerifiedPill } from '../../src/components/VerificationBanner';
+import { RatingsSection } from '../../src/components/RatingsSection';
+import * as StoreReview from 'expo-store-review';
 
-const ITEMS: { key: string; label: string; icon: 'verify' | 'bolt' | 'card' | 'bell' | 'gear' | 'help'; path: string; params?: Record<string, string> }[] = [
+type IconKey = 'verify' | 'bolt' | 'card' | 'bell' | 'gear' | 'help' | 'rate';
+const ITEMS: { key: string; label: string; icon: IconKey; path?: string; params?: Record<string, string>; action?: 'rate' }[] = [
   { key: 'verify', label: 'Verify ID', icon: 'verify', path: '/(shared)/identity-verification', params: { next: '/(host)/profile' } },
   { key: 'setup', label: 'My setup', icon: 'bolt', path: '/(host)/host-onboarding/charger-identification' },
   { key: 'card', label: 'Payment methods', icon: 'card', path: '/(shared)/payment-methods' },
-  { key: 'bell', label: 'Notifications', icon: 'bell', path: '/(shared)/notifications' },
+  { key: 'bell', label: 'Notifications', icon: 'bell', path: '/(shared)/notifications?role=host' },
   { key: 'gear', label: 'Settings', icon: 'gear', path: '/(shared)/settings' },
   { key: 'help', label: 'Support', icon: 'help', path: '/(shared)/support' },
+  { key: 'rate', label: 'Rate EdnaCharge', icon: 'rate', action: 'rate' },
 ];
 
 const ICON: Record<string, React.ComponentType<{ size?: number; color?: string }>> = {
@@ -41,7 +47,20 @@ const ICON: Record<string, React.ComponentType<{ size?: number; color?: string }
   bell: Bell,
   gear: Gear,
   help: Help,
+  rate: Star,
 };
+
+async function rateApp() {
+  try {
+    if (await StoreReview.isAvailableAsync()) {
+      await StoreReview.requestReview();
+    } else {
+      Alert.alert('Thanks!', 'You can rate EdnaCharge from the App Store.');
+    }
+  } catch {
+    Alert.alert('Thanks!', 'You can rate EdnaCharge from the App Store.');
+  }
+}
 
 export default function HostProfile() {
   const router = useRouter();
@@ -52,8 +71,13 @@ export default function HostProfile() {
 
   return (
     <Screen scroll contentStyle={{ paddingBottom: 30 }}>
-      <View style={{ marginTop: 14, alignItems: 'center' }}>
-        <Avatar name={me.data?.fullName ?? 'EC'} size="lg" />
+      <Pressable
+        onPress={() => router.push('/(shared)/edit-profile' as never)}
+        accessibilityRole="button"
+        accessibilityLabel="Edit profile"
+        style={{ marginTop: 14, alignItems: 'center' }}
+      >
+        <Avatar name={me.data?.fullName ?? 'EC'} uri={me.data?.avatarUrl} size="lg" />
         <Row gap={6} style={{ marginTop: 10 }}>
           <Body style={{ fontWeight: '700', fontSize: 18 }}>
             {me.data?.fullName ?? 'You'}
@@ -61,7 +85,8 @@ export default function HostProfile() {
           <VerifiedPill />
         </Row>
         <HostRatingRow userId={me.data?.id} createdAt={me.data?.createdAt ?? null} />
-      </View>
+        <Muted style={{ fontSize: 12, marginTop: 6 }}>Tap to edit profile</Muted>
+      </Pressable>
 
       <Pressable
         onPress={() => {
@@ -108,7 +133,17 @@ export default function HostProfile() {
           return (
             <Pressable
               key={it.key}
-              onPress={() => router.push(it.params ? { pathname: it.path, params: it.params } as never : it.path as never)}
+              accessibilityRole="button"
+              accessibilityLabel={it.label}
+              onPress={() => {
+                haptics.selection();
+                if (it.action === 'rate') {
+                  rateApp();
+                  return;
+                }
+                if (!it.path) return;
+                router.push(it.params ? { pathname: it.path, params: it.params } as never : it.path as never);
+              }}
               style={{
                 flexDirection: 'row',
                 alignItems: 'center',
@@ -127,15 +162,29 @@ export default function HostProfile() {
         })}
       </Card>
 
+      <RatingsSection userId={me.data?.id} />
+
       <Button
         label="Sign out"
         variant="destructive-outline"
-        onPress={async () => {
-          await signOut();
-          router.replace('/(auth)/welcome');
+        onPress={() => {
+          Alert.alert('Sign out?', 'You can sign back in anytime.', [
+            { text: 'Cancel', style: 'cancel' },
+            {
+              text: 'Sign out',
+              style: 'destructive',
+              onPress: async () => {
+                await signOut();
+                router.replace('/(auth)/welcome');
+              },
+            },
+          ]);
         }}
         style={{ marginTop: 18 }}
       />
+      <Muted style={{ textAlign: 'center', marginTop: 16, fontSize: 11 }}>
+        EdnaCharge v{Constants.expoConfig?.version ?? '0.0.1'}
+      </Muted>
     </Screen>
   );
 }

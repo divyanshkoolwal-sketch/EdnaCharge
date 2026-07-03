@@ -95,7 +95,7 @@ const TERMS = page(
 <ul>
 <li>Drivers reserve a charger and authorize payment before charging. Final charges are based on the energy actually delivered (kWh) as metered by the charger, plus applicable fees.</li>
 <li>EdnaCharge charges a service fee (currently 15% of the transaction) and remits the remainder to the Host. Payments and payouts are processed by Stripe; by transacting you also agree to Stripe's terms.</li>
-<li>Hosts set their own pricing and are responsible for any taxes on their earnings.</li>
+<li>Pricing is set automatically by EdnaCharge based on demand and time of day — Hosts do not set their own rates. Hosts are responsible for any taxes on their earnings.</li>
 </ul>
 
 <h2>Host responsibilities</h2>

@@ -68,6 +68,10 @@ export const reviewRouter = router({
         orderBy: { createdAt: 'desc' },
         take: 25,
         ...(input.cursor ? { cursor: { id: input.cursor }, skip: 1 } : {}),
+        include: {
+          // Who left the rating — so the "your ratings" list can show a name/avatar.
+          author: { select: { id: true, fullName: true, avatarUrl: true } },
+        },
       });
       return { rows, nextCursor: rows.at(-1)?.id ?? null };
     }),

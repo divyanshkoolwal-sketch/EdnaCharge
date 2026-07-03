@@ -5,7 +5,7 @@ import { HomeChargerIllo } from '../../../src/components/illustrations/HomeCharg
 
 const BULLETS = [
   'Typical hosts earn $40–$200/month.',
-  'You set the price, schedule, and house rules.',
+  'Pricing is set automatically by demand — you earn more at peak hours.',
   'Every request is yours to accept or decline.',
 ];
 

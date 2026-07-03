@@ -60,12 +60,11 @@ export default function ChargerDetail() {
     );
   }
   const ch = q.data;
-  const priceMain = ch.pricePerKwhCents
-    ? `$${(ch.pricePerKwhCents / 100).toFixed(2)}`
-    : ch.pricePerHourCents
-      ? `$${(ch.pricePerHourCents / 100).toFixed(2)}`
-      : '—';
-  const priceUnit = ch.pricePerKwhCents ? '/kWh' : ch.pricePerHourCents ? '/hour' : '';
+  // Pricing is demand-based and server-computed (ch.currentRateCents), not
+  // host-entered. Show the current rate.
+  const priceMain =
+    ch.currentRateCents != null ? `$${(ch.currentRateCents / 100).toFixed(2)}` : '—';
+  const priceUnit = ch.currentRateCents != null ? '/kWh' : '';
 
   return (
     <Screen>
@@ -116,6 +115,9 @@ export default function ChargerDetail() {
           <H1 style={{ fontSize: 32 }}>{priceMain}</H1>
           <Muted>{priceUnit}</Muted>
         </View>
+        <Muted style={{ fontSize: 12, marginTop: 2 }}>
+          Current rate — set automatically by demand
+        </Muted>
 
         {ch.houseRules ? (
           <>

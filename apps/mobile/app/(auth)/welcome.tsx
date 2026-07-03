@@ -130,6 +130,14 @@ export default function Welcome() {
           onPress={() => continueWithProvider('apple', signInWithApple, 'Apple sign-in')}
           style={{ marginTop: 10 }}
         />
+        {/* Group fast OAuth above; email/phone below — clearer first-run choice. */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 14 }}>
+          <View style={{ flex: 1, height: 1, backgroundColor: c.line }} />
+          <Muted style={{ fontSize: 11 }} accessibilityElementsHidden>
+            or
+          </Muted>
+          <View style={{ flex: 1, height: 1, backgroundColor: c.line }} />
+        </View>
         <Button
           label="Continue with email"
           variant="secondary"
@@ -145,7 +153,21 @@ export default function Welcome() {
           style={{ marginTop: 10 }}
         />
         <Muted style={{ textAlign: 'center', marginTop: 12, fontSize: 11, color: c.muted2 }}>
-          By continuing you agree to terms & privacy.
+          By continuing you agree to our{' '}
+          <Muted
+            onPress={() => router.push('/(shared)/legal?doc=terms' as never)}
+            style={{ fontSize: 11, color: c.ink, textDecorationLine: 'underline' }}
+          >
+            Terms
+          </Muted>{' '}
+          &{' '}
+          <Muted
+            onPress={() => router.push('/(shared)/legal?doc=privacy' as never)}
+            style={{ fontSize: 11, color: c.ink, textDecorationLine: 'underline' }}
+          >
+            Privacy Policy
+          </Muted>
+          .
         </Muted>
       </View>
     </Screen>
