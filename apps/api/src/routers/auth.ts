@@ -7,9 +7,18 @@ import {
   DriverProfileInputZ,
   ChargerIdentificationInputZ,
   HostIdentityInputZ,
+  UpdateProfileInputZ,
+  UploadAvatarInputZ,
 } from '@edna/schemas';
 import { setHardwareSetup } from '../lib/hardwareSetup.js';
+import { uploadAvatar } from '../lib/supabase.js';
 import { logger } from '../logger.js';
+
+const USER_PUBLIC_SELECT = {
+  id: true,
+  fullName: true,
+  avatarUrl: true,
+} as const;
 
 export const authRouter = router({
   // protectedProcedure middleware guarantees the User row exists by the time
@@ -20,6 +29,49 @@ export const authRouter = router({
       include: { driverProfile: true, hostProfile: true, identityVerification: true },
     });
   }),
+
+  // Edit profile: update display name and/or avatar after onboarding.
+  updateProfile: protectedProcedure
+    .input(UpdateProfileInputZ)
+    .mutation(async ({ ctx, input }) => {
+      return prisma.user.update({
+        where: { id: ctx.userId },
+        data: {
+          ...(input.fullName !== undefined ? { fullName: input.fullName.trim() } : {}),
+          ...(input.avatarUrl !== undefined ? { avatarUrl: input.avatarUrl } : {}),
+        },
+        select: USER_PUBLIC_SELECT,
+      });
+    }),
+
+  // Upload a profile photo: store the image in Supabase Storage and persist the
+  // resulting public URL on the user.
+  uploadAvatar: protectedProcedure
+    .input(UploadAvatarInputZ)
+    .mutation(async ({ ctx, input }) => {
+      let bytes: Buffer;
+      try {
+        bytes = Buffer.from(input.base64, 'base64');
+      } catch {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'Invalid image data.' });
+      }
+      // Hard cap ~3MB decoded to protect Storage + the DB.
+      if (bytes.length === 0 || bytes.length > 3_000_000) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'Image must be under 3MB.' });
+      }
+      let url: string;
+      try {
+        url = await uploadAvatar(ctx.userId, bytes, input.mime);
+      } catch (err) {
+        logger.error({ err, userId: ctx.userId }, 'avatar upload failed');
+        throw new TRPCError({
+          code: 'SERVICE_UNAVAILABLE',
+          message: 'Could not upload your photo. Please try again.',
+        });
+      }
+      await prisma.user.update({ where: { id: ctx.userId }, data: { avatarUrl: url } });
+      return { avatarUrl: url };
+    }),
 
   completeDriverProfile: protectedProcedure
     .input(DriverProfileInputZ)

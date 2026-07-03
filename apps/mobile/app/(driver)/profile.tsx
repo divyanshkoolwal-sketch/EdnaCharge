@@ -1,6 +1,7 @@
 import { View, Pressable, Text, Alert } from 'react-native';
 import Constants from 'expo-constants';
 import { useRouter } from 'expo-router';
+import * as StoreReview from 'expo-store-review';
 import {
   Screen,
   H1,
@@ -20,13 +21,16 @@ import { useRole } from '../../src/state/role';
 import { hostStage, hostEntryRoute } from '../../src/lib/hostEntry';
 import { haptics } from '../../src/lib/haptics';
 import { VerifiedPill } from '../../src/components/VerificationBanner';
+import { RatingsSection } from '../../src/components/RatingsSection';
 
-const ITEMS: { key: string; label: string; icon: 'verify' | 'card' | 'bell' | 'gear' | 'help'; path: string; params?: Record<string, string> }[] = [
+type IconKey = 'verify' | 'card' | 'bell' | 'gear' | 'help' | 'rate';
+const ITEMS: { key: string; label: string; icon: IconKey; path?: string; params?: Record<string, string>; action?: 'rate' }[] = [
   { key: 'verify', label: 'Verify ID', icon: 'verify', path: '/(shared)/identity-verification', params: { next: '/(driver)/profile' } },
   { key: 'card', label: 'Payment methods', icon: 'card', path: '/(shared)/payment-methods' },
   { key: 'bell', label: 'Notifications', icon: 'bell', path: '/(shared)/notifications?role=driver' },
   { key: 'gear', label: 'Settings', icon: 'gear', path: '/(shared)/settings' },
   { key: 'help', label: 'Support', icon: 'help', path: '/(shared)/support' },
+  { key: 'rate', label: 'Rate EdnaCharge', icon: 'rate', action: 'rate' },
 ];
 
 const ICON: Record<string, React.ComponentType<{ size?: number; color?: string }>> = {
@@ -35,7 +39,20 @@ const ICON: Record<string, React.ComponentType<{ size?: number; color?: string }
   bell: Bell,
   gear: Gear,
   help: Help,
+  rate: Star,
 };
+
+async function rateApp() {
+  try {
+    if (await StoreReview.isAvailableAsync()) {
+      await StoreReview.requestReview();
+    } else {
+      Alert.alert('Thanks!', 'You can rate EdnaCharge from the App Store.');
+    }
+  } catch {
+    Alert.alert('Thanks!', 'You can rate EdnaCharge from the App Store.');
+  }
+}
 
 export default function Profile() {
   const router = useRouter();
@@ -47,8 +64,13 @@ export default function Profile() {
 
   return (
     <Screen scroll contentStyle={{ paddingBottom: 40 }}>
-      <View style={{ marginTop: 14, alignItems: 'center' }}>
-        <Avatar name={me.data?.fullName ?? 'EC'} size="lg" />
+      <Pressable
+        onPress={() => router.push('/(shared)/edit-profile' as never)}
+        accessibilityRole="button"
+        accessibilityLabel="Edit profile"
+        style={{ marginTop: 14, alignItems: 'center' }}
+      >
+        <Avatar name={me.data?.fullName ?? 'EC'} uri={me.data?.avatarUrl} size="lg" />
         <Row gap={6} style={{ marginTop: 10 }}>
           <Body style={{ fontWeight: '700', fontSize: 18 }}>
             {me.data?.fullName ?? 'You'}
@@ -56,7 +78,8 @@ export default function Profile() {
           <VerifiedPill />
         </Row>
         <DriverRatingRow userId={me.data?.id} email={me.data?.email ?? null} />
-      </View>
+        <Muted style={{ fontSize: 12, marginTop: 6 }}>Tap to edit profile</Muted>
+      </Pressable>
 
       {/* Become a host card */}
       <Pressable
@@ -124,6 +147,11 @@ export default function Profile() {
               accessibilityLabel={it.label}
               onPress={() => {
                 haptics.selection();
+                if (it.action === 'rate') {
+                  rateApp();
+                  return;
+                }
+                if (!it.path) return;
                 router.push(it.params ? { pathname: it.path, params: it.params } as never : it.path as never);
               }}
               style={{
@@ -143,6 +171,8 @@ export default function Profile() {
           );
         })}
       </Card>
+
+      <RatingsSection userId={me.data?.id} />
 
       <Button
         label="Sign out"

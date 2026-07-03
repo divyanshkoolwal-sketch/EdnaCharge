@@ -28,6 +28,9 @@ export default function Receipt() {
   const utils = trpc.useUtils();
   const toast = useToast();
   const q = trpc.booking.get.useQuery({ id: id! }, { enabled: !!id, refetchInterval: 3000 });
+  // Already-reviewed guard: if the driver rated this booking, show the submitted
+  // state instead of letting a second submit hit a CONFLICT.
+  const mine = trpc.review.mine.useQuery({ bookingId: id! }, { enabled: !!id });
   const review = trpc.review.create.useMutation({
     onSuccess: () => {
       utils.booking.list.invalidate();
@@ -112,56 +115,75 @@ export default function Receipt() {
       </Card>
 
       <SectionHeader>Rate your host</SectionHeader>
-      <Card padding={14}>
-        <Row gap={6} style={{ justifyContent: 'center' }} accessibilityRole="radiogroup">
-          {[1, 2, 3, 4, 5].map((n) => (
-            <Pressable
-              key={n}
-              onPress={() => {
-                haptics.selection();
-                setStars(n);
-              }}
-              accessibilityRole="radio"
-              accessibilityState={{ selected: n === stars }}
-              accessibilityLabel={`${n} star${n === 1 ? '' : 's'}`}
-            >
-              <Star size={28} color={n <= stars ? c.orange : c.line2} />
-            </Pressable>
-          ))}
-        </Row>
-        <View style={{ marginTop: 12 }}>
-          <Input
-            value={text}
-            onChangeText={setText}
-            multiline
-            placeholder="Add a comment (optional)"
-            style={{ minHeight: 60, height: undefined, paddingTop: 14, paddingBottom: 14 }}
-          />
-        </View>
-      </Card>
+      {mine.data ? (
+        <Card padding={14}>
+          <Row gap={6} style={{ justifyContent: 'center' }}>
+            {[1, 2, 3, 4, 5].map((n) => (
+              <Star key={n} size={24} color={n <= mine.data!.stars ? c.orange : c.line2} />
+            ))}
+          </Row>
+          <Muted style={{ textAlign: 'center', marginTop: 10, fontSize: 13 }}>
+            You rated your host {mine.data.stars}★. Thanks for the feedback!
+          </Muted>
+        </Card>
+      ) : (
+        <Card padding={14}>
+          <Row gap={6} style={{ justifyContent: 'center' }} accessibilityRole="radiogroup">
+            {[1, 2, 3, 4, 5].map((n) => (
+              <Pressable
+                key={n}
+                onPress={() => {
+                  haptics.selection();
+                  setStars(n);
+                }}
+                accessibilityRole="radio"
+                accessibilityState={{ selected: n === stars }}
+                accessibilityLabel={`${n} star${n === 1 ? '' : 's'}`}
+              >
+                <Star size={28} color={n <= stars ? c.orange : c.line2} />
+              </Pressable>
+            ))}
+          </Row>
+          <View style={{ marginTop: 12 }}>
+            <Input
+              value={text}
+              onChangeText={setText}
+              multiline
+              placeholder="Add a comment (optional)"
+              style={{ minHeight: 60, height: undefined, paddingTop: 14, paddingBottom: 14 }}
+            />
+          </View>
+        </Card>
+      )}
 
       <CTABar>
-        <Button
-          label={
-            settling
-              ? 'Waiting for settlement…'
-              : review.isPending
-                ? 'Submitting…'
-                : 'Submit review'
-          }
-          onPress={() => review.mutate({ bookingId: b.id, stars, text: text || undefined })}
-          loading={review.isPending}
-          // Allow the review even after a settle timeout — the booking row
-          // can still receive a star rating; we just couldn't capture yet.
-          disabled={review.isPending || settling}
-        />
-        <Button
-          label="Done"
-          variant="secondary"
-          height={44}
-          fontSize={14}
-          onPress={() => router.replace('/(driver)/bookings')}
-        />
+        {mine.data ? (
+          <Button label="Done" onPress={() => router.replace('/(driver)/bookings')} />
+        ) : (
+          <>
+            <Button
+              label={
+                settling
+                  ? 'Waiting for settlement…'
+                  : review.isPending
+                    ? 'Submitting…'
+                    : 'Submit review'
+              }
+              onPress={() => review.mutate({ bookingId: b.id, stars, text: text || undefined })}
+              loading={review.isPending}
+              // Allow the review even after a settle timeout — the booking row
+              // can still receive a star rating; we just couldn't capture yet.
+              disabled={review.isPending || settling}
+            />
+            <Button
+              label="Done"
+              variant="secondary"
+              height={44}
+              fontSize={14}
+              onPress={() => router.replace('/(driver)/bookings')}
+            />
+          </>
+        )}
       </CTABar>
     </Screen>
   );

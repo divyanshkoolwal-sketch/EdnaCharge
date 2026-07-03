@@ -59,6 +59,12 @@
           "isIosBackgroundLocationEnabled": false,
           "isAndroidBackgroundLocationEnabled": false
         }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "EdnaCharge needs access to your photos so you can set a profile picture."
+        }
       ]
     ],
     "experiments": { "typedRoutes": true },

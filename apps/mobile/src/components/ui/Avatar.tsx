@@ -1,4 +1,5 @@
 import { View, Text } from 'react-native';
+import { Image } from 'expo-image';
 import { useTheme } from '../../theme/useTheme';
 
 type Size = 'sm' | 'md' | 'lg';
@@ -13,10 +14,13 @@ export function Avatar({
   name = 'EC',
   size = 'md',
   bgColor,
+  uri,
 }: {
   name?: string;
   size?: Size;
   bgColor?: string;
+  /** Optional avatar image (profile picture / OAuth photo). Falls back to initials. */
+  uri?: string | null;
 }) {
   const { c } = useTheme();
   const { box, font } = dims[size];
@@ -26,6 +30,21 @@ export function Avatar({
     .map((s) => s[0] ?? '')
     .join('')
     .toUpperCase();
+
+  if (uri) {
+    return (
+      <Image
+        accessible
+        accessibilityLabel={name && name !== 'EC' ? `${name}, profile photo` : 'Profile photo'}
+        source={{ uri }}
+        style={{ width: box, height: box, borderRadius: box / 2, backgroundColor: c.greenPill }}
+        contentFit="cover"
+        transition={150}
+        cachePolicy="memory-disk"
+      />
+    );
+  }
+
   return (
     <View
       accessible

@@ -43,6 +43,9 @@ export default function BookingDetail() {
     { id: id! },
     { enabled: !!id, refetchInterval: editing ? false : 4000 },
   );
+  // Whether the driver has already rated their host on this booking (drives the
+  // durable "Rate host" affordance on a completed booking).
+  const myReview = trpc.review.mine.useQuery({ bookingId: id! }, { enabled: !!id });
   const modify = trpc.booking.modify.useMutation({
     onSuccess: () => {
       utils.booking.get.invalidate({ id: id! });
@@ -230,11 +233,20 @@ export default function BookingDetail() {
             {startable && !hasSession ? (
               <Button label="Start session" onPress={() => start.mutate({ bookingId: b.id })} loading={start.isPending} />
             ) : null}
-            {b.session ? (
+            {b.session && b.status !== 'completed' ? (
               <Button
                 label="View live session"
                 onPress={() =>
                   router.push({ pathname: '/(driver)/session/[id]', params: { id: b.session!.id } })
+                }
+              />
+            ) : null}
+            {b.status === 'completed' ? (
+              <Button
+                label={myReview.data ? `You rated your host ${myReview.data.stars}★` : 'Rate your host'}
+                variant={myReview.data ? 'secondary' : 'primary'}
+                onPress={() =>
+                  router.push({ pathname: '/(driver)/receipt/[id]', params: { id: b.id } })
                 }
               />
             ) : null}
