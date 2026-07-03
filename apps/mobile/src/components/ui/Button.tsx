@@ -10,6 +10,7 @@ import {
   type PressableProps,
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../../theme/useTheme';
 
 type Variant = 'primary' | 'secondary' | 'destructive' | 'destructive-outline';
@@ -169,18 +170,23 @@ export function IconCircle({
   );
 }
 
-// CTA bar — bottom-pinned button (or button stack).
+// CTA bar — bottom button (or button stack).
 //
-// Keyboard-aware: when the software keyboard is up it rises to sit directly
-// above it, so the primary action is never hidden behind the keyboard (the
-// root cause of the "can't reach submit / dead-end form" bug). Because the bar
-// is absolutely positioned, a plain KeyboardAvoidingView could not lift it —
-// this tracks the keyboard height directly instead.
-export function CTABar({ children }: { children: React.ReactNode }) {
+// Two modes:
+//  - `inFlow` (set by <Screen> on scrollable/keyboard-aware screens): a normal
+//    flex sibling below the ScrollView. The parent KeyboardAvoidingView lifts
+//    the whole stack, so the bar sits flush above the keyboard and can NEVER
+//    overlap the form. This is the correct, coordinated behavior.
+//  - default (non-scrollable screens): classic absolute bottom-pinned bar that
+//    tracks the keyboard height itself.
+export function CTABar({ children, inFlow }: { children: React.ReactNode; inFlow?: boolean }) {
   const { c } = useTheme();
+  const insets = useSafeAreaInsets();
   const [keyboardHeight, setKeyboardHeight] = useState(0);
 
   useEffect(() => {
+    // In-flow bars are lifted by the parent KeyboardAvoidingView — no listener.
+    if (inFlow) return;
     // iOS fires Will* slightly ahead of the animation (smoother); Android only
     // reliably fires Did*.
     const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
@@ -193,7 +199,24 @@ export function CTABar({ children }: { children: React.ReactNode }) {
       show.remove();
       hide.remove();
     };
-  }, []);
+  }, [inFlow]);
+
+  if (inFlow) {
+    // Normal flex sibling — the KeyboardAvoidingView in <Screen> handles lift.
+    // Parent already applies horizontal padding, so only pad top/bottom.
+    return (
+      <View
+        style={{
+          paddingTop: 16,
+          paddingBottom: Math.max(16, insets.bottom),
+          backgroundColor: c.bg,
+          gap: 10,
+        }}
+      >
+        {children}
+      </View>
+    );
+  }
 
   const lifted = keyboardHeight > 0;
   return (

@@ -11,7 +11,7 @@
  */
 
 import { useState } from 'react';
-import { View, Pressable, ScrollView, Linking } from 'react-native';
+import { View, Pressable, Linking } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { handleError } from '../../../src/lib/errors';
 import {
@@ -82,14 +82,15 @@ export default function DeviceSetup() {
   }
 
   return (
-    <Screen keyboardAvoiding>
+    <Screen keyboardAvoiding contentStyle={{ paddingBottom: 24 }}>
       {step < 5 ? (
         <Pressable onPress={() => (step === 1 ? router.back() : setStep((step - 1) as Step))} style={{ paddingTop: 8 }}>
           <ChevronLeft />
         </Pressable>
       ) : null}
 
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 130 }}>
+      {/* Screen provides the keyboard-aware ScrollView; no nested scroller. */}
+      <>
 
         {/* STEP 1: Power on + WiFi */}
         {step === 1 ? (
@@ -205,7 +206,7 @@ export default function DeviceSetup() {
             </Card>
           </View>
         ) : null}
-      </ScrollView>
+      </>
 
       {/* Footer CTAs */}
       {step === 1 ? (
