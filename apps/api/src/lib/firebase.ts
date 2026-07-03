@@ -43,7 +43,15 @@ function devTokenSecret(): string | null {
     process.env.ENABLE_DEV_BYPASS === '1' ||
     process.env.FIREBASE_AUTH_DEV_BYPASS === '1';
   if (!enabled) return null;
-  return process.env.FIREBASE_AUTH_DEV_SECRET ?? 'ednacharge-test-firebase-auth';
+  // No hardcoded fallback secret: even in dev/staging, the bypass only works if
+  // an explicit secret is set. A shared default would let anyone who knows it
+  // forge a token for any uid on a misconfigured staging box.
+  const secret = process.env.FIREBASE_AUTH_DEV_SECRET;
+  if (!secret || secret.length < 16) {
+    logger.warn('dev token bypass enabled but FIREBASE_AUTH_DEV_SECRET is unset/too short — bypass disabled');
+    return null;
+  }
+  return secret;
 }
 
 function verifyDevToken(token: string): VerifiedFirebaseUser | null {
@@ -84,7 +92,10 @@ export async function verifyFirebaseIdToken(token: string): Promise<VerifiedFire
   if (devUser) return devUser;
 
   try {
-    const decoded = await getAuth(firebaseAdminApp()).verifyIdToken(token);
+    // checkRevoked=true: reject tokens for users who signed out, were disabled,
+    // or had their sessions revoked (e.g. after a password change / compromise).
+    // Without it a stolen/stale ID token stays valid until its ~1h expiry.
+    const decoded = await getAuth(firebaseAdminApp()).verifyIdToken(token, true);
     return {
       firebaseUid: decoded.uid,
       email: typeof decoded.email === 'string' ? decoded.email : null,

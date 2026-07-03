@@ -34,6 +34,15 @@ const EnvSchema = z.object({
   STRIPE_SECRET_KEY: z.string().optional(),
   STRIPE_WEBHOOK_SECRET: z.string().optional(),
 
+  // Symmetric key (pgcrypto) for encrypting stored OCPP passwords. Only the API
+  // uses it; it validates presence at point of use (charger router) and throws a
+  // clear error there. Kept permissive here so it can never crash a service at
+  // boot (a too-short/absent key must not take down csms/worker, which don't use it).
+  OCPP_SECRET_ENC_KEY: z.string().optional(),
+  // Public CSMS websocket base shown to hosts, e.g. wss://csms.ednacharge.com.
+  // Only the API consumes it; kept permissive so csms/worker never fail to boot.
+  CSMS_PUBLIC_URL: z.string().optional(),
+
   SENTRY_DSN_API: z.string().url().optional().or(z.literal('')),
   SENTRY_DSN_CSMS: z.string().url().optional().or(z.literal('')),
   SENTRY_DSN_WORKER: z.string().url().optional().or(z.literal('')),

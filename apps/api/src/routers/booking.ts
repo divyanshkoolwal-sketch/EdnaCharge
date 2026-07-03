@@ -37,6 +37,16 @@ export const bookingRouter = router({
     .mutation(async ({ ctx, input }) => {
       const charger = await prisma.charger.findUniqueOrThrow({ where: { id: input.chargerId } });
 
+      // A host must not book their own charger — that would let them run charges
+      // through their own card to their own Connect account (fake volume / card
+      // testing / self-review inflation).
+      if (charger.hostId === ctx.userId) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: 'You cannot book your own charger.',
+        });
+      }
+
       // Race-window guard: a driver can pick a charger from the cached `nearby`
       // result and submit a request after the host has taken it offline.
       // Re-check at write time so we don't create a booking against a hidden
@@ -460,15 +470,31 @@ export const bookingRouter = router({
             message: 'This Tier 3 charger has no OCPP credentials provisioned.',
           });
         }
+        // If a valid authorization window is already open, don't re-mint / re-
+        // dispatch — repeat taps within the 15-min window would spam
+        // RemoteStartTransaction and needlessly refresh the anti-theft token.
+        const AUTH_WINDOW_MS = 15 * 60_000;
+        const stillAuthorized =
+          !!b.ocppStartToken &&
+          !!b.ocppAuthorizedAt &&
+          Date.now() - b.ocppAuthorizedAt.getTime() < AUTH_WINDOW_MS;
+        if (stillAuthorized) {
+          return { status: 'dispatched' as const };
+        }
         // Anti-theft: mint a one-time idTag and stamp the authorization window
         // BEFORE dispatching, so the CSMS can match the charger's Authorize /
         // StartTransaction to THIS explicit tap. OCPP 1.6 idTag is CiString20 —
         // 16 hex chars stays well under the limit and is unguessable.
         const startToken = randomBytes(8).toString('hex');
-        await prisma.booking.update({
-          where: { id: b.id },
+        // Optimistic lock: only authorize while the booking is still 'confirmed'
+        // (guards against a concurrent start/cancel race).
+        const authRes = await prisma.booking.updateMany({
+          where: { id: b.id, status: 'confirmed' },
           data: { ocppStartToken: startToken, ocppAuthorizedAt: new Date() },
         });
+        if (authRes.count !== 1) {
+          throw new TRPCError({ code: 'BAD_REQUEST', message: 'Booking not confirmed.' });
+        }
         await ocppCommandsQueue.add('RemoteStartTransaction', {
           kind: 'RemoteStartTransaction',
           chargePointId: b.charger.ocppChargePointId,
@@ -499,7 +525,14 @@ export const bookingRouter = router({
         }
         // Mark confirmed → active so the session screen renders. Session row
         // is created later by the threshold detector when actual power flows.
-        await prisma.booking.update({ where: { id: b.id }, data: { status: 'active' } });
+        // Optimistic lock to avoid a double-start race.
+        const t2 = await prisma.booking.updateMany({
+          where: { id: b.id, status: 'confirmed' },
+          data: { status: 'active' },
+        });
+        if (t2.count !== 1) {
+          throw new TRPCError({ code: 'BAD_REQUEST', message: 'Booking not confirmed.' });
+        }
         await bookingsQueue.add(
           'device_monitor',
           { bookingId: b.id },
@@ -508,8 +541,15 @@ export const bookingRouter = router({
         return { status: 'monitoring' as const };
       }
 
-      // Tier 4 (unmetered) — virtual start: mark active immediately
-      await prisma.booking.update({ where: { id: b.id }, data: { status: 'active' } });
+      // Tier 4 (unmetered) — virtual start: mark active immediately (optimistic
+      // lock guards against a double-start race).
+      const t4 = await prisma.booking.updateMany({
+        where: { id: b.id, status: 'confirmed' },
+        data: { status: 'active' },
+      });
+      if (t4.count !== 1) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'Booking not confirmed.' });
+      }
       return { status: 'started_virtual' as const };
     }),
 

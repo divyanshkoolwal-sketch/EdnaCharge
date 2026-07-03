@@ -20,7 +20,15 @@ import { handleDeviceMonitor, type DeviceMonitorPayload } from './jobs/device-mo
 // AUDIT L2: discriminated union over BullMQ job payloads per queue.
 type AutoDeclinePayload = { bookingId: string };
 type SettleSessionPayload = { sessionId: string };
-type SettleByTxIdPayload = { transactionId: number; meterStop?: number; timestamp?: string };
+type SettleByTxIdPayload = {
+  transactionId: number;
+  meterStop?: number;
+  timestamp?: string;
+  // The charge point that reported the stop. Used to verify the deferred stop
+  // came from the charger that actually owns the session (matches the CSMS
+  // ingress-time binding for the non-deferred path).
+  chargePointId?: string;
+};
 
 type BookingsPayload =
   | AutoDeclinePayload
@@ -100,6 +108,22 @@ async function main() {
             if (!session) {
               logger.warn({ transactionId: data.transactionId }, 'settle_session_by_txid: no session; giving up');
               return;
+            }
+            // SECURITY: only settle if the deferred stop came from the charger
+            // that owns the session. Prevents one charger from finalizing (and
+            // mis-metering) another charger's session via a guessed txId.
+            if (data.chargePointId) {
+              const charger = await prisma.charger.findUnique({
+                where: { ocppChargePointId: data.chargePointId },
+                select: { id: true },
+              });
+              if (!charger || charger.id !== session.chargerId) {
+                logger.warn(
+                  { transactionId: data.transactionId, chargePointId: data.chargePointId, sessionChargerId: session.chargerId },
+                  'settle_session_by_txid: charge point does not own this session; refusing',
+                );
+                return;
+              }
             }
             if (!session.endedAt) {
               const kwh = data.meterStop != null ? Math.max(0, (data.meterStop - session.meterStartWh) / 1000) : 0;
