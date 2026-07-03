@@ -153,7 +153,21 @@ export default function Welcome() {
           style={{ marginTop: 10 }}
         />
         <Muted style={{ textAlign: 'center', marginTop: 12, fontSize: 11, color: c.muted2 }}>
-          By continuing you agree to terms & privacy.
+          By continuing you agree to our{' '}
+          <Muted
+            onPress={() => router.push('/(shared)/legal?doc=terms' as never)}
+            style={{ fontSize: 11, color: c.ink, textDecorationLine: 'underline' }}
+          >
+            Terms
+          </Muted>{' '}
+          &{' '}
+          <Muted
+            onPress={() => router.push('/(shared)/legal?doc=privacy' as never)}
+            style={{ fontSize: 11, color: c.ink, textDecorationLine: 'underline' }}
+          >
+            Privacy Policy
+          </Muted>
+          .
         </Muted>
       </View>
     </Screen>

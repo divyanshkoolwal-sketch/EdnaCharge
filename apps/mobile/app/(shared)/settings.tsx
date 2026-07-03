@@ -120,9 +120,7 @@ export default function Settings() {
           <ChevronRight color={c.muted2} />
         </Pressable>
         <Pressable
-          onPress={() =>
-            Alert.alert('Privacy policy', 'See endacharges.com/privacy for the full policy.')
-          }
+          onPress={() => router.push('/(shared)/legal?doc=privacy' as never)}
           style={{
             paddingVertical: 14,
             paddingHorizontal: 16,
@@ -136,9 +134,7 @@ export default function Settings() {
           <ChevronRight color={c.muted2} />
         </Pressable>
         <Pressable
-          onPress={() =>
-            Alert.alert('Terms of service', 'See endacharges.com/terms for the full terms.')
-          }
+          onPress={() => router.push('/(shared)/legal?doc=terms' as never)}
           style={{
             paddingVertical: 14,
             paddingHorizontal: 16,

@@ -42,6 +42,22 @@ export const ChevronRight = ({ size = 14, color }: Props) => {
   );
 };
 
+export const ChevronDown = ({ size = 14, color }: Props) => {
+  const stroke = useStroke(color);
+  return (
+    <Svg width={size} height={size} viewBox="0 0 14 14">
+      <Path
+        d="M3 5l4 4 4-4"
+        stroke={stroke}
+        strokeWidth={1.6}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        fill="none"
+      />
+    </Svg>
+  );
+};
+
 export const Close = ({ size = 22, color }: Props) => {
   const stroke = useStroke(color);
   return (

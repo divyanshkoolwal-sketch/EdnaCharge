@@ -1,6 +1,6 @@
-// Custom tab bar matching the design canvas: no chrome, active tab gets a
-// dot beneath it; icons inherit theme color. Used as Expo Router's
-// tabBar via screenOptions.tabBar.
+// Custom tab bar matching the design canvas: no chrome; the active tab is
+// indicated by ink-colored icon + label. Used as Expo Router's tabBar via
+// screenOptions.tabBar.
 import { View, Pressable, Text } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../../theme/useTheme';
@@ -117,18 +117,6 @@ export function TabBar({ tabs, activeKey, onPress }: {
             >
               {t.label}
             </Text>
-            {active ? (
-              <View
-                style={{
-                  position: 'absolute',
-                  bottom: -2,
-                  width: 4,
-                  height: 4,
-                  borderRadius: 2,
-                  backgroundColor: c.ink,
-                }}
-              />
-            ) : null}
           </Pressable>
         );
       })}

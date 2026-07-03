@@ -20,7 +20,7 @@ import { trpc } from '../../src/lib/trpc';
 import { openRealtimeChannel } from '../../src/lib/realtime';
 import { useTheme } from '../../src/theme/useTheme';
 import { useUserLocation } from '../../src/state/userLocation';
-import { Search, Recenter, Bolt } from '../../src/components/icons/Icon';
+import { Search, Recenter } from '../../src/components/icons/Icon';
 import { IconCircle, useToast } from '../../src/components/ui';
 import { VerificationBanner } from '../../src/components/VerificationBanner';
 
@@ -409,9 +409,6 @@ export default function Map() {
           <Search size={16} color={theme.c.muted} />
           <Text style={{ color: theme.c.muted, fontSize: 13 }}>{locationLabel}</Text>
         </View>
-        <IconCircle size={44}>
-          <Bolt size={18} color={theme.c.ink} />
-        </IconCircle>
       </View>
 
       {/* Verification banner — only shows when not verified */}
@@ -449,6 +446,42 @@ export default function Map() {
               style={{ color: theme.c.bg, fontWeight: '600', fontSize: 12 }}
             >
               Search this area
+            </Text>
+          </View>
+        </View>
+      ) : null}
+
+      {/* Empty-area indicator — non-blocking. Shows only after a settled fetch
+          that returned zero chargers in the searched radius; disappears the
+          instant a pin arrives. pointerEvents="none" so it never blocks gestures. */}
+      {!nearby.isLoading && !nearby.isError && (nearby.data ?? []).length === 0 ? (
+        <View
+          pointerEvents="none"
+          style={{
+            position: 'absolute',
+            top: 0,
+            bottom: 0,
+            left: 0,
+            right: 0,
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <View
+            style={{
+              backgroundColor: theme.c.card,
+              paddingHorizontal: 16,
+              height: 40,
+              borderRadius: 20,
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 8,
+              ...theme.shadow.cardLight,
+            }}
+          >
+            <Search size={14} color={theme.c.muted} />
+            <Text style={{ color: theme.c.muted, fontWeight: '600', fontSize: 13 }}>
+              No chargers in this area
             </Text>
           </View>
         </View>
