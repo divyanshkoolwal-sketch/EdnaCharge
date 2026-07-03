@@ -23,6 +23,41 @@ type NotificationName =
 export type NotificationJob = Job<Payload, void, NotificationName>;
 
 type UserRef = { id: string; expoPushToken?: string | null };
+type DeepLink = { bookingId?: string | null; threadId?: string | null; sessionId?: string | null };
+
+/**
+ * Deliver a notification: persist it to the in-app feed AND send the push.
+ * Persisting is best-effort — a DB hiccup must not drop the push, and a push
+ * failure must not drop the feed row (pushUser already swallows its errors).
+ */
+async function notifyUser(
+  ref: UserRef,
+  kind: NotificationName,
+  title: string,
+  body: string,
+  link: DeepLink,
+) {
+  try {
+    await prisma.notification.create({
+      data: {
+        userId: ref.id,
+        kind,
+        title,
+        body,
+        bookingId: link.bookingId ?? null,
+        threadId: link.threadId ?? null,
+        sessionId: link.sessionId ?? null,
+      },
+    });
+  } catch (err) {
+    logger.warn({ err, userId: ref.id, kind }, 'failed to persist notification');
+  }
+  const data: Record<string, string> = {};
+  if (link.bookingId) data.bookingId = link.bookingId;
+  if (link.threadId) data.threadId = link.threadId;
+  if (link.sessionId) data.sessionId = link.sessionId;
+  await pushUser(ref, title, body, data);
+}
 
 async function pushUser(ref: UserRef, title: string, body: string, data: Record<string, string>) {
   if (!ref.expoPushToken) {
@@ -61,13 +96,13 @@ export async function notify(job: NotificationJob) {
     case 'new_booking_request': {
       if (!hasStringProp(p, 'hostId') || !hasStringProp(p, 'bookingId')) break;
       const u = await prisma.user.findUnique({ where: { id: p.hostId } });
-      if (u) await pushUser(u, 'New booking request', 'Tap to review.', { bookingId: p.bookingId });
+      if (u) await notifyUser(u, name, 'New booking request', 'Tap to review.', { bookingId: p.bookingId });
       break;
     }
     case 'booking_accepted': {
       if (!hasStringProp(p, 'driverId') || !hasStringProp(p, 'bookingId')) break;
       const u = await prisma.user.findUnique({ where: { id: p.driverId } });
-      if (u) await pushUser(u, 'Booking confirmed', "You're all set.", { bookingId: p.bookingId });
+      if (u) await notifyUser(u, name, 'Booking confirmed', "You're all set.", { bookingId: p.bookingId });
       break;
     }
     case 'booking_declined': {
@@ -77,15 +112,16 @@ export async function notify(job: NotificationJob) {
       const reason = b?.declineReason
         ? `Reason: ${b.declineReason.replace(/_/g, ' ')}`
         : 'Try a different charger nearby.';
-      if (u) await pushUser(u, 'Booking declined', reason, { bookingId: p.bookingId });
+      if (u) await notifyUser(u, name, 'Booking declined', reason, { bookingId: p.bookingId });
       break;
     }
     case 'booking_auto_declined': {
       if (!hasStringProp(p, 'driverId') || !hasStringProp(p, 'bookingId')) break;
       const u = await prisma.user.findUnique({ where: { id: p.driverId } });
       if (u) {
-        await pushUser(
+        await notifyUser(
           u,
+          name,
           'Booking expired',
           "The host didn't respond in time. Try a different charger nearby.",
           { bookingId: p.bookingId },
@@ -101,7 +137,16 @@ export async function notify(job: NotificationJob) {
       )
         break;
       const u = await prisma.user.findUnique({ where: { id: p.userId } });
-      if (u) await pushUser(u, 'New message', p.preview, { threadId: p.threadId });
+      // Resolve the booking so a tap can deep-link to the chat (routed by bookingId).
+      const thread = await prisma.chatThread.findUnique({
+        where: { id: p.threadId },
+        select: { bookingId: true },
+      });
+      if (u)
+        await notifyUser(u, name, 'New message', p.preview, {
+          threadId: p.threadId,
+          bookingId: thread?.bookingId,
+        });
       break;
     }
     case 'session_started':
@@ -115,9 +160,13 @@ export async function notify(job: NotificationJob) {
       for (const uid of [p.driverId, p.hostId]) {
         const u = await prisma.user.findUnique({ where: { id: uid } });
         if (u) {
-          await pushUser(u, name === 'session_started' ? 'Session started' : 'Session ended', '', {
-            sessionId: p.sessionId,
-          });
+          await notifyUser(
+            u,
+            name,
+            name === 'session_started' ? 'Session started' : 'Session ended',
+            name === 'session_started' ? 'Charging has begun.' : 'Your charging session has ended.',
+            { sessionId: p.sessionId },
+          );
         }
       }
       break;
@@ -125,7 +174,7 @@ export async function notify(job: NotificationJob) {
     case 'review_left': {
       if (!hasStringProp(p, 'userId') || !hasStringProp(p, 'bookingId')) break;
       const u = await prisma.user.findUnique({ where: { id: p.userId } });
-      if (u) await pushUser(u, 'New review', '', { bookingId: p.bookingId });
+      if (u) await notifyUser(u, name, 'New review', 'Someone left you a review.', { bookingId: p.bookingId });
       break;
     }
     default:

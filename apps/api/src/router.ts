@@ -6,6 +6,7 @@ import { bookingRouter } from './routers/booking.js';
 import { chatRouter } from './routers/chat.js';
 import { reviewRouter } from './routers/review.js';
 import { deviceRouter } from './routers/device.js';
+import { notificationRouter } from './routers/notification.js';
 
 export const appRouter = router({
   health: publicProcedure.query(() => ({
@@ -20,6 +21,7 @@ export const appRouter = router({
   chat: chatRouter,
   review: reviewRouter,
   device: deviceRouter,
+  notification: notificationRouter,
 });
 
 export type AppRouter = typeof appRouter;

@@ -31,7 +31,7 @@ const ITEMS: { key: string; label: string; icon: 'verify' | 'bolt' | 'card' | 'b
   { key: 'verify', label: 'Verify ID', icon: 'verify', path: '/(shared)/identity-verification', params: { next: '/(host)/profile' } },
   { key: 'setup', label: 'My setup', icon: 'bolt', path: '/(host)/host-onboarding/charger-identification' },
   { key: 'card', label: 'Payment methods', icon: 'card', path: '/(shared)/payment-methods' },
-  { key: 'bell', label: 'Notifications', icon: 'bell', path: '/(shared)/notifications' },
+  { key: 'bell', label: 'Notifications', icon: 'bell', path: '/(shared)/notifications?role=host' },
   { key: 'gear', label: 'Settings', icon: 'gear', path: '/(shared)/settings' },
   { key: 'help', label: 'Support', icon: 'help', path: '/(shared)/support' },
 ];

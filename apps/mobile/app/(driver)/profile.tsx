@@ -24,7 +24,7 @@ import { VerifiedPill } from '../../src/components/VerificationBanner';
 const ITEMS: { key: string; label: string; icon: 'verify' | 'card' | 'bell' | 'gear' | 'help'; path: string; params?: Record<string, string> }[] = [
   { key: 'verify', label: 'Verify ID', icon: 'verify', path: '/(shared)/identity-verification', params: { next: '/(driver)/profile' } },
   { key: 'card', label: 'Payment methods', icon: 'card', path: '/(shared)/payment-methods' },
-  { key: 'bell', label: 'Notifications', icon: 'bell', path: '/(shared)/notifications' },
+  { key: 'bell', label: 'Notifications', icon: 'bell', path: '/(shared)/notifications?role=driver' },
   { key: 'gear', label: 'Settings', icon: 'gear', path: '/(shared)/settings' },
   { key: 'help', label: 'Support', icon: 'help', path: '/(shared)/support' },
 ];
