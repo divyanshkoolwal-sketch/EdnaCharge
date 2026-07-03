@@ -56,11 +56,15 @@ async function main() {
     uptimeSec: Math.round(process.uptime()),
   }));
 
-  app.get('/_sentry-test', async () => {
-    Sentry.captureException(new Error('sentry-smoke: api'));
-    await Sentry.flush(2000);
-    return { fired: true };
-  });
+  // Debug-only: never expose in production (would let anyone spam the Sentry
+  // quota / probe the deployment).
+  if (process.env.NODE_ENV !== 'production') {
+    app.get('/_sentry-test', async () => {
+      Sentry.captureException(new Error('sentry-smoke: api'));
+      await Sentry.flush(2000);
+      return { fired: true };
+    });
+  }
 
   // Stripe Connect Express onboarding redirect targets. `startHostOnboarding`
   // creates an account link with these as return_url / refresh_url. The mobile

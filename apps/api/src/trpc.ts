@@ -66,16 +66,21 @@ export const protectedProcedure = t.procedure.use(async ({ ctx, next }) => {
     : `firebase-${authUser.firebaseUid}@ednacharge.local`;
   const fullName = authUser.name?.trim() || email.split('@')[0] || 'user';
 
-  let user = await prisma.user.findFirst({
-    where: {
-      OR: [{ firebaseUid: authUser.firebaseUid }, { email }],
-    },
+  // SECURITY: identity is keyed on the Firebase UID ONLY. We deliberately do
+  // NOT look an account up by email — matching on email and then rebinding
+  // `firebaseUid` (as the old OR-lookup did) let a second Firebase identity
+  // carrying the same provider-verified email silently take over an existing
+  // account (and its bookings / host profile / Stripe customer). If the email
+  // is already owned by a different UID we refuse rather than merge.
+  let user = await prisma.user.findUnique({
+    where: { firebaseUid: authUser.firebaseUid },
     select: { id: true, firebaseUid: true, fullName: true, avatarUrl: true },
   });
 
   if (user) {
+    // Returning user — the UID already matches, so only refresh avatar/name.
+    // The firebaseUid is never rewritten.
     const shouldUpdate =
-      user.firebaseUid !== authUser.firebaseUid ||
       (authUser.picture && user.avatarUrl !== authUser.picture) ||
       (!user.fullName && fullName);
 
@@ -83,7 +88,6 @@ export const protectedProcedure = t.procedure.use(async ({ ctx, next }) => {
       user = await prisma.user.update({
         where: { id: user.id },
         data: {
-          firebaseUid: authUser.firebaseUid,
           avatarUrl: authUser.picture ?? user.avatarUrl,
           fullName: user.fullName || fullName,
         },
@@ -91,6 +95,19 @@ export const protectedProcedure = t.procedure.use(async ({ ctx, next }) => {
       });
     }
   } else {
+    // No account for this UID. Refuse if the email is already taken by another
+    // UID (no implicit account merge/takeover).
+    const emailOwner = await prisma.user.findUnique({
+      where: { email },
+      select: { firebaseUid: true },
+    });
+    if (emailOwner && emailOwner.firebaseUid !== authUser.firebaseUid) {
+      throw new TRPCError({
+        code: 'CONFLICT',
+        message:
+          'An account already exists for this email. Sign in with the method you originally used.',
+      });
+    }
     user = await prisma.user
       .create({
         data: {
@@ -103,11 +120,17 @@ export const protectedProcedure = t.procedure.use(async ({ ctx, next }) => {
       })
       .catch(async (err: { code?: string }) => {
         if (err?.code !== 'P2002') throw err;
-        return prisma.user.findFirstOrThrow({
-          where: {
-            OR: [{ firebaseUid: authUser.firebaseUid }, { email }],
-          },
+        // Unique-constraint race. If our UID's row now exists, use it; otherwise
+        // the email was just claimed by a different UID → refuse.
+        const byUid = await prisma.user.findUnique({
+          where: { firebaseUid: authUser.firebaseUid },
           select: { id: true, firebaseUid: true, fullName: true, avatarUrl: true },
+        });
+        if (byUid) return byUid;
+        throw new TRPCError({
+          code: 'CONFLICT',
+          message:
+            'An account already exists for this email. Sign in with the method you originally used.',
         });
       });
   }

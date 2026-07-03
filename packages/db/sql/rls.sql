@@ -204,6 +204,59 @@ create policy "bookings_host_update_limited" on "Booking"
 revoke update on "ChatMessage" from authenticated;
 grant update("readAt") on "ChatMessage" to authenticated;
 
+-- ---------- SECURITY: Charger column-level exposure ----------
+-- The row-level `chargers_read_published` policy makes EVERY column of a
+-- published charger readable by anon/authenticated. Supabase Realtime
+-- `postgres_changes` then broadcasts the full changed row — including the gate
+-- access code and the OCPP credentials — to every driver with the map open, and
+-- a direct PostgREST query would return them too. The map subscription only
+-- uses the event as a refetch trigger; it never needs the row body. The
+-- API/CSMS/worker use the service_role / direct Postgres role (which bypasses
+-- these grants), so end users never need the secret columns. Enforce
+-- column-level SELECT: drop the whole-table grant, then re-grant only the
+-- non-sensitive columns. Realtime and PostgREST both honor column privileges,
+-- so gateCode / ocppChargePointId / ocppAuthHash / ocppSecretEnc never leave the
+-- database to a client role.
+revoke select on "Charger" from anon, authenticated;
+grant select (
+  id, "hostId", title, "photoUrl", "addressLine1", city, state, "postalCode",
+  country, lat, lng, "connectorType", "powerKw", "hardwareTier",
+  "pricePerKwhCents", "pricePerHourCents", "houseRules", status,
+  "instantAvailable", published, "ocppConnectedAt", availability,
+  "createdAt", "updatedAt"
+) on "Charger" to anon, authenticated;
+
+-- ---------- SECURITY: server-only tables (deny-by-default) ----------
+-- These tables are written and read ONLY by the backend services (service_role
+-- / direct Postgres role, which bypass RLS). They were missing from this file,
+-- which in Supabase means PostgREST would expose them to the anon key with the
+-- default grants. IdentityVerification holds Stripe Identity KYC data,
+-- StripeWebhookEvent holds raw webhook payloads, ShellDevice holds device
+-- credentials, ChargerWaitlist holds contact info — none should ever be
+-- reachable by a client role. Enable RLS with NO policy (deny-by-default) and
+-- revoke all client grants as belt-and-suspenders.
+alter table "IdentityVerification" enable row level security;
+alter table "StripeWebhookEvent" enable row level security;
+alter table "ShellDevice" enable row level security;
+alter table "ChargerWaitlist" enable row level security;
+revoke all on "IdentityVerification" from anon, authenticated;
+revoke all on "StripeWebhookEvent" from anon, authenticated;
+revoke all on "ShellDevice" from anon, authenticated;
+revoke all on "ChargerWaitlist" from anon, authenticated;
+
+-- ---------- SECURITY: lock writes on server-managed tables ----------
+-- These tables expose a read policy to the relevant party but must never be
+-- WRITTEN directly by a client role — only the backend (service_role) mutates
+-- them (Stripe capture writes Payout; CSMS writes sessions + meter values).
+-- RLS read policies already exist above; revoke client write privileges so a
+-- forged JWT can't INSERT/UPDATE/DELETE via PostgREST.
+revoke insert, update, delete on "Payout" from anon, authenticated;
+revoke insert, update, delete on "ChargingSession" from anon, authenticated;
+revoke insert, update, delete on "MeterValue" from anon, authenticated;
+-- Review: insert is allowed by the reviews_author_insert policy; block edits and
+-- deletes so a rating can't be rewritten or removed after the fact.
+revoke update, delete on "Review" from anon, authenticated;
+
 -- Trigger: maintain Charger.location geography column from lat/lng.
 create or replace function charger_sync_location() returns trigger as $$
 begin

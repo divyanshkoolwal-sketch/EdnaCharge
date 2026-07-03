@@ -11,6 +11,7 @@ import { TRPCError } from '@trpc/server';
 
 const findUniqueOrThrow = vi.fn();
 const updateBooking = vi.fn();
+const updateManyBooking = vi.fn();
 const ocppQueueAdd = vi.fn();
 const bookingsQueueAdd = vi.fn();
 
@@ -26,12 +27,16 @@ vi.mock('@edna/db', () => ({
     user: {
       findFirst: userFindFirst,
       findFirstOrThrow: userFindFirst,
+      // protectedProcedure now resolves identity via findUnique (firebaseUid)
+      // instead of the old OR-lookup — see the account-takeover fix in trpc.ts.
+      findUnique: userFindFirst,
       update: vi.fn(),
       create: vi.fn(),
     },
     booking: {
       findUniqueOrThrow,
       update: updateBooking,
+      updateMany: updateManyBooking,
     },
     chargingSession: {
       findUniqueOrThrow: vi.fn(),
@@ -98,6 +103,9 @@ function makeBooking(overrides: Partial<any> = {}) {
 async function callStartSession(input: { bookingId: string }, booking: any) {
   findUniqueOrThrow.mockResolvedValue(booking);
   updateBooking.mockResolvedValue({});
+  // startSession status/token writes now use updateMany with an optimistic
+  // `status: 'confirmed'` guard; count === 1 means the lock was won.
+  updateManyBooking.mockResolvedValue({ count: 1 });
 
   const router = await import('../src/routers/booking.js');
   // The startSession handler is defined inline; re-import the router and call
@@ -109,6 +117,7 @@ async function callStartSession(input: { bookingId: string }, booking: any) {
 beforeEach(() => {
   findUniqueOrThrow.mockReset();
   updateBooking.mockReset();
+  updateManyBooking.mockReset();
   ocppQueueAdd.mockReset();
   bookingsQueueAdd.mockReset();
 });
@@ -182,8 +191,8 @@ describe('booking.startSession tier dispatch', () => {
       { bookingId: '550e8400-e29b-41d4-a716-446655440000' },
       expect.objectContaining({ jobId: 'monitor_550e8400-e29b-41d4-a716-446655440000' }),
     );
-    expect(updateBooking).toHaveBeenCalledWith({
-      where: { id: '550e8400-e29b-41d4-a716-446655440000' },
+    expect(updateManyBooking).toHaveBeenCalledWith({
+      where: { id: '550e8400-e29b-41d4-a716-446655440000', status: 'confirmed' },
       data: { status: 'active' },
     });
   });
@@ -207,7 +216,10 @@ describe('booking.startSession tier dispatch', () => {
       }),
     );
     expect(result).toEqual({ status: 'started_virtual' });
-    expect(updateBooking).toHaveBeenCalled();
+    expect(updateManyBooking).toHaveBeenCalledWith({
+      where: { id: '550e8400-e29b-41d4-a716-446655440000', status: 'confirmed' },
+      data: { status: 'active' },
+    });
     expect(ocppQueueAdd).not.toHaveBeenCalled();
     expect(bookingsQueueAdd).not.toHaveBeenCalled();
   });
