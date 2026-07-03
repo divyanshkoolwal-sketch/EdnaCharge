@@ -18,7 +18,10 @@ async function assertHost(userId: string) {
     include: { identityVerification: true },
   });
   if (!user.roles.includes('host')) {
-    throw new TRPCError({ code: 'FORBIDDEN', message: 'Not a host.' });
+    throw new TRPCError({
+      code: 'FORBIDDEN',
+      message: 'Finish setting up payouts (Stripe) before listing a charger.',
+    });
   }
   // Identity-verification gate. Hosts can browse the app freely but must be
   // verified before listing their first charger.
