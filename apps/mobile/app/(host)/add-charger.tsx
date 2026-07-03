@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { View, Pressable, Alert, useColorScheme } from 'react-native';
+import { View, Pressable, Alert, ActivityIndicator, useColorScheme } from 'react-native';
 import { useRouter } from 'expo-router';
 import Mapbox, {
   MapView,
@@ -24,6 +24,7 @@ import {
 import { ChevronLeft, Bolt } from '../../src/components/icons/Icon';
 import { useTheme } from '../../src/theme/useTheme';
 import { useUserLocation } from '../../src/state/userLocation';
+import { hostEntryRoute } from '../../src/lib/hostEntry';
 import { trpc } from '../../src/lib/trpc';
 import type { ConnectorType } from '@edna/schemas';
 
@@ -114,6 +115,65 @@ export default function AddCharger() {
       availability: [],
     });
   };
+
+  // Host-readiness gate. The host UI is reachable via a client-side role flag,
+  // but the server only lets a user PUBLISH once they're a real host: Stripe
+  // Connect payouts complete (grants the `host` role) AND identity verified.
+  // Rather than let them fill the whole form and hit a dead-end "Not a host"
+  // on Publish, gate here and route them to finish the missing step. These two
+  // checks mirror the server's assertHost() exactly.
+  const me = session.data;
+  const isHost = !!me?.roles?.includes('host');
+  const idVerified = me?.identityVerification?.status === 'verified';
+
+  if (session.isLoading || !me) {
+    return (
+      <Screen style={{ alignItems: 'center', justifyContent: 'center' }}>
+        <ActivityIndicator />
+      </Screen>
+    );
+  }
+
+  if (!isHost || !idVerified) {
+    const needsPayouts = !isHost;
+    return (
+      <Screen>
+        <Pressable
+          onPress={() => router.back()}
+          style={{ paddingTop: 8 }}
+          accessibilityRole="button"
+          accessibilityLabel="Go back"
+          hitSlop={10}
+        >
+          <ChevronLeft />
+        </Pressable>
+        <View
+          style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12, paddingHorizontal: 8 }}
+        >
+          <Bolt size={30} color={c.green2} />
+          <H1 style={{ textAlign: 'center' }}>Finish host setup</H1>
+          <Muted style={{ textAlign: 'center', lineHeight: 20 }}>
+            {needsPayouts
+              ? 'Set up payouts so you can get paid — then you can list your charger.'
+              : 'Verify your identity to list your charger.'}
+          </Muted>
+          <View style={{ alignSelf: 'stretch', marginTop: 8 }}>
+            <Button
+              label={needsPayouts ? 'Continue to payouts' : 'Verify my ID'}
+              onPress={() =>
+                needsPayouts
+                  ? router.push(hostEntryRoute(me) as never)
+                  : router.push({
+                      pathname: '/(shared)/identity-verification',
+                      params: { next: '/(host)/add-charger' },
+                    } as never)
+              }
+            />
+          </View>
+        </View>
+      </Screen>
+    );
+  }
 
   return (
     <Screen keyboardAvoiding contentStyle={{ paddingBottom: 130 }}>
