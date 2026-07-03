@@ -34,13 +34,14 @@ const EnvSchema = z.object({
   STRIPE_SECRET_KEY: z.string().optional(),
   STRIPE_WEBHOOK_SECRET: z.string().optional(),
 
-  // Symmetric key (pgcrypto) for encrypting stored OCPP passwords. Optional in
-  // dev; production is required to set a strong key (see superRefine below).
-  OCPP_SECRET_ENC_KEY: z.string().min(32, 'must be at least 32 characters').optional(),
-  // Public CSMS websocket base shown to hosts, e.g. wss://csms.endacharges.com.
-  // Production must set a `wss://` (TLS) URL so OCPP credentials are never sent
-  // in cleartext (enforced in superRefine below).
-  CSMS_PUBLIC_URL: z.string().url().optional(),
+  // Symmetric key (pgcrypto) for encrypting stored OCPP passwords. Only the API
+  // uses it; it validates presence at point of use (charger router) and throws a
+  // clear error there. Kept permissive here so it can never crash a service at
+  // boot (a too-short/absent key must not take down csms/worker, which don't use it).
+  OCPP_SECRET_ENC_KEY: z.string().optional(),
+  // Public CSMS websocket base shown to hosts, e.g. wss://csms.ednacharge.com.
+  // Only the API consumes it; kept permissive so csms/worker never fail to boot.
+  CSMS_PUBLIC_URL: z.string().optional(),
 
   SENTRY_DSN_API: z.string().url().optional().or(z.literal('')),
   SENTRY_DSN_CSMS: z.string().url().optional().or(z.literal('')),
@@ -49,30 +50,6 @@ const EnvSchema = z.object({
   API_PORT: z.coerce.number().int().positive().default(3000),
   CSMS_PORT: z.coerce.number().int().positive().default(3100),
   WORKER_PORT: z.coerce.number().int().positive().default(3200),
-}).superRefine((env, ctx) => {
-  if (env.NODE_ENV !== 'production') return;
-  // Hard production requirements — a misconfig here is a security problem, not
-  // just a broken feature, so fail fast at boot instead of at first use.
-  if (!env.OCPP_SECRET_ENC_KEY) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      path: ['OCPP_SECRET_ENC_KEY'],
-      message: 'is required in production (>=32 chars) to encrypt OCPP credentials.',
-    });
-  }
-  if (!env.CSMS_PUBLIC_URL) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      path: ['CSMS_PUBLIC_URL'],
-      message: 'is required in production.',
-    });
-  } else if (!env.CSMS_PUBLIC_URL.startsWith('wss://')) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      path: ['CSMS_PUBLIC_URL'],
-      message: 'must use wss:// in production so OCPP credentials are not sent in cleartext.',
-    });
-  }
 });
 
 export type Env = z.infer<typeof EnvSchema>;
