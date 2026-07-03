@@ -6,6 +6,7 @@ import { Screen, Button, CTABar, H1, Input, Muted } from '../../src/components/u
 import { ChevronLeft } from '../../src/components/icons/Icon';
 import { trpc } from '../../src/lib/trpc';
 import { authErrorMessage, useAuth } from '../../src/state/auth';
+import { Sentry } from '../../src/lib/sentry';
 
 export default function PhoneSignIn() {
   const router = useRouter();
@@ -25,6 +26,9 @@ export default function PhoneSignIn() {
       const result = await sendPhoneCode(phone);
       setConfirmation(result);
     } catch (err) {
+      // Capture the raw error so the exact Firebase code (e.g. missing APNs /
+      // reCAPTCHA / operation-not-allowed) is diagnosable from Sentry.
+      Sentry.captureException(err);
       Alert.alert('Phone sign-in failed', authErrorMessage(err));
     } finally {
       setBusy(false);
@@ -47,6 +51,7 @@ export default function PhoneSignIn() {
         router.replace('/');
       }
     } catch (err) {
+      Sentry.captureException(err);
       Alert.alert('Verification failed', authErrorMessage(err));
     } finally {
       setBusy(false);

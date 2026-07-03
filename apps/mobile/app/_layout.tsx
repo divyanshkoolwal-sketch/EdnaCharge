@@ -64,10 +64,13 @@ export default function RootLayout() {
   useEffect(() => {
     if (session) void registerPushToken();
     if (prevSession.current && !session) {
+      // Signed out: wipe all cached query data so the next screen can never show
+      // the previous user's data, then send them to welcome.
+      queryClient.clear();
       router.replace('/(auth)/welcome');
     }
     prevSession.current = session;
-  }, [session, router]);
+  }, [session, router, queryClient]);
 
   // Force-refresh the Firebase ID token whenever the app foregrounds. Without
   // this, an app that's been backgrounded for >1h returns from suspend with an
@@ -92,7 +95,16 @@ export default function RootLayout() {
             <QueryClientProvider client={queryClient}>
               <ToastProvider>
                 <ErrorBoundary>
-                  <Stack screenOptions={{ headerShown: false }} />
+                  {/* Top-level groups are switched via router.replace (never
+                      pushed), so the edge swipe-back between them is always
+                      wrong — disabling it stops a signed-out user from swiping
+                      back into their old account, and stops swiping from the app
+                      back into the auth flow. */}
+                  <Stack screenOptions={{ headerShown: false }}>
+                    <Stack.Screen name="(auth)" options={{ gestureEnabled: false }} />
+                    <Stack.Screen name="(driver)" options={{ gestureEnabled: false }} />
+                    <Stack.Screen name="(host)" options={{ gestureEnabled: false }} />
+                  </Stack>
                 </ErrorBoundary>
               </ToastProvider>
             </QueryClientProvider>

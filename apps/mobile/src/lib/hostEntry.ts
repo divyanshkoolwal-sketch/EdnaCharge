@@ -42,11 +42,10 @@ export function hostEntryRoute(session: HostSessionLike): string {
   if (stage === 'complete') return '/(host)/home';
   if (stage === 'in_progress') {
     // Resume where they left off instead of restarting at the intro. Identity
-    // is done (the HostProfile exists); charger identification is done once
-    // hardwareSetup is present, so the only thing left is Stripe Connect.
-    return session?.hostProfile?.hardwareSetup
-      ? '/(host)/host-onboarding/stripe-connect'
-      : '/(host)/host-onboarding/charger-identification';
+    // is done (the HostProfile exists); the only remaining setup step is Stripe
+    // Connect (payouts). Charger onboarding is separate and happens from the
+    // dashboard AFTER setup, so it's never part of this resume path.
+    return '/(host)/host-onboarding/stripe-connect';
   }
   return '/(host)/host-onboarding/intro';
 }

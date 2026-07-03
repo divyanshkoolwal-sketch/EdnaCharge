@@ -42,9 +42,9 @@ describe('hostEntryRoute — never the intro once started', () => {
     ).toBe('/(host)/host-onboarding/stripe-connect');
   });
 
-  it('resumes an in-progress host at charger identification (no hardware yet)', () => {
+  it('resumes an in-progress host at Stripe Connect (charger onboarding is post-setup, not in the signup flow)', () => {
     expect(hostEntryRoute({ roles: ['driver'], hostProfile: { hardwareSetup: null } })).toBe(
-      '/(host)/host-onboarding/charger-identification',
+      '/(host)/host-onboarding/stripe-connect',
     );
   });
 
