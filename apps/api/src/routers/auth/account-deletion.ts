@@ -124,25 +124,14 @@ export const deleteAccount = protectedProcedure.mutation(async ({ ctx }) => {
     }
   }
 
-  // Delete the Supabase auth user (User.id === auth.users.id) so the sign-in
-  // credential is gone too, not just the app profile. Best-effort and tolerant
-  // of an already-deleted user, so a retried deletion (before the txn below
-  // commits deletedAt) resumes cleanly instead of failing on user-not-found.
-  const sb = supabase();
-  if (sb) {
-    try {
-      await sb.auth.admin.deleteUser(ctx.userId);
-    } catch (err) {
-      logger.warn({ err, userId: ctx.userId }, 'deleteAccount: supabase auth delete failed');
-    }
-  }
-
   // ALL DB writes in ONE transaction so a mid-flight failure can never leave a
-  // half-deleted account (e.g. Supabase credential gone but a live User row with
-  // real PII). The external steps above are individually idempotent (PI cancels
-  // keyed, Supabase auth delete tolerant of user-not-found, customer delete
-  // tolerant), so if anything below throws the client can simply RETRY the whole
-  // mutation and it resumes cleanly to the same end state.
+  // half-deleted account. Every step BEFORE the transaction is idempotent (PI
+  // cancels are keyed, customer/Connect deletes tolerate already-gone), and the
+  // Supabase auth-credential delete is deferred to AFTER the commit (below) — so
+  // if the transaction throws, the caller's token is still valid and they can
+  // simply RETRY and resume to the same end state. Deleting the credential first
+  // would strand a failed deletion: deletedAt never commits (PII retained) yet
+  // the now-invalid token locks the user out of ever retrying.
   const openToCancel = await prisma.booking.findMany({
     where: {
       status: { in: ['pending', 'confirmed'] },
@@ -183,6 +172,19 @@ export const deleteAccount = protectedProcedure.mutation(async ({ ctx }) => {
       },
     });
   });
+
+  // The account is now durably anonymized (deletedAt committed), so delete the
+  // Supabase auth user too — the sign-in credential shouldn't outlive the profile.
+  // LAST + best-effort: a failure here leaves a valid-but-anonymized account (a
+  // retry short-circuits on deletedAt), never a locked-out user with intact PII.
+  const sb = supabase();
+  if (sb) {
+    try {
+      await sb.auth.admin.deleteUser(ctx.userId);
+    } catch (err) {
+      logger.warn({ err, userId: ctx.userId }, 'deleteAccount: supabase auth delete failed');
+    }
+  }
 
   // Notify counterparties AFTER the transaction committed (never for a rolled-
   // back cancellation). Best-effort — a notify failure must not fail deletion.
