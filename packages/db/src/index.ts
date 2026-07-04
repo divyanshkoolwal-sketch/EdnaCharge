@@ -3,8 +3,8 @@ import { PrismaClient } from '@prisma/client';
 import { attachQueryLogging } from './query-log.js';
 
 declare global {
-  var __edna_prisma: PrismaClient | undefined;
-  var __edna_query_logging: boolean | undefined;
+  var __ednaPrisma: PrismaClient | undefined;
+  var __ednaQueryLogging: boolean | undefined;
 }
 
 // Per-query event logging is enabled only in local development — never in
@@ -15,17 +15,17 @@ const devQueryLog = process.env.NODE_ENV !== 'production' && process.env.NODE_EN
 /// Singleton PrismaClient. Reused across hot-reloads in dev to avoid exhausting
 /// the connection pool.
 export const prisma: PrismaClient =
-  globalThis.__edna_prisma ??
+  globalThis.__ednaPrisma ??
   new PrismaClient({
     log: devQueryLog ? [{ emit: 'event', level: 'query' }, 'warn', 'error'] : ['warn', 'error'],
   });
 
-if (process.env.NODE_ENV !== 'production') globalThis.__edna_prisma = prisma;
+if (process.env.NODE_ENV !== 'production') globalThis.__ednaPrisma = prisma;
 
 // Slow-query + N+1 detection (dev only). Guard against hot-reload stacking
 // duplicate listeners on the cached singleton.
-if (devQueryLog && !globalThis.__edna_query_logging) {
-  globalThis.__edna_query_logging = true;
+if (devQueryLog && !globalThis.__ednaQueryLogging) {
+  globalThis.__ednaQueryLogging = true;
   attachQueryLogging(prisma);
 }
 

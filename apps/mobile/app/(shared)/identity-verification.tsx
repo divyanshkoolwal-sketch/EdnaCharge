@@ -31,13 +31,13 @@ import {
   VerificationSuccess,
 } from '../../src/features/profile/IdentityVerificationStates';
 
-type View_ = 'intro' | 'webview' | 'success' | 'requires_input';
+type ViewState = 'intro' | 'webview' | 'success' | 'requires_input';
 
 export default function IdentityVerification() {
   const router = useRouter();
   const params = useLocalSearchParams<{ next?: string }>();
   const { c } = useTheme();
-  const [view, setView] = useState<View_>('intro');
+  const [view, setView] = useState<ViewState>('intro');
   const [url, setUrl] = useState<string | null>(null);
 
   const utils = trpc.useUtils();

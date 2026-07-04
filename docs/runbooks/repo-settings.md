@@ -7,34 +7,24 @@ after any org migration. Commands assume `gh` is authenticated with admin scope 
 
 ## Branch protection on `main`
 
-Protect `main` with a ruleset (Settings → Rules → Rulesets → New branch ruleset,
-target `main`):
-
-- **Require a pull request before merging** — 1 approval.
-- **Require review from Code Owners** — enforces `CODEOWNERS`.
-- **Require status checks to pass** — add `ci` and `codeql`.
-- **Require branches to be up to date before merging.**
-- **Require linear history** (no merge commits).
-- **Block force pushes** and **restrict deletions**.
-
-Equivalent classic branch protection via API:
+Branch protection is **config-as-code** in
+[`.github/rulesets/main.json`](../../.github/rulesets/main.json) — required PR +
+1 approval, CODEOWNERS review, required status checks (strict), and no
+force-push / deletion. Apply or update it once, with an admin-authenticated `gh`:
 
 ```bash
-gh api -X PUT repos/OWNER/REPO/branches/main/protection \
-  -H "Accept: application/vnd.github+json" \
-  -f 'required_status_checks[strict]=true' \
-  -f 'required_status_checks[contexts][]=ci' \
-  -f 'required_status_checks[contexts][]=codeql' \
-  -F 'enforce_admins=true' \
-  -F 'required_pull_request_reviews[required_approving_review_count]=1' \
-  -F 'required_pull_request_reviews[require_code_owner_reviews]=true' \
-  -F 'required_linear_history=true' \
-  -F 'allow_force_pushes=false' \
-  -F 'allow_deletions=false' \
-  -F 'restrictions=' 2>/dev/null || true
+bash scripts/apply-branch-protection.sh            # infers OWNER/REPO
 ```
 
-(`-F 'restrictions='` sends the required `null`.)
+The required status checks are the **check-run names exactly as CI reports them** —
+`Typecheck · Lint · Test · Coverage` and `Secret scanning (gitleaks)`. (Note: the
+required context is the _job_ name, not the workflow name — `ci`/`codeql` would
+never match.) Only checks that report on **every** PR are required: `SAST
+(semgrep)` (skipped on Dependabot PRs), `verify-documented-commands` (path-filtered
+workflow), and `codeql` (needs GHAS enabled first) are intentionally **not**
+required, since a required check that doesn't always report would deadlock merges.
+See [`docs/BRANCH_PROTECTION.md`](../BRANCH_PROTECTION.md) for the full policy and
+how to change it.
 
 ## Secret scanning + push protection
 
@@ -75,8 +65,11 @@ Enable code scanning one of two ways:
   scanning on _Advanced_ so it runs the committed workflow. Don't enable both;
   default setup will refuse to run alongside an advanced config.
 
-The branch ruleset above lists `codeql` as a required check — make sure whichever
-option you pick publishes a check named `codeql`.
+Once code scanning is enabled and CodeQL reports reliably, add its check to
+`.github/rulesets/main.json` (`required_status_checks`) and re-run
+`scripts/apply-branch-protection.sh` to make it a required gate. Until then it is
+deliberately left out so it can't block merges (see the branch-protection note
+above).
 
 ## Verify
 

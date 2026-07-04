@@ -53,13 +53,14 @@ pnpm demo:loop
 
 Beyond the required checks, these run in CI (`.github/workflows/`) and are available locally:
 
-- `pnpm lint:eslint` — ESLint (flat config; naming, complexity, unused-code rules, seeded at `warn`).
-- `pnpm deadcode` / `pnpm deps:check` / `pnpm dupcheck` / `pnpm depcruise` / `pnpm size` — knip, syncpack, jscpd, dependency-cruiser, size-limit (informational).
-- `pnpm test:coverage` — Vitest coverage with per-app thresholds; `pnpm test:perf` — verbose timing.
+- `pnpm lint:eslint` — ESLint (flat config). **Naming consistency is enforced (`error`) repo-wide** (backend, packages, tests, mobile); complexity/unused-code rules stay advisory (`warn`) and are ratcheted over time.
+- **Blocking gates** (fail the build, run in the CI `verify` job): `pnpm depcruise` — module boundaries (services never import each other; packages never import apps); `pnpm flags:check` — no dead or undefined feature flags (see `docs/FEATURE_FLAGS.md`).
+- Informational scans (surface signal, don't block): `pnpm deadcode` / `pnpm deps:check` / `pnpm dupcheck` / `pnpm size` — knip, syncpack, jscpd, size-limit.
+- `pnpm test:coverage` — Vitest coverage with per-app thresholds; `pnpm test:perf` — verbose timing. Flaky-test policy (CI retry / `*.flaky.test.ts` quarantine / nightly `pnpm detect-flaky`): `docs/TESTING.md`.
 - `pnpm openapi:check` — keeps `docs/openapi.yaml` in sync with the tRPC router; `pnpm todos` — technical-debt scan.
-- `pnpm changeset` — add a release note for user-facing changes; `pnpm docs:typedoc` — API reference.
+- `pnpm changeset` — add a release note for user-facing changes (release flow in `docs/RELEASING.md`); `pnpm docs:typedoc` — API reference.
 
-Observability: services expose `/metrics` (Prometheus) and propagate `x-request-id`; see `docs/OBSERVABILITY.md`. Feature flags: `docs/FEATURE_FLAGS.md`. Some GitHub settings (branch protection, secret scanning) are admin-only — see `docs/runbooks/repo-settings.md`.
+Observability: services expose `/metrics` (Prometheus) and propagate `x-request-id`; see `docs/OBSERVABILITY.md`. Feature flags: `docs/FEATURE_FLAGS.md`. Branch protection is config-as-code (`.github/rulesets/main.json`, applied via `scripts/apply-branch-protection.sh` — see `docs/BRANCH_PROTECTION.md`); other admin-only GitHub settings (secret scanning, Dependabot, CodeQL) are in `docs/runbooks/repo-settings.md`.
 
 ## Second-Model Review
 

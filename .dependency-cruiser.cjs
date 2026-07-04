@@ -30,7 +30,7 @@ module.exports = {
     {
       name: 'no-circular',
       comment: 'Circular dependencies make modules impossible to reason about in isolation.',
-      severity: 'warn',
+      severity: 'error',
       from: {},
       to: { circular: true },
     },
@@ -38,7 +38,13 @@ module.exports = {
       name: 'no-orphans',
       comment: 'Unreachable modules are usually dead code.',
       severity: 'warn',
-      from: { orphan: true, pathNot: ['\\.d\\.ts$', 'index\\.ts$'] },
+      from: {
+        orphan: true,
+        // Type decls, package entrypoints, and tooling config files (vitest /
+        // eslint / etc.) are legitimately un-imported — they are entry nodes of
+        // the graph, not dead code.
+        pathNot: ['\\.d\\.ts$', 'index\\.ts$', '\\.config\\.(ts|js|cjs|mjs)$'],
+      },
       to: {},
     },
   ],

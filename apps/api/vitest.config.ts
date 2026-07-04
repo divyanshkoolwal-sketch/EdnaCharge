@@ -1,5 +1,5 @@
 /** @file apps/api/vitest.config.ts — test isolation, timing, and coverage thresholds. */
-import { defineConfig } from 'vitest/config';
+import { configDefaults, defineConfig } from 'vitest/config';
 
 export default defineConfig({
   test: {
@@ -11,6 +11,11 @@ export default defineConfig({
     fileParallelism: true,
     // Flag slow tests (ms) so test-time regressions surface in the report.
     slowTestThreshold: 300,
+    // Auto-heal transient flakes in CI only (locally a flake should surface and
+    // be fixed, not hidden). Known-flaky tests are quarantined as *.flaky.test.ts
+    // (excluded below) and surfaced by the nightly scan — see docs/TESTING.md.
+    retry: process.env.CI ? 2 : 0,
+    exclude: [...configDefaults.exclude, '**/*.flaky.test.ts'],
     coverage: {
       provider: 'v8',
       reporter: ['text-summary', 'json-summary', 'lcov'],

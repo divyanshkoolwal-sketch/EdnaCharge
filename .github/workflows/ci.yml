@@ -41,6 +41,10 @@ jobs:
         run: pnpm lint
       - name: Typecheck
         run: pnpm typecheck
+      - name: Module boundaries (dependency-cruiser)
+        run: pnpm depcruise
+      - name: Feature-flag hygiene
+        run: pnpm flags:check
       - name: Test with coverage
         run: pnpm test:coverage
       - name: OpenAPI freshness
@@ -81,9 +85,6 @@ jobs:
       - name: Version drift (syncpack)
         continue-on-error: true
         run: pnpm deps:check
-      - name: Module boundaries (dependency-cruiser)
-        continue-on-error: true
-        run: pnpm depcruise
       - name: Bundle-size budgets (size-limit)
         continue-on-error: true
         run: pnpm size

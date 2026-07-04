@@ -6,7 +6,13 @@
 // toggled per environment without a rebuild. Keep the surface small and delete
 // flags once a change is fully rolled out — see docs/FEATURE_FLAGS.md.
 
-export type FlagName = 'ROUTE_ESTIMATE_V2' | 'BACKEND_ANALYTICS';
+// The single source of truth for every defined flag. `scripts/check-feature-flags.ts`
+// reads this array to prove each flag is still gated somewhere in the code (and
+// that no gate references an undefined flag). Keep it in sync by construction —
+// the FlagName type is derived from it.
+export const FLAG_NAMES = ['ROUTE_ESTIMATE_V2', 'BACKEND_ANALYTICS'] as const;
+
+export type FlagName = (typeof FLAG_NAMES)[number];
 
 const FLAG_DEFAULTS: Record<FlagName, boolean> = {
   // Experimental driving route-estimate path (off until validated).

@@ -44,14 +44,25 @@ export default tseslint.config(
         'warn',
         { argsIgnorePattern: '^_', varsIgnorePattern: '^_', ignoreRestSiblings: true },
       ],
+      // Naming consistency is a *ratcheted* rule: enforced at `error` across the
+      // whole repo (backend, packages, tests, mobile, scripts, tools). Formats are
+      // deliberately permissive where the ecosystem demands it — PascalCase
+      // functions/variables for React components, UPPER_CASE consts, and single-
+      // or double-underscore prefixes for intentional globals (globalThis
+      // singletons) and unused-arg markers.
       '@typescript-eslint/naming-convention': [
-        'warn',
+        'error',
         { selector: 'typeLike', format: ['PascalCase'] },
         {
           selector: 'variable',
           format: ['camelCase', 'UPPER_CASE', 'PascalCase'],
-          leadingUnderscore: 'allow',
+          leadingUnderscore: 'allowSingleOrDouble',
         },
+        // Destructured bindings routinely carry external snake_case field names
+        // (Stripe / Supabase / OCPP payloads) — e.g. `const { amount_received } =
+        // paymentIntent`. Exempt them from format checks (declared snake_case
+        // locals are still caught by the `variable` selector above).
+        { selector: 'variable', modifiers: ['destructured'], format: null },
         { selector: 'function', format: ['camelCase', 'PascalCase'] },
         { selector: 'parameter', format: ['camelCase', 'PascalCase'], leadingUnderscore: 'allow' },
       ],
@@ -84,7 +95,9 @@ export default tseslint.config(
   },
   {
     // Tests, fixtures, mobile UI, scripts and tools carry many intentional
-    // patterns (any in test doubles, PascalCase RN components, etc.).
+    // patterns (any in test doubles, require() in configs, high branch counts in
+    // fixtures). Those relaxations stay — but naming-convention is deliberately
+    // NOT relaxed here: it is enforced repo-wide (see the main block above).
     files: [
       '**/*.test.ts',
       '**/*.test.tsx',
@@ -95,7 +108,6 @@ export default tseslint.config(
       'tools/**',
     ],
     rules: {
-      '@typescript-eslint/naming-convention': 'off',
       '@typescript-eslint/no-explicit-any': 'off',
       '@typescript-eslint/no-require-imports': 'off',
       complexity: 'off',

@@ -26,6 +26,8 @@
     "depcruise": "depcruise apps/api apps/csms apps/worker packages",
     "size": "size-limit",
     "todos": "tsx scripts/scan-todos.ts",
+    "flags:check": "tsx scripts/check-feature-flags.ts",
+    "detect-flaky": "tsx scripts/detect-flaky.ts",
     "openapi:check": "tsx scripts/check-openapi.ts",
     "docs:typedoc": "typedoc",
     "changeset": "changeset",
