@@ -1,3 +1,4 @@
+/** @file apps/csms/src/lib/registry.ts. */
 // In-memory client registry keyed by charge-point id. Per PRD §17, v1 is single-node.
 //
 // ⚠️ SINGLE-INSTANCE CONSTRAINT: this Map lives in one process. The CSMS service
@@ -16,6 +17,18 @@ type Client = {
 const clients = new Map<string, Client>();
 
 export function register(cpId: string, client: Client): void {
+  const existing = clients.get(cpId);
+  if (existing && existing !== client) {
+    // The charger reconnected while an old socket lingered. Close the stale one
+    // so we don't keep two live sockets whose handlers both process messages for
+    // the same charge point. (The stale socket's close handler no-ops because
+    // get(cpId) already points at the new client.)
+    try {
+      existing.close(4000, 'Superseded by new connection');
+    } catch {
+      // best effort — the socket may already be gone
+    }
+  }
   clients.set(cpId, client);
 }
 export function unregister(cpId: string): void {

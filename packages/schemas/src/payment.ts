@@ -1,3 +1,4 @@
+/** @file packages/schemas/src/payment.ts. */
 import { z } from 'zod';
 
 export const SetDefaultPaymentMethodInputZ = z.object({

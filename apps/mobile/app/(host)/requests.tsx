@@ -1,3 +1,4 @@
+/** @file apps/mobile/app/(host)/requests.tsx. */
 import { View, Pressable, RefreshControl } from 'react-native';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'expo-router';
@@ -14,6 +15,7 @@ import {
   List,
   ListSkeleton,
   EmptyState,
+  ErrorState,
 } from '../../src/components/ui';
 import { ChevronRight } from '../../src/components/icons/Icon';
 import { useTheme } from '../../src/theme/useTheme';
@@ -85,6 +87,14 @@ export default function Requests() {
         ListEmptyComponent={
           q.isLoading ? (
             <ListSkeleton />
+          ) : q.isError ? (
+            // A failed load must NOT read as "no requests" (a host could miss real
+            // paid requests). Show a distinct error + retry instead.
+            <ErrorState
+              title="Couldn't load requests"
+              subtitle="Check your connection and try again."
+              onRetry={() => q.refetch()}
+            />
           ) : (
             <EmptyState
               title="No pending requests"
@@ -131,7 +141,7 @@ export default function Requests() {
                 </Body>
                 <Muted style={{ fontSize: 12 }}>
                   ~{item.estimatedKwh.toFixed(1)} kWh · $
-                  {((item.estimatedCostCents - item.platformFeeCents) / 100).toFixed(2)}
+                  {(item.estimatedCostCents / 100).toFixed(2)}
                 </Muted>
                 <Row between style={{ marginTop: 10 }}>
                   <Chip

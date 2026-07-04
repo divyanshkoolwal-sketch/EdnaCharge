@@ -1,3 +1,4 @@
+/** @file apps/mobile/app/(host)/chargers.tsx. */
 import { View, Pressable, Switch, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import { handleError } from '../../src/lib/errors';
@@ -138,7 +139,9 @@ export default function HostChargers() {
                   trackColor={{ true: '#6BB36C', false: '#D6D6D9' }}
                   thumbColor="#FFFFFF"
                   ios_backgroundColor="#D6D6D9"
-                  disabled={setOnline.isPending}
+                  // Only disable the row actually being toggled — a shared
+                  // isPending disabled EVERY charger's switch during one update.
+                  disabled={setOnline.isPending && setOnline.variables?.id === item.id}
                 />
               </View>
             </Card>

@@ -1,230 +1,185 @@
-/**
- * Tests for booking.startSession / stopSession tier-dispatch logic.
- *
- * Mocks Prisma + queues so we can verify which queue/job gets enqueued
- * for each (tier, deviceLinked, currentStatus) combination, without spinning
- * up the full DB.
- */
-
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+/** Tests for booking start/stop dispatch by charger hardware tier. */
+import { describe, it, expect, beforeEach } from 'vitest';
 import { TRPCError } from '@trpc/server';
+import {
+  bookingsQueueAdd,
+  callStartSession,
+  callStopSession,
+  makeBooking,
+  makeSession,
+  ocppQueueAdd,
+  resetBookingTierMocks,
+  updateBooking,
+  updateManyBooking,
+} from './booking-tier-dispatch.fixture.js';
 
-const findUniqueOrThrow = vi.fn();
-const updateBooking = vi.fn();
-const updateManyBooking = vi.fn();
-const ocppQueueAdd = vi.fn();
-const bookingsQueueAdd = vi.fn();
-
-const userFindFirst = vi.fn(async () => ({
-  id: 'driver-1',
-  firebaseUid: 'fb-uid-1',
-  fullName: 'Test Driver',
-  avatarUrl: null,
-}));
-
-vi.mock('@edna/db', () => ({
-  prisma: {
-    user: {
-      findFirst: userFindFirst,
-      findFirstOrThrow: userFindFirst,
-      // protectedProcedure now resolves identity via findUnique (firebaseUid)
-      // instead of the old OR-lookup — see the account-takeover fix in trpc.ts.
-      findUnique: userFindFirst,
-      update: vi.fn(),
-      create: vi.fn(),
-    },
-    booking: {
-      findUniqueOrThrow,
-      update: updateBooking,
-      updateMany: updateManyBooking,
-    },
-    chargingSession: {
-      findUniqueOrThrow: vi.fn(),
-      update: vi.fn(),
-    },
-  },
-}));
-vi.mock('../src/lib/queues.js', () => ({
-  ocppCommandsQueue: { add: ocppQueueAdd },
-  bookingsQueue: { add: bookingsQueueAdd },
-  notificationsQueue: { add: vi.fn() },
-}));
-vi.mock('../src/lib/stripe.js', () => ({
-  stripe: vi.fn(),
-  devBypassStripe: vi.fn(() => true),
-}));
-vi.mock('../src/lib/pricing.js', () => ({
-  estimateBooking: vi.fn(),
-}));
-vi.mock('../src/sentry.js', () => ({ Sentry: { captureException: vi.fn() } }));
-vi.mock('../src/logger.js', () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
-
-const USER_ID = 'driver-1';
-const ctx = {
-  userId: USER_ID,
-  email: 'driver@test.local',
-  authUser: {
-    id: USER_ID,
-    email: 'driver@test.local',
-    name: 'Test Driver',
-    avatarUrl: null,
-    emailVerified: true,
-  },
-} as const;
-
-function makeBooking(overrides: Partial<any> = {}) {
-  return {
-    id: '550e8400-e29b-41d4-a716-446655440000',
-    chargerId: 'charger-1',
-    driverId: USER_ID,
-    status: 'confirmed',
-    startAt: new Date(),
-    endAt: new Date(Date.now() + 3600_000),
-    estimatedKwh: 5,
-    estimatedCostCents: 140,
-    platformFeeCents: 21,
-    preauthAmountCents: 161,
-    autoDeclineAt: new Date(Date.now() + 1800_000),
-    stripePaymentIntentId: 'pi_dev_x',
-    charger: {
-      id: 'charger-1',
-      hostId: 'host-1',
-      hardwareTier: 'tier_3_native',
-      ocppChargePointId: 'cp-charger1',
-      shellDevice: null,
-    },
-    session: null,
-    ...overrides,
-  };
-}
-
-// Reach into the procedure handler. We call the underlying mutation by
-// replicating the router's procedure logic for `startSession`.
-async function callStartSession(input: { bookingId: string }, booking: any) {
-  findUniqueOrThrow.mockResolvedValue(booking);
-  updateBooking.mockResolvedValue({});
-  // startSession status/token writes now use updateMany with an optimistic
-  // `status: 'confirmed'` guard; count === 1 means the lock was won.
-  updateManyBooking.mockResolvedValue({ count: 1 });
-
-  const router = await import('../src/routers/booking.js');
-  // The startSession handler is defined inline; re-import the router and call
-  // it via createCaller. For purer unit tests, we just inspect the queue mocks.
-  const caller = router.bookingRouter.createCaller(ctx as any);
-  return caller.startSession(input);
-}
-
-beforeEach(() => {
-  findUniqueOrThrow.mockReset();
-  updateBooking.mockReset();
-  updateManyBooking.mockReset();
-  ocppQueueAdd.mockReset();
-  bookingsQueueAdd.mockReset();
-});
+beforeEach(resetBookingTierMocks);
 
 describe('booking.startSession tier dispatch', () => {
-  it('Tier 3 with OCPP credentials → enqueues RemoteStartTransaction', async () => {
+  it('Tier 3 with OCPP credentials enqueues RemoteStartTransaction', async () => {
     const result = await callStartSession(
       { bookingId: '550e8400-e29b-41d4-a716-446655440000' },
-      makeBooking({ charger: { id: 'c1', hostId: 'h1', hardwareTier: 'tier_3_native', ocppChargePointId: 'cp-1', shellDevice: null } }),
+      makeBooking({
+        charger: {
+          id: 'c1',
+          hostId: 'h1',
+          hardwareTier: 'tier_3_native',
+          ocppChargePointId: 'cp-1',
+          ocppConnectedAt: new Date(),
+          shellDevice: null,
+        },
+      }),
     );
     expect(result).toEqual({ status: 'dispatched' });
-    expect(ocppQueueAdd).toHaveBeenCalledWith('RemoteStartTransaction', expect.objectContaining({
-      kind: 'RemoteStartTransaction',
-      chargePointId: 'cp-1',
-    }));
+    expect(ocppQueueAdd).toHaveBeenCalledWith(
+      'RemoteStartTransaction',
+      expect.objectContaining({
+        kind: 'RemoteStartTransaction',
+        chargePointId: 'cp-1',
+        bookingId: '550e8400-e29b-41d4-a716-446655440000',
+        idTag: expect.any(String),
+      }),
+      expect.objectContaining({
+        attempts: 5,
+        jobId: expect.stringContaining('remote-start:550e8400-e29b-41d4-a716-446655440000:'),
+      }),
+    );
     expect(bookingsQueueAdd).not.toHaveBeenCalled();
   });
 
-  it('Tier 3 WITHOUT OCPP credentials → throws PRECONDITION_FAILED (no silent fallthrough)', async () => {
+  it('re-enqueues a still-valid OCPP start token before reporting dispatch', async () => {
+    const result = await callStartSession(
+      { bookingId: '550e8400-e29b-41d4-a716-446655440000' },
+      makeBooking({
+        ocppStartToken: 'existing-token',
+        ocppAuthorizedAt: new Date(),
+        charger: {
+          id: 'c1',
+          hostId: 'h1',
+          hardwareTier: 'tier_3_native',
+          ocppChargePointId: 'cp-1',
+          ocppConnectedAt: new Date(),
+          shellDevice: null,
+        },
+      }),
+    );
+
+    expect(result).toEqual({ status: 'dispatched' });
+    expect(updateManyBooking).not.toHaveBeenCalled();
+    expect(ocppQueueAdd).toHaveBeenCalledWith(
+      'RemoteStartTransaction',
+      expect.objectContaining({
+        chargePointId: 'cp-1',
+        bookingId: '550e8400-e29b-41d4-a716-446655440000',
+        idTag: 'existing-token',
+      }),
+      expect.objectContaining({
+        jobId: 'remote-start:550e8400-e29b-41d4-a716-446655440000:existing-token',
+      }),
+    );
+  });
+
+  it('does not report dispatch when the OCPP queue enqueue fails', async () => {
+    ocppQueueAdd.mockRejectedValueOnce(new Error('redis down'));
+
     await expect(
       callStartSession(
         { bookingId: '550e8400-e29b-41d4-a716-446655440000' },
-        makeBooking({ charger: { id: 'c1', hostId: 'h1', hardwareTier: 'tier_3_native', ocppChargePointId: null, shellDevice: null } }),
+        makeBooking({
+          ocppStartToken: 'existing-token',
+          ocppAuthorizedAt: new Date(),
+          charger: {
+            id: 'c1',
+            hostId: 'h1',
+            hardwareTier: 'tier_3_native',
+            ocppChargePointId: 'cp-1',
+            ocppConnectedAt: new Date(),
+            shellDevice: null,
+          },
+        }),
+      ),
+    ).rejects.toThrow(/start command/);
+  });
+
+  it('Tier 3 without OCPP credentials throws', async () => {
+    await expect(
+      callStartSession(
+        { bookingId: '550e8400-e29b-41d4-a716-446655440000' },
+        makeBooking({
+          charger: {
+            id: 'c1',
+            hostId: 'h1',
+            hardwareTier: 'tier_3_native',
+            ocppChargePointId: null,
+            shellDevice: null,
+          },
+        }),
       ),
     ).rejects.toThrow(TRPCError);
   });
 
-  it('Tier 1 WITH device → enqueues shelly_start (not virtual)', async () => {
-    const result = await callStartSession(
-      { bookingId: '550e8400-e29b-41d4-a716-446655440000' },
-      makeBooking({
-        charger: {
-          id: 'c1', hostId: 'h1', hardwareTier: 'tier_1_smart_plug',
-          ocppChargePointId: null,
-          shellDevice: { id: 'd1', shellyDeviceId: 'shellyplus-x', status: 'active' },
-        },
-      }),
-    );
-    expect(result).toEqual({ status: 'dispatched' });
-    expect(bookingsQueueAdd).toHaveBeenCalledWith('shelly_start', { bookingId: '550e8400-e29b-41d4-a716-446655440000' });
-    expect(ocppQueueAdd).not.toHaveBeenCalled();
-  });
-
-  it('Tier 1 WITHOUT device → throws PRECONDITION_FAILED (regression test for silent-virtual bug)', async () => {
+  it('Tier 3 with stale OCPP heartbeat refuses start before dispatching hardware command', async () => {
     await expect(
       callStartSession(
         { bookingId: '550e8400-e29b-41d4-a716-446655440000' },
         makeBooking({
-          charger: { id: 'c1', hostId: 'h1', hardwareTier: 'tier_1_smart_plug', ocppChargePointId: null, shellDevice: null },
+          charger: {
+            id: 'c1',
+            hostId: 'h1',
+            hardwareTier: 'tier_3_native',
+            ocppChargePointId: 'cp-1',
+            ocppConnectedAt: new Date(Date.now() - 10 * 60_000),
+            shellDevice: null,
+          },
         }),
       ),
-    ).rejects.toThrow(/No smart plug linked/);
+    ).rejects.toThrow(/not connected/);
+    expect(updateManyBooking).not.toHaveBeenCalled();
+    expect(ocppQueueAdd).not.toHaveBeenCalled();
+  });
+
+  it.each(['tier_1_smart_plug', 'tier_2_bridge_kit', 'tier_4_unmetered'] as const)(
+    '%s start is rejected for OCPP-only MVP',
+    async (hardwareTier) => {
+      await expect(
+        callStartSession(
+          { bookingId: '550e8400-e29b-41d4-a716-446655440000' },
+          makeBooking({
+            charger: {
+              id: 'c1',
+              hostId: 'h1',
+              hardwareTier,
+              ocppChargePointId: null,
+              shellDevice: null,
+            },
+          }),
+        ),
+      ).rejects.toThrow(/OCPP-connected chargers only/);
+      expect(bookingsQueueAdd).not.toHaveBeenCalled();
+      expect(updateBooking).not.toHaveBeenCalled();
+    },
+  );
+
+  it('Tier 1 start does not enqueue shelly jobs', async () => {
+    await expect(
+      callStartSession(
+        { bookingId: '550e8400-e29b-41d4-a716-446655440000' },
+        makeBooking({
+          charger: {
+            id: 'c1',
+            hostId: 'h1',
+            hardwareTier: 'tier_1_smart_plug',
+            ocppChargePointId: null,
+            shellDevice: null,
+          },
+        }),
+      ),
+    ).rejects.toThrow(/OCPP-connected chargers only/);
     expect(bookingsQueueAdd).not.toHaveBeenCalled();
     expect(updateBooking).not.toHaveBeenCalled();
   });
 
-  it('Tier 2 WITH device → enqueues device_monitor + marks active', async () => {
-    const result = await callStartSession(
-      { bookingId: '550e8400-e29b-41d4-a716-446655440000' },
-      makeBooking({
-        charger: {
-          id: 'c1', hostId: 'h1', hardwareTier: 'tier_2_bridge_kit',
-          ocppChargePointId: null,
-          shellDevice: { id: 'd1', shellyDeviceId: 'shellypro-em-y', status: 'active' },
-        },
-      }),
-    );
-    expect(result).toEqual({ status: 'monitoring' });
-    expect(bookingsQueueAdd).toHaveBeenCalledWith(
-      'device_monitor',
-      { bookingId: '550e8400-e29b-41d4-a716-446655440000' },
-      expect.objectContaining({ jobId: 'monitor_550e8400-e29b-41d4-a716-446655440000' }),
-    );
-    expect(updateManyBooking).toHaveBeenCalledWith({
-      where: { id: '550e8400-e29b-41d4-a716-446655440000', status: 'confirmed' },
-      data: { status: 'active' },
-    });
-  });
-
-  it('Tier 2 WITHOUT device → throws PRECONDITION_FAILED', async () => {
-    await expect(
-      callStartSession(
-        { bookingId: '550e8400-e29b-41d4-a716-446655440000' },
-        makeBooking({
-          charger: { id: 'c1', hostId: 'h1', hardwareTier: 'tier_2_bridge_kit', ocppChargePointId: null, shellDevice: null },
-        }),
-      ),
-    ).rejects.toThrow(/No bridge kit linked/);
-  });
-
-  it('Tier 4 (unmetered) → marks active virtually (no device required)', async () => {
-    const result = await callStartSession(
-      { bookingId: '550e8400-e29b-41d4-a716-446655440000' },
-      makeBooking({
-        charger: { id: 'c1', hostId: 'h1', hardwareTier: 'tier_4_unmetered', ocppChargePointId: null, shellDevice: null },
-      }),
-    );
-    expect(result).toEqual({ status: 'started_virtual' });
-    expect(updateManyBooking).toHaveBeenCalledWith({
-      where: { id: '550e8400-e29b-41d4-a716-446655440000', status: 'confirmed' },
-      data: { status: 'active' },
-    });
-    expect(ocppQueueAdd).not.toHaveBeenCalled();
-    expect(bookingsQueueAdd).not.toHaveBeenCalled();
-  });
-
-  it('Booking not in confirmed state → throws BAD_REQUEST', async () => {
+  it('non-confirmed booking throws', async () => {
     await expect(
       callStartSession(
         { bookingId: '550e8400-e29b-41d4-a716-446655440000' },
@@ -233,7 +188,7 @@ describe('booking.startSession tier dispatch', () => {
     ).rejects.toThrow(/not confirmed/);
   });
 
-  it('Booking from a different driver → throws FORBIDDEN', async () => {
+  it('booking from a different driver throws', async () => {
     await expect(
       callStartSession(
         { bookingId: '550e8400-e29b-41d4-a716-446655440000' },
@@ -243,91 +198,37 @@ describe('booking.startSession tier dispatch', () => {
   });
 });
 
-// ----- stopSession tests -----
-
-const sessionFindUniqueOrThrow = vi.fn();
-const sessionUpdate = vi.fn();
-const chargingSessionMock = vi.hoisted(() => ({
-  findUniqueOrThrow: vi.fn(),
-  update: vi.fn(),
-}));
-
-async function callStopSession(input: { sessionId: string }, session: any) {
-  // The chargingSession mock from the top-level mock object
-  const dbModule = await import('@edna/db') as any;
-  dbModule.prisma.chargingSession.findUniqueOrThrow.mockResolvedValue(session);
-  dbModule.prisma.chargingSession.update.mockResolvedValue({});
-
-  const router = await import('../src/routers/booking.js');
-  const caller = router.bookingRouter.createCaller(ctx as any);
-  return caller.stopSession(input);
-}
-
-function makeSession(overrides: Partial<any> = {}) {
-  return {
-    id: '660e8400-e29b-41d4-a716-446655440000',
-    bookingId: '550e8400-e29b-41d4-a716-446655440000',
-    chargerId: '770e8400-e29b-41d4-a716-446655440000',
-    ocppTransactionId: null,
-    startedAt: new Date(Date.now() - 600_000),
-    endedAt: null,
-    meterStartWh: 0,
-    booking: {
-      id: '550e8400-e29b-41d4-a716-446655440000',
-      driverId: USER_ID,
-      chargerId: '770e8400-e29b-41d4-a716-446655440000',
-    },
-    charger: {
-      id: '770e8400-e29b-41d4-a716-446655440000',
-      hardwareTier: 'tier_3_native',
-      ocppChargePointId: 'cp-x',
-      shellDevice: null,
-    },
-    ...overrides,
-  };
-}
-
 describe('booking.stopSession tier dispatch', () => {
-  it('Tier 3 active session → enqueues RemoteStopTransaction', async () => {
+  it('Tier 3 active session enqueues RemoteStopTransaction', async () => {
     const result = await callStopSession(
       { sessionId: '660e8400-e29b-41d4-a716-446655440000' },
       makeSession({ ocppTransactionId: 12345 }),
     );
     expect(result).toEqual({ status: 'dispatched' });
-    expect(ocppQueueAdd).toHaveBeenCalledWith('RemoteStopTransaction', expect.objectContaining({
-      kind: 'RemoteStopTransaction',
-      transactionId: 12345,
-    }));
-  });
-
-  it('Tier 1 active session → enqueues shelly_stop with sessionId', async () => {
-    const result = await callStopSession(
-      { sessionId: '660e8400-e29b-41d4-a716-446655440000' },
-      makeSession({
-        charger: {
-          id: 'c1', hardwareTier: 'tier_1_smart_plug',
-          ocppChargePointId: null,
-          shellDevice: { id: 'd1', shellyDeviceId: 'shellyplus-x' },
-        },
-      }),
+    expect(ocppQueueAdd).toHaveBeenCalledWith(
+      'RemoteStopTransaction',
+      expect.objectContaining({ kind: 'RemoteStopTransaction', transactionId: 12345 }),
+      expect.objectContaining({ attempts: 5 }),
     );
-    expect(result).toEqual({ status: 'dispatched' });
-    expect(bookingsQueueAdd).toHaveBeenCalledWith('shelly_stop', expect.objectContaining({
-      sessionId: '660e8400-e29b-41d4-a716-446655440000',
-    }));
   });
 
-  it('Tier 4 stop → marks endedAt and returns stopped_virtual', async () => {
-    const result = await callStopSession(
-      { sessionId: '660e8400-e29b-41d4-a716-446655440000' },
-      makeSession({
-        charger: { id: 'c1', hardwareTier: 'tier_4_unmetered', ocppChargePointId: null, shellDevice: null },
-      }),
-    );
-    expect(result).toEqual({ status: 'stopped_virtual' });
+  it('non-OCPP existing session stop is rejected', async () => {
+    await expect(
+      callStopSession(
+        { sessionId: '660e8400-e29b-41d4-a716-446655440000' },
+        makeSession({
+          charger: {
+            id: 'c1',
+            hardwareTier: 'tier_4_unmetered',
+            ocppChargePointId: null,
+            shellDevice: null,
+          },
+        }),
+      ),
+    ).rejects.toThrow(/OCPP-connected chargers only/);
   });
 
-  it('Stop from a different driver → throws FORBIDDEN', async () => {
+  it('stop from a different driver throws', async () => {
     await expect(
       callStopSession(
         { sessionId: '660e8400-e29b-41d4-a716-446655440000' },
@@ -336,8 +237,3 @@ describe('booking.stopSession tier dispatch', () => {
     ).rejects.toThrow(TRPCError);
   });
 });
-
-// Suppress unused warnings
-void sessionFindUniqueOrThrow;
-void sessionUpdate;
-void chargingSessionMock;

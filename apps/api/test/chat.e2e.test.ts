@@ -13,6 +13,7 @@ import {
   signIn,
   uniqueEmail,
   deleteUserByEmail,
+  grantAccess,
 } from './helpers.js';
 
 const skip = skipReason([
@@ -40,11 +41,16 @@ d(`chat router ${skip ?? ''}`, () => {
     driverToken = await signIn(driverEmail, password);
     hostToken = await signIn(hostEmail, password);
     outsiderToken = await signIn(outsiderEmail, password);
+    await grantAccess(driverId, 'driver');
+    await grantAccess(hostId, 'host');
     await trpc('auth.getSession', driverToken, undefined, 'query');
     await trpc('auth.getSession', hostToken, undefined, 'query');
     await trpc('auth.getSession', outsiderToken, undefined, 'query');
 
-    await prisma.user.update({ where: { id: hostId }, data: { roles: { set: ['driver', 'host'] } } });
+    await prisma.user.update({
+      where: { id: hostId },
+      data: { roles: { set: ['driver', 'host'] } },
+    });
 
     const charger = await prisma.charger.create({
       data: {
@@ -104,8 +110,7 @@ d(`chat router ${skip ?? ''}`, () => {
     // Mobile passes the latest message it rendered as upToMessageId — typically
     // the counterparty's most recent message. markRead must mark counterparty
     // messages <= that timestamp as read, and leave the caller's own messages
-    // alone (per AUDIT M3 — upToMessageId is honoured to avoid marking
-    // unseen later-arriving messages).
+    // alone; upToMessageId avoids marking messages that arrive after the marker.
     const hostMsg = await prisma.chatMessage.findFirstOrThrow({
       where: { threadId, senderId: hostId },
       orderBy: { createdAt: 'desc' },

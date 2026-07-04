@@ -1,3 +1,4 @@
+/** @file apps/mobile/app/(host)/home.tsx. */
 import { View, Pressable } from 'react-native';
 import { useRouter } from 'expo-router';
 import {

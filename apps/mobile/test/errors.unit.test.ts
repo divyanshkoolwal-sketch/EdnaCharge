@@ -12,8 +12,19 @@ const { alertMock } = vi.hoisted(() => ({ alertMock: vi.fn() }));
 vi.mock('react-native', () => ({
   Alert: { alert: alertMock },
 }));
-vi.mock('../src/lib/supabase', () => ({
-  supabase: { auth: { signOut: vi.fn(async () => {}) } },
+vi.mock('../src/state/auth', () => ({
+  useAuth: {
+    getState: () => ({
+      signOut: vi.fn(async () => {}),
+      setSession: vi.fn(),
+    }),
+  },
+}));
+vi.mock('../src/lib/sentry', () => ({
+  Sentry: {
+    addBreadcrumb: vi.fn(),
+    captureException: vi.fn(),
+  },
 }));
 
 import { handleError } from '../src/lib/errors';
@@ -23,7 +34,7 @@ describe('handleError — server-stack detection', () => {
     alertMock.mockClear();
     const longPrismaErr = new Error(
       "Invalid `prisma.user.findFirst()` invocation in /Users/x/api/src/trpc.ts:54:32\n\n" +
-        "  51     : `firebase-${authUser.firebaseUid}@ednacharge.local`;\n" +
+        "  51     : `user-${authUser.id}@ednacharge.local`;\n" +
         "  52 const fullName = authUser.name?.trim() || email.split('@')[0] || 'user';\n" +
         "Can't reach database server at `localhost:54322`",
     );

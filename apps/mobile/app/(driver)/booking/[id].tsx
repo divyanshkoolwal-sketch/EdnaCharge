@@ -1,5 +1,6 @@
+/** Driver booking detail screen with edit, session, chat, and review actions. */
 import { useState, useEffect, useMemo } from 'react';
-import { View, Pressable, Platform, ActivityIndicator } from 'react-native';
+import { View, Pressable, Platform, ActivityIndicator, Alert } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { handleError } from '../../../src/lib/errors';
@@ -7,7 +8,6 @@ import {
   Screen,
   Card,
   Button,
-  CTABar,
   H1,
   Muted,
   StatusPill,
@@ -22,6 +22,16 @@ import { ChevronLeft } from '../../../src/components/icons/Icon';
 import { useTheme } from '../../../src/theme/useTheme';
 import { ChargerIllo } from '../../../src/components/illustrations/HomeCharger';
 import { trpc } from '../../../src/lib/trpc';
+import {
+  BookingActionBar,
+  BookingPricingCard,
+  bookingEditEstimate,
+  bookingStartState,
+} from '../../../src/features/bookings/BookingDetailSections';
+import { track } from '../../../src/lib/analytics';
+
+const MAX_BOOKING_MS = 24 * 60 * 60_000;
+const MAX_START_LEAD_MS = 7 * 24 * 60 * 60_000;
 
 export default function BookingDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -39,6 +49,7 @@ export default function BookingDetail() {
     return () => clearInterval(t);
   }, [editing]);
   const minStart = useMemo(() => new Date(now + 60_000), [now]);
+  const maxStart = useMemo(() => new Date(now + MAX_START_LEAD_MS), [now]);
   // Editing pauses polling so a refetch doesn't clobber the in-progress edit.
   const q = trpc.booking.get.useQuery(
     { id: id! },
@@ -89,30 +100,45 @@ export default function BookingDetail() {
     );
   }
   const b = q.data;
-  const startable = b.status === 'confirmed';
   const hasSession = b.session !== null;
   const startTime = new Date(b.startAt);
   const endTime = new Date(b.endAt);
+  const { startable, startHint } = bookingStartState(b.status, startTime, endTime, hasSession, now);
   const hours = (endTime.getTime() - startTime.getTime()) / 3_600_000;
   const canModify = b.status === 'pending';
 
   // Live estimate while editing the window, mirroring the request screen.
   const es = editStart ?? startTime;
   const ee = editEnd ?? endTime;
-  const editHours = Math.max(0.25, (ee.getTime() - es.getTime()) / 3_600_000);
   const ch = b.charger;
-  const editKwh = ch.powerKw * editHours;
-  // Preview at the rate locked on this booking; the server re-quotes at the
-  // current demand rate when the modify is submitted.
-  const editRateCents = b.ratePerKwhCents ?? 0;
-  const editEnergyCents = editRateCents * editKwh;
-  const editFeeCents = editEnergyCents * 0.15;
-  const editTotalCents = editEnergyCents + editFeeCents;
+  const { editHours, editKwh, editRateCents, editEnergyCents, editFeeCents, editTotalCents } =
+    bookingEditEstimate(es, ee, ch.powerKw);
+  const editWindowValid =
+    es.getTime() >= minStart.getTime() - 60_000 &&
+    es.getTime() <= maxStart.getTime() &&
+    ee.getTime() > es.getTime() &&
+    ee.getTime() - es.getTime() <= MAX_BOOKING_MS;
 
   const beginEdit = () => {
     setEditStart(startTime);
     setEditEnd(endTime);
     setEditing(true);
+  };
+
+  const confirmCancel = () => {
+    if (cancel.isPending) return;
+    Alert.alert(
+      'Cancel booking?',
+      'This releases your held charging window and cannot be undone.',
+      [
+        { text: 'Keep booking', style: 'cancel' },
+        {
+          text: 'Cancel booking',
+          style: 'destructive',
+          onPress: () => cancel.mutate({ bookingId: b.id, reason: 'driver_cancel' }),
+        },
+      ],
+    );
   };
 
   return (
@@ -158,11 +184,14 @@ export default function BookingDetail() {
               display={Platform.OS === 'ios' ? 'compact' : 'default'}
               minuteInterval={15}
               minimumDate={minStart}
+              maximumDate={maxStart}
               onChange={(_, d) => {
                 if (!d) return;
                 setEditStart(d);
                 if (d.getTime() >= ee.getTime()) {
                   setEditEnd(new Date(d.getTime() + 60 * 60_000));
+                } else if (ee.getTime() - d.getTime() > MAX_BOOKING_MS) {
+                  setEditEnd(new Date(d.getTime() + MAX_BOOKING_MS));
                 }
               }}
             />
@@ -177,6 +206,7 @@ export default function BookingDetail() {
               display={Platform.OS === 'ios' ? 'compact' : 'default'}
               minuteInterval={15}
               minimumDate={new Date(es.getTime() + 15 * 60_000)}
+              maximumDate={new Date(es.getTime() + MAX_BOOKING_MS)}
               onChange={(_, d) => {
                 if (!d) return;
                 setEditEnd(d);
@@ -195,110 +225,58 @@ export default function BookingDetail() {
       ) : null}
 
       <SectionHeader>Pricing</SectionHeader>
-      <Card padding={16}>
-        <Row between style={{ marginBottom: 8 }}>
-          <Body style={{ color: '#6B6B70', fontSize: 13 }}>Energy (~{b.estimatedKwh.toFixed(1)} kWh)</Body>
-          <Body style={{ color: '#0F0F10', fontSize: 14, fontWeight: '600' }}>
-            ${(b.estimatedCostCents / 100).toFixed(2)}
-          </Body>
-        </Row>
-        <Row between style={{ marginBottom: 8 }}>
-          <Body style={{ color: '#6B6B70', fontSize: 13 }}>Platform fee (15%)</Body>
-          <Body style={{ color: '#0F0F10', fontSize: 14, fontWeight: '600' }}>
-            ${(b.platformFeeCents / 100).toFixed(2)}
-          </Body>
-        </Row>
-        <View style={{ height: 1, backgroundColor: 'rgba(15,15,16,0.08)', marginVertical: 8 }} />
-        <Row between style={{ marginBottom: 8 }}>
-          <Body style={{ color: '#0F0F10', fontSize: 14, fontWeight: '700' }}>Pre-auth held</Body>
-          <Body style={{ color: '#0F0F10', fontSize: 16, fontWeight: '800' }}>
-            ${(b.preauthAmountCents / 100).toFixed(2)}
-          </Body>
-        </Row>
-        <Row between>
-          <Body style={{ color: '#6B6B70', fontSize: 13 }}>Captured</Body>
-          <Body style={{ color: '#0F0F10', fontSize: 14, fontWeight: '600' }}>
-            {b.capturedAmountCents != null ? `$${(b.capturedAmountCents / 100).toFixed(2)}` : '—'}
-          </Body>
-        </Row>
-      </Card>
+      <BookingPricingCard
+        estimatedKwh={b.estimatedKwh}
+        estimatedCostCents={b.estimatedCostCents}
+        platformFeeCents={b.platformFeeCents}
+        preauthAmountCents={b.preauthAmountCents}
+        capturedAmountCents={b.capturedAmountCents}
+      />
+      <Button
+        label="Contact support"
+        variant="secondary"
+        height={44}
+        fontSize={13}
+        onPress={() => router.push({ pathname: '/(shared)/support', params: { bookingId: b.id } })}
+        style={{ marginTop: 12 }}
+      />
 
-      <CTABar>
-        {editing ? (
-          <>
-            <Button
-              label={modify.isPending ? 'Saving…' : 'Save changes'}
-              loading={modify.isPending}
-              onPress={() =>
-                modify.mutate({
-                  bookingId: b.id,
-                  startAt: es.toISOString(),
-                  endAt: ee.toISOString(),
-                })
-              }
-            />
-            <Button
-              label="Discard"
-              variant="secondary"
-              height={44}
-              fontSize={14}
-              onPress={() => setEditing(false)}
-            />
-          </>
-        ) : (
-          <>
-            {startable && !hasSession ? (
-              <Button label="Start session" onPress={() => start.mutate({ bookingId: b.id })} loading={start.isPending} />
-            ) : null}
-            {b.session && b.status !== 'completed' ? (
-              <Button
-                label="View live session"
-                onPress={() =>
-                  router.push({ pathname: '/(driver)/session/[id]', params: { id: b.session!.id } })
-                }
-              />
-            ) : null}
-            {b.status === 'completed' ? (
-              <Button
-                label={myReview.data ? `You rated your host ${myReview.data.stars}★` : 'Rate your host'}
-                variant={myReview.data ? 'secondary' : 'primary'}
-                onPress={() =>
-                  router.push({ pathname: '/(driver)/receipt/[id]', params: { id: b.id } })
-                }
-              />
-            ) : null}
-            {canModify ? (
-              <Button
-                label="Change times"
-                variant="secondary"
-                height={44}
-                fontSize={14}
-                onPress={beginEdit}
-              />
-            ) : null}
-            {b.chatThread ? (
-              <Button
-                label="Open chat with host"
-                variant="secondary"
-                height={44}
-                fontSize={14}
-                onPress={() =>
-                  router.push({ pathname: '/(driver)/chat/[bookingId]', params: { bookingId: b.id } })
-                }
-              />
-            ) : null}
-            {['pending', 'confirmed'].includes(b.status) ? (
-              <Button
-                label="Cancel booking"
-                variant="destructive-outline"
-                height={44}
-                fontSize={14}
-                onPress={() => cancel.mutate({ bookingId: b.id, reason: 'driver_cancel' })}
-              />
-            ) : null}
-          </>
-        )}
-      </CTABar>
+      <BookingActionBar
+        editing={editing}
+        savePending={modify.isPending}
+        editWindowValid={editWindowValid}
+        startable={startable}
+        startHint={startHint}
+        hasSession={hasSession}
+        sessionId={b.session?.id}
+        status={b.status}
+        reviewStars={myReview.data?.stars}
+        canModify={canModify}
+        hasChatThread={Boolean(b.chatThread)}
+        startPending={start.isPending}
+        cancelPending={cancel.isPending}
+        onSave={() =>
+          modify.mutate({
+            bookingId: b.id,
+            startAt: es.toISOString(),
+            endAt: ee.toISOString(),
+          })
+        }
+        onDiscard={() => setEditing(false)}
+        onStart={() => {
+          track('session_start_requested', { bookingId: b.id });
+          start.mutate({ bookingId: b.id });
+        }}
+        onViewSession={(sessionId) =>
+          router.push({ pathname: '/(driver)/session/[id]', params: { id: sessionId } })
+        }
+        onReview={() => router.push({ pathname: '/(driver)/receipt/[id]', params: { id: b.id } })}
+        onModify={beginEdit}
+        onChat={() =>
+          router.push({ pathname: '/(driver)/chat/[bookingId]', params: { bookingId: b.id } })
+        }
+        onCancel={confirmCancel}
+      />
     </Screen>
   );
 }

@@ -1,10 +1,12 @@
+/** @file apps/mobile/src/lib/errors.ts. */
 // Single source of truth for surfacing tRPC / Supabase / generic errors to the
 // user. Centralised so we never again show raw zod validation arrays or
 // "UNAUTHORIZED" verbatim. Every screen should call `handleError(err, opts)`
 // from a useMutation onError handler instead of `Alert.alert('Oops', e.message)`.
 
 import { Alert } from 'react-native';
-import { supabase } from './supabase';
+import { useAuth } from '../state/auth';
+import { Sentry } from './sentry';
 
 export type ErrorOptions = {
   /** Human label of the feature being attempted, e.g. "Payments", "Booking". */
@@ -35,6 +37,8 @@ const FRIENDLY: Record<string, string> = {
   BAD_REQUEST: 'That request was invalid.',
 };
 
+const REPORT_FEATURE = /^(auth|booking|session|payment|payment methods|stripe)$/i;
+
 function classify(err: unknown): { code: string | null; raw: AnyErr } {
   const e = err as AnyErr;
   const code =
@@ -61,12 +65,23 @@ function parseZodMessage(message: string): string | null {
 export function handleError(err: unknown, opts: ErrorOptions = {}): void {
   const { code, raw } = classify(err);
   const rawMessage = raw?.message ?? '';
+  if (opts.feature && REPORT_FEATURE.test(opts.feature)) {
+    Sentry.addBreadcrumb({
+      category: 'app.failure',
+      message: opts.feature,
+      level: 'error',
+      data: { code },
+    });
+    Sentry.captureException(err);
+  }
 
   // 1. Auth failure — sign the user out so the auth listener routes back to
   //    Welcome. The tRPC fetch wrapper has already tried a refresh; if we got
   //    here the refresh also failed.
   if (code === 'UNAUTHORIZED' || /UNAUTHORIZED/i.test(rawMessage)) {
-    void supabase?.auth.signOut().catch(() => {});
+    void useAuth.getState().signOut().catch(() => {
+      useAuth.getState().setSession(null);
+    });
     if (!opts.silent) {
       Alert.alert('Signed out', 'Your session expired. Please sign in again.');
     }
@@ -75,6 +90,13 @@ export function handleError(err: unknown, opts: ErrorOptions = {}): void {
 
   if (opts.silent) {
     console.warn('[handleError]', { code, message: rawMessage, opts });
+    return;
+  }
+
+  // 1b. Network / offline failure — a bare fetch rejection ("Network request
+  //     failed" / "Failed to fetch") is not user-friendly. Show a clear message.
+  if (!code && /network request failed|failed to fetch|network error/i.test(rawMessage)) {
+    Alert.alert(opts.title ?? "You're offline", 'Check your connection and try again.');
     return;
   }
 
@@ -94,9 +116,11 @@ export function handleError(err: unknown, opts: ErrorOptions = {}): void {
     return;
   }
 
-  // 4. Known tRPC code — friendly text.
+  // 4. Known tRPC code — friendly text. Only surface the server's own message
+  //    when it isn't a stack/internal dump (guards e.g. INTERNAL_SERVER_ERROR).
   if (code && FRIENDLY[code]) {
-    Alert.alert(opts.title ?? FRIENDLY[code]!, rawMessage || FRIENDLY[code]!);
+    const body = rawMessage && !looksLikeServerStack(rawMessage) ? rawMessage : FRIENDLY[code]!;
+    Alert.alert(opts.title ?? FRIENDLY[code]!, body);
     return;
   }
 

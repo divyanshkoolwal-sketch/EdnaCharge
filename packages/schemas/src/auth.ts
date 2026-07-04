@@ -1,17 +1,6 @@
+/** @file packages/schemas/src/auth.ts. */
 import { z } from 'zod';
 import { ConnectorTypeZ } from './enums.js';
-
-export const EmailZ = z.string().email();
-export const OtpCodeZ = z.string().regex(/^\d{6}$/);
-
-export const RequestOtpInputZ = z.object({
-  email: EmailZ,
-});
-
-export const VerifyOtpInputZ = z.object({
-  email: EmailZ,
-  code: OtpCodeZ,
-});
 
 // Edit-profile: update the display name. Avatars are set ONLY via uploadAvatar
 // (which stores to our own bucket) — we deliberately do NOT accept an arbitrary
@@ -52,13 +41,3 @@ export const HostIdentityInputZ = z.object({
   country: z.string().length(2).default('US'),
 });
 export type HostIdentityInput = z.infer<typeof HostIdentityInputZ>;
-
-// Identity verification (Stripe Identity)
-export const VerificationStatusZ = z.enum([
-  'unstarted',
-  'processing',
-  'requires_input',
-  'verified',
-  'canceled',
-]);
-export type VerificationStatus = z.infer<typeof VerificationStatusZ>;

@@ -1,3 +1,4 @@
+/** @file apps/mobile/app/(auth)/pick-role.tsx. */
 import { Pressable, View, Text } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Screen, H1, Body, Muted, Label } from '../../src/components/ui';
@@ -28,7 +29,7 @@ export default function PickRole() {
       <Label style={{ marginBottom: 6 }}>WELCOME</Label>
       <H1 style={{ marginBottom: 8 }}>What brings you{'\n'}to EdnaCharge?</H1>
       <Body style={{ color: c.muted, marginBottom: 28 }}>
-        Pick how you want to start. You can always switch or do both later.
+        Pick how you want to start. You can always switch or do both from your profile.
       </Body>
 
       <Pressable

@@ -1,10 +1,11 @@
+/** @file packages/schemas/src/enums.ts. */
 import { z } from 'zod';
-
-export const RoleZ = z.enum(['driver', 'host']);
-export type Role = z.infer<typeof RoleZ>;
 
 export const ConnectorTypeZ = z.enum(['j1772', 'nacs', 'tesla', 'ccs1', 'chademo']);
 export type ConnectorType = z.infer<typeof ConnectorTypeZ>;
+
+export const AppRoleZ = z.enum(['driver', 'host']);
+export type AppRole = z.infer<typeof AppRoleZ>;
 
 export const HardwareTierZ = z.enum([
   'tier_1_smart_plug',
@@ -13,21 +14,3 @@ export const HardwareTierZ = z.enum([
   'tier_4_unmetered',
 ]);
 export type HardwareTier = z.infer<typeof HardwareTierZ>;
-
-export const BookingStatusZ = z.enum([
-  'pending',
-  'confirmed',
-  'declined',
-  'cancelled',
-  'active',
-  'completed',
-  'no_show',
-  'errored',
-]);
-export type BookingStatus = z.infer<typeof BookingStatusZ>;
-
-export const ChargerStatusZ = z.enum(['offline', 'available', 'occupied', 'faulted']);
-export type ChargerStatus = z.infer<typeof ChargerStatusZ>;
-
-export const MessageKindZ = z.enum(['text', 'system']);
-export type MessageKind = z.infer<typeof MessageKindZ>;

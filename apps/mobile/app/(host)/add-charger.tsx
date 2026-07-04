@@ -1,12 +1,7 @@
+/** Host screen for publishing a new OCPP charger listing. */
 import { useEffect, useRef, useState } from 'react';
 import { View, Pressable, Alert, ActivityIndicator, useColorScheme } from 'react-native';
 import { useRouter } from 'expo-router';
-import Mapbox, {
-  MapView,
-  Camera,
-  PointAnnotation,
-} from '@rnmapbox/maps';
-import type { CameraRef } from '@rnmapbox/maps/lib/typescript/src/components/Camera';
 import { handleError } from '../../src/lib/errors';
 import {
   Screen,
@@ -26,12 +21,13 @@ import { useTheme } from '../../src/theme/useTheme';
 import { useUserLocation } from '../../src/state/userLocation';
 import { hostEntryRoute } from '../../src/lib/hostEntry';
 import { trpc } from '../../src/lib/trpc';
+import { track } from '../../src/lib/analytics';
 import type { ConnectorType } from '@edna/schemas';
-
-const STYLES = {
-  light: 'mapbox://styles/mapbox/streets-v12',
-  dark: 'mapbox://styles/mapbox/dark-v11',
-};
+import { AddChargerGate } from '../../src/features/chargers/AddChargerGate';
+import {
+  ChargerLocationPicker,
+  type ChargerCameraRef,
+} from '../../src/features/chargers/ChargerLocationPicker';
 
 const CONNECTORS: ConnectorType[] = ['j1772', 'nacs', 'tesla', 'ccs1', 'chademo'];
 
@@ -43,14 +39,17 @@ export default function AddCharger() {
   const utils = trpc.useUtils();
   const userCoords = useUserLocation((s) => s.coords);
   const toast = useToast();
-  const cameraRef = useRef<CameraRef>(null);
+  const cameraRef = useRef<ChargerCameraRef>(null);
   const create = trpc.charger.create.useMutation({
     onSuccess: (ch) => {
       utils.charger.nearby.invalidate();
       utils.charger.myChargers.invalidate();
       utils.auth.getSession.invalidate();
+      track('charger_published', { chargerId: ch.id, connectorType: ch.connectorType });
+      // The charger is created UNPUBLISHED/offline — it goes live only after the
+      // host connects it to the CSMS on the detail screen. Don't claim "published".
       // Toast persists across navigation (provider is above the navigator).
-      toast.show('Charger published', 'success');
+      toast.show('Charger added — connect it to go live', 'success');
       // v1 is OCPP-only: every charger lands on its detail screen, where the
       // host connects it to the CSMS.
       router.replace({ pathname: '/(host)/charger/[id]', params: { id: ch.id } });
@@ -60,13 +59,18 @@ export default function AddCharger() {
 
   const [title, setTitle] = useState('My home charger');
   const [addr, setAddr] = useState('');
-  const [city, setCity] = useState('Pleasanton');
-  const [stateAbbr, setStateAbbr] = useState('CA');
-  const [zip, setZip] = useState('94566');
-  // Default the map pin to the user's current location if known, else
-  // Pleasanton. Numeric state — keeps Mapbox + Number() coercion clean.
+  // Address fields start EMPTY — hardcoded city/state/zip defaults silently
+  // geocoded a non-local host tens of km off their pin and failed server-side.
+  const [city, setCity] = useState('');
+  const [stateAbbr, setStateAbbr] = useState('');
+  const [zip, setZip] = useState('');
+  // Default the map pin to the user's current location if known, else a regional
+  // center. Numeric state — keeps Mapbox + Number() coercion clean.
   const [lat, setLat] = useState<number>(userCoords?.lat ?? 37.6624);
   const [lng, setLng] = useState<number>(userCoords?.lng ?? -121.8747);
+  // The host must EXPLICITLY confirm the pin (via the picker) — seeding it from
+  // GPS is only a convenience, not a confirmation that it's on the charger.
+  const [pinConfirmed, setPinConfirmed] = useState(false);
 
   useEffect(() => {
     // If we get a real user location after mount and the host hasn't moved
@@ -85,29 +89,64 @@ export default function AddCharger() {
   const [connector, setConn] = useState<ConnectorType>('j1772');
   const [powerKw, setPower] = useState('7.2');
   const [gateCode, setGateCode] = useState('');
-
-  useEffect(() => {
-    const setup = session.data?.hostProfile?.hardwareSetup as
-      | { connectorType?: ConnectorType; powerKw?: number }
-      | undefined;
-    if (setup?.connectorType) setConn(setup.connectorType);
-    if (setup?.powerKw) setPower(String(setup.powerKw));
-  }, [session.data]);
+  const parsedPowerKw = Number(powerKw);
+  // Only an explicit pin confirmation counts (the picker clears this on any map
+  // move), so a mis-dragged pin can't silently pass client validation.
+  const locationConfirmed = pinConfirmed;
+  const formValid =
+    title.trim().length >= 3 &&
+    addr.trim().length > 0 &&
+    city.trim().length > 0 &&
+    stateAbbr.trim().length > 0 &&
+    zip.trim().length >= 3 &&
+    Number.isFinite(parsedPowerKw) &&
+    parsedPowerKw > 0 &&
+    parsedPowerKw <= 50 &&
+    Number.isFinite(lat) &&
+    Number.isFinite(lng) &&
+    lat >= -90 &&
+    lat <= 90 &&
+    lng >= -180 &&
+    lng <= 180 &&
+    locationConfirmed;
 
   const submit = () => {
-    if (!addr) return Alert.alert('Missing', 'Address is required.');
+    if (title.trim().length < 3) return Alert.alert('Missing', 'Add a charger title.');
+    if (!addr.trim()) return Alert.alert('Missing', 'Address is required.');
+    if (!city.trim() || !stateAbbr.trim() || zip.trim().length < 3) {
+      return Alert.alert('Missing', 'City, state, and ZIP are required.');
+    }
+    if (!Number.isFinite(parsedPowerKw) || parsedPowerKw <= 0 || parsedPowerKw > 50) {
+      return Alert.alert('Invalid power', 'Enter a charger power rating between 0 and 50 kW.');
+    }
+    if (
+      !Number.isFinite(lat) ||
+      !Number.isFinite(lng) ||
+      lat < -90 ||
+      lat > 90 ||
+      lng < -180 ||
+      lng > 180
+    ) {
+      return Alert.alert('Invalid location', 'Move the pin to a valid charger location.');
+    }
+    if (!locationConfirmed) {
+      return Alert.alert(
+        'Confirm location',
+        'Move the map pin to your charger, then tap Use this pin.',
+      );
+    }
     create.mutate({
-      title,
-      addressLine1: addr,
-      city,
-      state: stateAbbr,
-      postalCode: zip,
+      title: title.trim(),
+      addressLine1: addr.trim(),
+      city: city.trim(),
+      state: stateAbbr.trim(),
+      postalCode: zip.trim(),
       country: 'US',
       lat,
       lng,
       gateCode: gateCode.trim() || undefined,
       connectorType: connector,
-      powerKw: Number(powerKw),
+      powerKw: parsedPowerKw,
       // v1 is OCPP-only — always a metered, per-kWh Tier 3 charger.
       hardwareTier: 'tier_3_native',
       // Pricing is set automatically by demand — hosts don't enter a rate.
@@ -137,41 +176,18 @@ export default function AddCharger() {
   if (!isHost || !idVerified) {
     const needsPayouts = !isHost;
     return (
-      <Screen>
-        <Pressable
-          onPress={() => router.back()}
-          style={{ paddingTop: 8 }}
-          accessibilityRole="button"
-          accessibilityLabel="Go back"
-          hitSlop={10}
-        >
-          <ChevronLeft />
-        </Pressable>
-        <View
-          style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12, paddingHorizontal: 8 }}
-        >
-          <Bolt size={30} color={c.green2} />
-          <H1 style={{ textAlign: 'center' }}>Finish host setup</H1>
-          <Muted style={{ textAlign: 'center', lineHeight: 20 }}>
-            {needsPayouts
-              ? 'Set up payouts so you can get paid — then you can list your charger.'
-              : 'Verify your identity to list your charger.'}
-          </Muted>
-          <View style={{ alignSelf: 'stretch', marginTop: 8 }}>
-            <Button
-              label={needsPayouts ? 'Continue to payouts' : 'Verify my ID'}
-              onPress={() =>
-                needsPayouts
-                  ? router.push(hostEntryRoute(me) as never)
-                  : router.push({
-                      pathname: '/(shared)/identity-verification',
-                      params: { next: '/(host)/add-charger' },
-                    } as never)
-              }
-            />
-          </View>
-        </View>
-      </Screen>
+      <AddChargerGate
+        needsPayouts={needsPayouts}
+        onBack={() => router.back()}
+        onContinue={() =>
+          needsPayouts
+            ? router.push(hostEntryRoute(me) as never)
+            : router.push({
+                pathname: '/(shared)/identity-verification',
+                params: { next: '/(host)/add-charger' },
+              } as never)
+        }
+      />
     );
   }
 
@@ -180,141 +196,99 @@ export default function AddCharger() {
       <Pressable onPress={() => router.back()} style={{ paddingTop: 8 }}>
         <ChevronLeft />
       </Pressable>
-        {/* This is a single-screen form, not a 5-step wizard — the old
+      {/* This is a single-screen form, not a 5-step wizard — the old
             "STEP 4 OF 5" stepper was misleading. */}
-        <View style={{ marginTop: 12 }}>
-          <Label>LIST YOUR CHARGER</Label>
-        </View>
-        <H1 style={{ marginTop: 14 }}>List your charger</H1>
-        <Card padding={16} style={{ marginTop: 16 }}>
-          <Row gap={8} style={{ alignItems: 'center', marginBottom: 6 }}>
-            <Bolt size={16} color={c.green2} />
-            <Label style={{ color: c.green2 }}>AUTOMATIC PRICING</Label>
-          </Row>
-          <Muted style={{ fontSize: 13, lineHeight: 20 }}>
-            EdnaCharge sets a fair market rate automatically based on demand and time of
-            day — you earn more at peak hours and never have to manage prices. Drivers pay
-            for the exact energy your charger meters, and you keep 85% of every session.
-          </Muted>
-        </Card>
+      <View style={{ marginTop: 12 }}>
+        <Label>LIST YOUR CHARGER</Label>
+      </View>
+      <H1 style={{ marginTop: 14 }}>List your charger</H1>
+      <Card padding={16} style={{ marginTop: 16 }}>
+        <Row gap={8} style={{ alignItems: 'center', marginBottom: 6 }}>
+          <Bolt size={16} color={c.green2} />
+          <Label style={{ color: c.green2 }}>AUTOMATIC PRICING</Label>
+        </Row>
+        <Muted style={{ fontSize: 13, lineHeight: 20 }}>
+          EdnaCharge sets a fair market rate automatically based on demand and time of day — you
+          earn more at peak hours and never have to manage prices. Drivers pay for the exact energy
+          your charger meters, and you keep 85% of every session.
+        </Muted>
+      </Card>
 
-        <View style={{ marginTop: 24, gap: 12 }}>
-          <View>
-            <Label style={{ marginBottom: 8 }}>TITLE</Label>
-            <Input value={title} onChangeText={setTitle} />
-          </View>
-          <View>
-            <Label style={{ marginBottom: 8 }}>ADDRESS</Label>
-            <Input value={addr} onChangeText={setAddr} placeholder="14 Maple St" />
-          </View>
-          <Row gap={8}>
-            <View style={{ flex: 2 }}>
-              <Input value={city} onChangeText={setCity} placeholder="City" />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Input value={stateAbbr} onChangeText={setStateAbbr} placeholder="ST" />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Input value={zip} onChangeText={setZip} placeholder="ZIP" />
-            </View>
-          </Row>
-          <View>
-            <Label style={{ marginBottom: 8 }}>CONNECTOR</Label>
-            <Row gap={6} style={{ flexWrap: 'wrap' }}>
-              {CONNECTORS.map((cn) => (
-                <Chip
-                  key={cn}
-                  label={cn.toUpperCase()}
-                  variant="outline"
-                  selected={connector === cn}
-                  onPress={() => setConn(cn)}
-                />
-              ))}
-            </Row>
-          </View>
-          <View>
-            <Label style={{ marginBottom: 8 }}>POWER (kW)</Label>
-            <Input
-              value={powerKw}
-              onChangeText={setPower}
-              keyboardType="decimal-pad"
-              placeholder="7.2"
-            />
-          </View>
-          <View>
-            <Label style={{ marginBottom: 8 }}>GATE CODE (OPTIONAL)</Label>
-            <Muted style={{ fontSize: 11, marginBottom: 6 }}>
-              Shared automatically with drivers once their booking is confirmed. Leave blank if not needed.
-            </Muted>
-            <Input
-              value={gateCode}
-              onChangeText={setGateCode}
-              placeholder="e.g. 1234"
-              autoCapitalize="characters"
-              maxLength={32}
-            />
-          </View>
-          <View>
-            <Label style={{ marginBottom: 8 }}>LOCATION</Label>
-            <Muted style={{ fontSize: 12, marginBottom: 8 }}>
-              Drag the map to position the pin where the charger actually is.
-            </Muted>
-            <View
-              style={{
-                height: 220,
-                borderRadius: 16,
-                overflow: 'hidden',
-                borderWidth: 1,
-                borderColor: c.line,
-              }}
-            >
-              <MapView
-                style={{ flex: 1 }}
-                styleURL={scheme === 'dark' ? STYLES.dark : STYLES.light}
-                onCameraChanged={(s) => {
-                  const center = s.properties.center as [number, number] | undefined;
-                  if (!center) return;
-                  setLng(center[0]);
-                  setLat(center[1]);
-                }}
-              >
-                <Camera
-                  ref={cameraRef}
-                  defaultSettings={{ centerCoordinate: [lng, lat], zoomLevel: 15 }}
-                  animationDuration={0}
-                />
-                <PointAnnotation id="charger-pin" coordinate={[lng, lat]}>
-                  <View
-                    style={{
-                      width: 28,
-                      height: 28,
-                      borderRadius: 14,
-                      backgroundColor: c.green2,
-                      borderWidth: 3,
-                      borderColor: c.bg,
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                    }}
-                  >
-                    <View
-                      style={{
-                        width: 6,
-                        height: 6,
-                        borderRadius: 3,
-                        backgroundColor: c.bg,
-                      }}
-                    />
-                  </View>
-                </PointAnnotation>
-              </MapView>
-            </View>
-            <Muted style={{ fontSize: 11, marginTop: 6 }}>
-              {lat.toFixed(5)}, {lng.toFixed(5)}
-            </Muted>
-          </View>
+      <View style={{ marginTop: 24, gap: 12 }}>
+        <View>
+          <Label style={{ marginBottom: 8 }}>TITLE</Label>
+          <Input value={title} onChangeText={setTitle} />
         </View>
+        <View>
+          <Label style={{ marginBottom: 8 }}>ADDRESS</Label>
+          <Input value={addr} onChangeText={setAddr} placeholder="14 Maple St" />
+        </View>
+        <Row gap={8}>
+          <View style={{ flex: 2 }}>
+            <Input value={city} onChangeText={setCity} placeholder="City" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Input value={stateAbbr} onChangeText={setStateAbbr} placeholder="ST" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Input value={zip} onChangeText={setZip} placeholder="ZIP" />
+          </View>
+        </Row>
+        <View>
+          <Label style={{ marginBottom: 8 }}>CONNECTOR</Label>
+          <Row gap={6} style={{ flexWrap: 'wrap' }}>
+            {CONNECTORS.map((cn) => (
+              <Chip
+                key={cn}
+                label={cn.toUpperCase()}
+                variant="outline"
+                selected={connector === cn}
+                onPress={() => setConn(cn)}
+              />
+            ))}
+          </Row>
+        </View>
+        <View>
+          <Label style={{ marginBottom: 8 }}>POWER (kW)</Label>
+          <Input
+            value={powerKw}
+            onChangeText={setPower}
+            keyboardType="decimal-pad"
+            placeholder="7.2"
+          />
+        </View>
+        <View>
+          <Label style={{ marginBottom: 8 }}>GATE CODE (OPTIONAL)</Label>
+          <Muted style={{ fontSize: 11, marginBottom: 6 }}>
+            Shared automatically with drivers once their booking is confirmed. Leave blank if not
+            needed.
+          </Muted>
+          <Input
+            value={gateCode}
+            onChangeText={setGateCode}
+            placeholder="e.g. 1234"
+            autoCapitalize="characters"
+            maxLength={32}
+          />
+        </View>
+        <ChargerLocationPicker
+          cameraRef={cameraRef}
+          scheme={scheme}
+          lat={lat}
+          lng={lng}
+          pinConfirmed={pinConfirmed}
+          setLat={setLat}
+          setLng={setLng}
+          setPinConfirmed={setPinConfirmed}
+        />
+      </View>
       <CTABar>
-        <Button label="Publish charger" loading={create.isPending} onPress={submit} />
+        <Button
+          label="Publish charger"
+          loading={create.isPending}
+          disabled={!formValid || create.isPending}
+          onPress={submit}
+        />
       </CTABar>
     </Screen>
   );

@@ -36,14 +36,8 @@ describe('hostEntryRoute — never the intro once started', () => {
     expect(hostEntryRoute({ roles: ['driver', 'host'], hostProfile: {} })).toBe('/(host)/home');
   });
 
-  it('resumes an in-progress host at Stripe Connect (charger step already done)', () => {
-    expect(
-      hostEntryRoute({ roles: ['driver'], hostProfile: { hardwareSetup: { tier: 'tier_3_native' } } }),
-    ).toBe('/(host)/host-onboarding/stripe-connect');
-  });
-
-  it('resumes an in-progress host at Stripe Connect (charger onboarding is post-setup, not in the signup flow)', () => {
-    expect(hostEntryRoute({ roles: ['driver'], hostProfile: { hardwareSetup: null } })).toBe(
+  it('resumes an in-progress host at Stripe Connect', () => {
+    expect(hostEntryRoute({ roles: ['driver'], hostProfile: { stripeOnboardingComplete: false } })).toBe(
       '/(host)/host-onboarding/stripe-connect',
     );
   });

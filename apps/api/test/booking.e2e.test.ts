@@ -17,6 +17,7 @@ import {
   uniqueEmail,
   deleteUserByEmail,
   waitFor,
+  grantAccess,
 } from './helpers.js';
 
 const skip = skipReason([
@@ -44,18 +45,30 @@ d(`booking lifecycle ${skip ?? ''}`, () => {
     hostId = await createSupabaseUser(hostEmail, password);
     driverToken = await signIn(driverEmail, password);
     hostToken = await signIn(hostEmail, password);
+    await grantAccess(driverId, 'driver');
+    await grantAccess(hostId, 'host');
     await trpc('auth.getSession', driverToken, undefined, 'query');
     await trpc('auth.getSession', hostToken, undefined, 'query');
 
     // Driver: ensure a Stripe customer + attached card + default pm.
     await trpc('payment.setupIntent', driverToken, undefined);
     const driver = await prisma.user.findUniqueOrThrow({ where: { id: driverId } });
+    await prisma.identityVerification.upsert({
+      where: { userId: driverId },
+      create: { userId: driverId, status: 'verified', verifiedAt: new Date() },
+      update: { status: 'verified', verifiedAt: new Date() },
+    });
     const pm = await stripe.paymentMethods.create({ type: 'card', card: { token: 'tok_visa' } });
     await stripe.paymentMethods.attach(pm.id, { customer: driver.stripeCustomerId! });
     await trpc('payment.setDefault', driverToken, { paymentMethodId: pm.id });
 
     // Host: pretend Stripe Connect is onboarded — insert a test account id directly.
     await prisma.user.update({ where: { id: hostId }, data: { roles: { set: ['driver', 'host'] } } });
+    await prisma.identityVerification.upsert({
+      where: { userId: hostId },
+      create: { userId: hostId, status: 'verified', verifiedAt: new Date() },
+      update: { status: 'verified', verifiedAt: new Date() },
+    });
     const acct = await stripe.accounts.create({
       type: 'express',
       country: 'US',
@@ -90,7 +103,6 @@ d(`booking lifecycle ${skip ?? ''}`, () => {
       connectorType: 'j1772',
       powerKw: 7.2,
       hardwareTier: 'tier_3_native',
-      pricePerKwhCents: 28,
     })) as { id: string };
     chargerId = c.id;
   });
