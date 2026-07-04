@@ -1,3 +1,4 @@
+/** @file apps/mobile/src/components/ui/TabBar.tsx. */
 // Custom tab bar matching the design canvas: no chrome; the active tab is
 // indicated by ink-colored icon + label. Used as Expo Router's tabBar via
 // screenOptions.tabBar.

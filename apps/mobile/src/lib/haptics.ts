@@ -1,3 +1,4 @@
+/** @file apps/mobile/src/lib/haptics.ts. */
 import * as Haptics from 'expo-haptics';
 
 /**

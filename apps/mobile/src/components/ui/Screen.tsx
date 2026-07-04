@@ -1,3 +1,4 @@
+/** @file apps/mobile/src/components/ui/Screen.tsx. */
 // Screen scaffold matching the design canvas — handles safe area, theme bg,
 // status-bar tint, and keyboard handling for input-heavy screens.
 //

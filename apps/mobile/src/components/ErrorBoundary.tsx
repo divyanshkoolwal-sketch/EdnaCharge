@@ -1,3 +1,4 @@
+/** @file apps/mobile/src/components/ErrorBoundary.tsx. */
 import React from 'react';
 import { View, Text, Pressable } from 'react-native';
 import { Sentry } from '../lib/sentry';
@@ -8,11 +9,10 @@ import { Sentry } from '../lib/sentry';
  * which is exactly the class of bug that used to take the whole app down — an
  * uncaught throw in a screen's `useEffect` (e.g. the map's realtime
  * subscription) crashed the process in release because there was no boundary
- * and Sentry was stubbed.
+ * and there was no app-wide reporter.
  *
  * With this in place, any such error shows a recoverable fallback instead of
- * crashing, and is reported via `Sentry.captureException` (a no-op today; it
- * starts delivering the moment @sentry/react-native is wired back in).
+ * crashing, and is reported via `Sentry.captureException`.
  */
 type Props = { children: React.ReactNode };
 type State = { error: Error | null };
@@ -49,9 +49,7 @@ export class ErrorBoundary extends React.Component<Props, State> {
           <Text style={{ fontSize: 20, fontWeight: '800', color: '#0F0F10', marginBottom: 8 }}>
             Something went wrong
           </Text>
-          <Text
-            style={{ fontSize: 14, color: '#3D3D40', textAlign: 'center', marginBottom: 24 }}
-          >
+          <Text style={{ fontSize: 14, color: '#3D3D40', textAlign: 'center', marginBottom: 24 }}>
             This screen hit an unexpected error. You can try again.
           </Text>
           <Pressable

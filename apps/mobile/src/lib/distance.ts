@@ -1,16 +1,10 @@
+/** @file apps/mobile/src/lib/distance.ts. */
 // Pure-JS Haversine + a rough drive-time formatter. We deliberately avoid an
-// extra Mapbox Directions API call — a 30 km/h average gives a "good enough"
-// ETA for the demo. Swap in a real router later if the demo audience cares
-// about minute-level accuracy.
+// extra Mapbox Directions API call; a 30 km/h average gives a lightweight ETA.
 
 const EARTH_KM = 6371;
 
-export function haversineKm(
-  lat1: number,
-  lon1: number,
-  lat2: number,
-  lon2: number,
-): number {
+export function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
   const toRad = (d: number) => (d * Math.PI) / 180;
   const dLat = toRad(lat2 - lat1);
   const dLon = toRad(lon2 - lon1);

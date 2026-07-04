@@ -1,3 +1,4 @@
+/** @file apps/mobile/src/components/ui/Typography.tsx. */
 import { Text, View, StyleSheet, type TextProps, type ViewProps, type TextStyle } from 'react-native';
 import { useTheme } from '../../theme/useTheme';
 

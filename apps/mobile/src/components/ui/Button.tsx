@@ -1,3 +1,4 @@
+/** @file apps/mobile/src/components/ui/Button.tsx. */
 import { useEffect, useState } from 'react';
 import {
   Pressable,

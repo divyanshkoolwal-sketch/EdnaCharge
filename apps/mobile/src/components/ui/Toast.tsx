@@ -1,5 +1,14 @@
-import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
-import { Animated, Pressable, Text, View } from 'react-native';
+/** @file apps/mobile/src/components/ui/Toast.tsx. */
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
+import { Animated, Pressable, Text } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../../theme/useTheme';
 import { haptics } from '../../lib/haptics';
@@ -47,7 +56,12 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
       translateY.setValue(-80);
       opacity.setValue(0);
       Animated.parallel([
-        Animated.spring(translateY, { toValue: 0, useNativeDriver: true, friction: 9, tension: 80 }),
+        Animated.spring(translateY, {
+          toValue: 0,
+          useNativeDriver: true,
+          friction: 9,
+          tension: 80,
+        }),
         Animated.timing(opacity, { toValue: 1, duration: 180, useNativeDriver: true }),
       ]).start();
       hideTimer.current = setTimeout(dismiss, 2800);
@@ -55,13 +69,21 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     [dismiss, opacity, translateY],
   );
 
-  useEffect(() => () => { if (hideTimer.current) clearTimeout(hideTimer.current); }, []);
+  useEffect(
+    () => () => {
+      if (hideTimer.current) clearTimeout(hideTimer.current);
+    },
+    [],
+  );
 
-  const bg =
-    toast?.variant === 'success' ? c.green2 : toast?.variant === 'error' ? c.red : c.ink;
+  const bg = toast?.variant === 'success' ? c.green2 : toast?.variant === 'error' ? c.red : c.ink;
+
+  // Stable value ({ show } is memoized on the stable `show`) so every useToast
+  // consumer doesn't re-render each time a toast appears/dismisses.
+  const value = useMemo(() => ({ show }), [show]);
 
   return (
-    <ToastContext.Provider value={{ show }}>
+    <ToastContext.Provider value={value}>
       {children}
       {toast ? (
         <Animated.View
@@ -99,9 +121,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
             </Text>
           </Pressable>
         </Animated.View>
-      ) : (
-        <View />
-      )}
+      ) : null}
     </ToastContext.Provider>
   );
 }

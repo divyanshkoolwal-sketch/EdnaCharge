@@ -1,7 +1,8 @@
-// Lightweight SVG icons matching the design canvas's stroke style.
-// All icons accept `size` + `color` and inherit from theme.
-import Svg, { Path, Circle, Rect, Polyline } from 'react-native-svg';
+/** Lightweight SVG icons matching the mobile design canvas stroke style. */
+import Svg, { Path, Circle, Rect } from 'react-native-svg';
 import { useTheme } from '../../theme/useTheme';
+
+export { Sparkline } from './IconCharts';
 
 type Props = { size?: number; color?: string };
 
@@ -150,7 +151,16 @@ export const CalendarIcon = ({ size = 20, color }: Props) => {
   const stroke = useStroke(color);
   return (
     <Svg width={size} height={size} viewBox="0 0 20 20">
-      <Rect x={3} y={4} width={14} height={13} rx={2} stroke={stroke} strokeWidth={1.6} fill="none" />
+      <Rect
+        x={3}
+        y={4}
+        width={14}
+        height={13}
+        rx={2}
+        stroke={stroke}
+        strokeWidth={1.6}
+        fill="none"
+      />
       <Path d="M3 8h14M7 2v3M13 2v3" stroke={stroke} strokeWidth={1.6} strokeLinecap="round" />
     </Svg>
   );
@@ -196,21 +206,9 @@ export const ListIcon = ({ size = 20, color }: Props) => {
   );
 };
 
-export const Plus = ({ size = 18, color }: Props) => {
-  const stroke = useStroke(color);
-  return (
-    <Svg width={size} height={size} viewBox="0 0 18 18">
-      <Path d="M9 3v12M3 9h12" stroke={stroke} strokeWidth={1.8} strokeLinecap="round" />
-    </Svg>
-  );
-};
-
 export const Star = ({ size = 14, color = '#F2A66A' }: Props) => (
   <Svg width={size} height={size} viewBox="0 0 14 14">
-    <Path
-      d="M7 1l1.8 4 4.2.4-3.2 2.9 1 4.2L7 10.3l-3.8 2.2 1-4.2L1 5.4 5.2 5 7 1Z"
-      fill={color}
-    />
+    <Path d="M7 1l1.8 4 4.2.4-3.2 2.9 1 4.2L7 10.3l-3.8 2.2 1-4.2L1 5.4 5.2 5 7 1Z" fill={color} />
   </Svg>
 );
 
@@ -249,7 +247,16 @@ export const Card = ({ size = 18, color }: Props) => {
   const stroke = useStroke(color);
   return (
     <Svg width={size} height={size} viewBox="0 0 18 18">
-      <Rect x={2} y={4} width={14} height={10} rx={2} stroke={stroke} strokeWidth={1.5} fill="none" />
+      <Rect
+        x={2}
+        y={4}
+        width={14}
+        height={10}
+        rx={2}
+        stroke={stroke}
+        strokeWidth={1.5}
+        fill="none"
+      />
       <Path d="M2 8h14" stroke={stroke} strokeWidth={1.5} />
     </Svg>
   );
@@ -285,29 +292,3 @@ export const Recenter = ({ size = 18, color }: Props) => {
     </Svg>
   );
 };
-
-export const Edit = ({ size = 16, color }: Props) => {
-  const stroke = useStroke(color);
-  return (
-    <Svg width={size} height={size} viewBox="0 0 16 16">
-      <Path
-        d="M11.5 2.5l2 2-8 8H3.5v-2l8-8Z"
-        stroke={stroke}
-        strokeWidth={1.4}
-        strokeLinejoin="round"
-        fill="none"
-      />
-    </Svg>
-  );
-};
-
-export const Sparkline = ({ size = 200, color = '#A9DCAA' }: Props) => (
-  <Svg width={size} height={40} viewBox="0 0 200 40">
-    <Polyline
-      points="0,30 20,28 40,22 60,18 80,15 100,12 120,14 140,11 160,10 180,12 200,10"
-      stroke={color}
-      strokeWidth={1.5}
-      fill="none"
-    />
-  </Svg>
-);
