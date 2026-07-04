@@ -105,11 +105,11 @@ DB/Stripe orchestration is exercised only under the live stack.
 **Unit-covered now** (pure helpers, run on every `pnpm test`; also in
 `pnpm smoke:product`):
 
-| Path | Test file | What it pins |
-| --- | --- | --- |
-| Moderation resolve | `apps/api/test/moderation.unit.test.ts` | `reviewReportResolutionStatus` only ever returns a `ContentReport_status_check`-allowed value (`actioned`/`dismissed`) — the exact CHECK-violating regression that 500'd the moderator |
-| Refund / dispute | `apps/api/test/refund-math.unit.test.ts` | `refundedPayoutAmounts` full-reverse, proportional-net partials, idempotent recompute-from-original, non-negative clamps; `disputeStatusFor` mapping incl. lost-only reversal |
-| Account deletion | `apps/api/test/account-deletion.unit.test.ts` | `pi_dev_` skip, active-only blocking, empty-holds no-op, and the `isAlreadyDeleted` idempotent-resume guard |
+| Path               | Test file                                     | What it pins                                                                                                                                                                           |
+| ------------------ | --------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Moderation resolve | `apps/api/test/moderation.unit.test.ts`       | `reviewReportResolutionStatus` only ever returns a `ContentReport_status_check`-allowed value (`actioned`/`dismissed`) — the exact CHECK-violating regression that 500'd the moderator |
+| Refund / dispute   | `apps/api/test/refund-math.unit.test.ts`      | `refundedPayoutAmounts` full-reverse, proportional-net partials, idempotent recompute-from-original, non-negative clamps; `disputeStatusFor` mapping incl. lost-only reversal          |
+| Account deletion   | `apps/api/test/account-deletion.unit.test.ts` | `pi_dev_` skip, active-only blocking, empty-holds no-op, and the `isAlreadyDeleted` idempotent-resume guard                                                                            |
 
 **Live-gated** (real DB/Stripe; `describe.skip` unless `E2E_LIVE=1`, and they
 never mock Stripe/DB). Run via the E2E steps above; these additionally need:
@@ -135,7 +135,9 @@ Stripe webhook), so they stay live-gated rather than giving false confidence.
 ## Useful Commands
 
 ```bash
-pnpm sim --charger sim-001 --session 30m
+# The sim connects and idles until a booking's RemoteStartTransaction drives a
+# session (as in prod). To self-drive a session standalone, add --idTag <tag>:
+pnpm sim --charger sim-001 --idTag test-tag --session 30m
 pnpm sentry:smoke
 pnpm -F @edna/db seed
 pnpm -F @edna/db invite:generate -- --role host --campaign fremont-ground-host --count 50

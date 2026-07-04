@@ -1,8 +1,11 @@
 #!/usr/bin/env tsx
 /** @file tools/ocpp-simulator/src/index.ts. */
 // Simulator — mirrors real charger behavior over the same ocpp-rpc wire as the CSMS.
+// By default it connects and idles until a booking's RemoteStartTransaction drives
+// a session (matching production). To self-drive a session standalone, pass
+// --idTag <tag> to start one immediately; --session sets that standalone duration.
 // Usage:
-//   pnpm sim --charger sim-001 --session 30m [--csms ws://localhost:3100] [--password ...]
+//   pnpm sim --charger sim-001 [--idTag <tag>] [--session 30m] [--csms ws://localhost:3100] [--password ...]
 
 import { RPCClient } from 'ocpp-rpc';
 
