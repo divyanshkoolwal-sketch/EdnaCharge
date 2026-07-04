@@ -11,14 +11,15 @@
 # so no compile step is needed — only `prisma generate`.
 #
 # Secrets (sync:false / the shared group) are entered ONCE in the Render dashboard
-# and never committed. See DEPLOY.md for the exact values and the one-time DB setup.
+# and never committed. See docs/DEPLOYMENT.md for the one-time DB setup and
+# docs/runbooks/credentials-template.md for the secret inventory.
 
 envVarGroups:
   - name: edna-shared
     envVars:
-      - key: DATABASE_URL          # Supabase pooled connection string (postgresql://...)
+      - key: DATABASE_URL # Supabase pooled connection string (postgresql://...)
         sync: false
-      - key: REDIS_URL             # Upstash rediss://... (TLS)
+      - key: REDIS_URL # Upstash rediss://... (TLS)
         sync: false
       - key: SUPABASE_URL
         sync: false
@@ -26,9 +27,9 @@ envVarGroups:
         sync: false
       - key: SUPABASE_ANON_KEY
         sync: false
-      - key: STRIPE_SECRET_KEY     # sk_live_...
+      - key: STRIPE_SECRET_KEY # sk_live_...
         sync: false
-      - key: OCPP_SECRET_ENC_KEY   # 32+ char random; encrypts stored OCPP passwords (pgcrypto)
+      - key: OCPP_SECRET_ENC_KEY # 32+ char random; encrypts stored OCPP passwords (pgcrypto)
         sync: false
 
 services:
@@ -42,25 +43,27 @@ services:
     autoDeploy: true
     buildCommand: corepack enable && corepack prepare pnpm@10.28.0 --activate && pnpm install --prod=false --frozen-lockfile && pnpm --filter @edna/db generate
     startCommand: pnpm --filter @edna/api start
-    healthCheckPath: /healthz
+    healthCheckPath: /readyz
     envVars:
       - fromGroup: edna-shared
       - key: NODE_ENV
         value: production
       # Auth: mobile signs in with Supabase; the API verifies the access token
       # via supabase.auth.getUser using SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY
-      # (already inherited from the edna-shared group). No Firebase vars needed.
+      # (already inherited from the edna-shared group).
       - key: STRIPE_WEBHOOK_SECRET            # whsec_... from the "account events" webhook
         sync: false
-      - key: STRIPE_WEBHOOK_SECRET_CONNECT    # whsec_... from the "connected accounts" webhook
+      - key: STRIPE_WEBHOOK_SECRET_CONNECT # whsec_... from the "connected accounts" webhook
         sync: false
-      - key: STRIPE_PUBLISHABLE_KEY           # pk_live_...
+      - key: STRIPE_PUBLISHABLE_KEY # pk_live_...
         sync: false
-      - key: API_URL                          # https://api.<domain>  (Stripe Connect return/refresh)
+      - key: API_URL # https://api.<domain>  (Stripe Connect return/refresh)
         sync: false
-      - key: CSMS_PUBLIC_URL                  # wss://csms.<domain>   (shown to hosts as the OCPP URL)
+      - key: CSMS_PUBLIC_URL # wss://csms.<domain>   (shown to hosts as the OCPP URL)
         sync: false
-      - key: CORS_ORIGINS                     # optional; blank => cross-origin denied in prod
+      - key: CORS_ORIGINS # optional; blank => cross-origin denied in prod
+        sync: false
+      - key: MODERATION_ADMIN_EMAILS # comma-separated admin emails for review moderation
         sync: false
       - key: SENTRY_DSN_API
         sync: false
@@ -82,7 +85,7 @@ services:
     autoDeploy: true
     buildCommand: corepack enable && corepack prepare pnpm@10.28.0 --activate && pnpm install --prod=false --frozen-lockfile && pnpm --filter @edna/db generate
     startCommand: pnpm --filter @edna/csms start
-    healthCheckPath: /healthz
+    healthCheckPath: /readyz
     envVars:
       - fromGroup: edna-shared
       - key: NODE_ENV

@@ -10,7 +10,7 @@ beforeAll(() => {
   vi.stubGlobal('__DEV__', false);
 });
 
-import { parseDsn, buildEvent } from '../src/lib/sentry';
+import { parseDsn, buildEvent, Sentry } from '../src/lib/sentry';
 
 describe('parseDsn', () => {
   it('parses a valid DSN into key/host/project', () => {
@@ -56,5 +56,17 @@ describe('buildEvent', () => {
     const msg = buildEvent('Authorization: Bearer abc.def.ghi123456');
     expect(msg.message).not.toContain('abc.def.ghi123456');
     expect(msg.message as string).toContain('[scrubbed]');
+  });
+
+  it('includes user context and route breadcrumbs', () => {
+    Sentry.setUser({ id: 'user-1', email: 'driver@example.com' });
+    Sentry.addBreadcrumb({ category: 'navigation', message: '/(driver)/map' });
+    const e = buildEvent(new Error('boom'));
+    expect(e.user).toEqual({ id: 'user-1', email: '[email-scrubbed]' });
+    expect(e.breadcrumbs).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ category: 'navigation', message: '/(driver)/map' }),
+      ]),
+    );
   });
 });

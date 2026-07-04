@@ -1,15 +1,8 @@
-import { Queue } from 'bullmq';
-import IORedis from 'ioredis';
+/** @file apps/api/src/lib/queues.ts. */
+import { createQueue, createRedisConnection } from '@edna/server-utils';
 
-let _connection: IORedis | null = null;
-function connection(): IORedis {
-  if (_connection) return _connection;
-  _connection = new IORedis(process.env.REDIS_URL ?? 'redis://localhost:6379', {
-    maxRetriesPerRequest: null,
-  });
-  return _connection;
-}
+const connection = createRedisConnection();
 
-export const bookingsQueue = new Queue('bookings', { connection: connection() });
-export const ocppCommandsQueue = new Queue('ocpp-commands', { connection: connection() });
-export const notificationsQueue = new Queue('notifications', { connection: connection() });
+export const bookingsQueue = createQueue('bookings', connection);
+export const ocppCommandsQueue = createQueue('ocpp-commands', connection);
+export const notificationsQueue = createQueue('notifications', connection);

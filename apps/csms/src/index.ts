@@ -1,3 +1,4 @@
+/** @file apps/csms/src/index.ts. */
 import Fastify from 'fastify';
 import type { IncomingMessage } from 'node:http';
 import type { Socket } from 'node:net';
@@ -5,10 +6,11 @@ import { RPCServer } from 'ocpp-rpc';
 import bcrypt from 'bcryptjs';
 import { loadEnv } from '@edna/config';
 import { prisma } from '@edna/db';
-import { initSentry, Sentry } from './sentry.js';
+import { initServiceSentry, Sentry } from '@edna/server-utils';
 import { logger } from './logger.js';
 import { bindHandlers, type Client } from './handlers/index.js';
-import { register, unregister, size } from './lib/registry.js';
+import { closeQueues as closeHandlerQueues } from './handlers/queues.js';
+import { get, register, unregister, size } from './lib/registry.js';
 import { startCommandConsumer } from './lib/ocpp-queue.js';
 
 // In-memory per-IP throttle for the OCPP auth handshake. bcrypt.compare is
@@ -19,19 +21,28 @@ import { startCommandConsumer } from './lib/ocpp-queue.js';
 // see below), so in-process state is authoritative.
 const AUTH_FAIL_WINDOW_MS = 5 * 60 * 1000;
 const AUTH_FAIL_MAX = 10;
+// Once a charge point is over the failure threshold, cap bcrypt to one every
+// BCRYPT_THROTTLE_MS so a flood against a (publicly derivable) cpId can't force
+// unbounded hashing. A legitimate charger still gets a bcrypt slot within this
+// window, so it's never indefinitely locked out — just briefly delayed.
+const BCRYPT_THROTTLE_MS = 30 * 1000;
 const authFailures = new Map<string, number[]>();
+const lastBcryptAt = new Map<string, number>();
 
 function recentFailures(ip: string): number[] {
   const now = Date.now();
   const hits = (authFailures.get(ip) ?? []).filter((t) => now - t < AUTH_FAIL_WINDOW_MS);
   if (hits.length) authFailures.set(ip, hits);
-  else authFailures.delete(ip);
+  else {
+    authFailures.delete(ip);
+    lastBcryptAt.delete(ip);
+  }
   return hits;
 }
 
 async function main() {
   const env = loadEnv();
-  initSentry();
+  initServiceSentry('csms', 'SENTRY_DSN_CSMS', logger);
 
   // Cap OCPP frame size. Real OCPP 1.6 messages are small (a fat MeterValues is
   // a few KB); 128 KB is generous headroom while stopping a compromised/hostile
@@ -49,33 +60,70 @@ async function main() {
       (handshake as { request?: { socket?: { remoteAddress?: string } } }).request?.socket
         ?.remoteAddress ??
       'unknown';
+    // Keyed per charge point (behind Render's proxy every charger shares one
+    // source IP, so IP keying would cross-lock chargers).
+    const throttleKey = cpId ? `cp:${cpId}` : `ip:${ip}`;
 
-    if (recentFailures(ip).length >= AUTH_FAIL_MAX) {
-      logger.warn({ ip, cpId }, 'auth throttled: too many recent failures');
+    const now = Date.now();
+    const priorFails = recentFailures(throttleKey);
+    // Under sustained failures, cap bcrypt to one per BCRYPT_THROTTLE_MS for this
+    // charge point — bounds hashing work from a flood on a derivable cpId while
+    // still giving a legit charger a slot within the window (never a hard lock).
+    if (priorFails.length >= AUTH_FAIL_MAX && now - (lastBcryptAt.get(throttleKey) ?? 0) < BCRYPT_THROTTLE_MS) {
+      logger.warn({ ip, cpId, fails: priorFails.length }, 'ocpp auth: bcrypt throttled');
       return reject(429, 'Too many attempts');
     }
 
-    const fail = (code: number, msg: string) => {
-      const hits = recentFailures(ip);
+    const recordFail = (): number => {
+      const hits = recentFailures(throttleKey);
       hits.push(Date.now());
-      authFailures.set(ip, hits);
-      return reject(code, msg);
+      authFailures.set(throttleKey, hits);
+      return hits.length;
     };
 
-    const charger = await prisma.charger.findUnique({ where: { ocppChargePointId: cpId } });
-    if (!charger || !charger.ocppAuthHash) return fail(401, 'Unknown charger');
-    const auth = handshake.password?.toString('utf8') ?? '';
-    const ok = await bcrypt.compare(auth, charger.ocppAuthHash);
-    if (!ok) return fail(401, 'Bad credentials');
-    // Success: clear this IP's failure history.
-    authFailures.delete(ip);
-    accept({ cpId });
+    try {
+      const charger = cpId
+        ? await prisma.charger.findUnique({ where: { ocppChargePointId: cpId } })
+        : null;
+      const password = handshake.password?.toString('utf8') ?? '';
+      // Skip bcrypt for unknown charger / empty password so garbage floods never
+      // cost a hash at all.
+      if (!charger?.ocppAuthHash || password.length === 0) {
+        const fails = recordFail();
+        return reject(fails >= AUTH_FAIL_MAX ? 429 : 401, 'Bad credentials');
+      }
+
+      // CHECK CREDENTIALS. A charge point with the RIGHT secret is ALWAYS admitted
+      // (the throttle above only gates the RATE of hashing, never the outcome), so
+      // a flood on a derivable cpId can delay but never lock out the real charger.
+      lastBcryptAt.set(throttleKey, now);
+      const ok = await bcrypt.compare(password, charger.ocppAuthHash);
+      if (ok) {
+        authFailures.delete(throttleKey);
+        lastBcryptAt.delete(throttleKey);
+        accept({ cpId });
+        return;
+      }
+      const fails = recordFail();
+      logger.warn({ ip, cpId, fails }, 'ocpp auth failed');
+      return reject(fails >= AUTH_FAIL_MAX ? 429 : 401, 'Bad credentials');
+    } catch (err) {
+      logger.error({ err, cpId }, 'auth failed while checking charger credentials');
+      Sentry.captureException(err);
+      return reject(500, 'Auth temporarily unavailable');
+    }
   });
 
-  // Bound memory: periodically evict IPs whose failure window has fully aged
-  // out. unref so this timer never keeps the process alive on shutdown.
+  // Bound memory: periodically evict throttle keys whose failure window has fully
+  // aged out (recentFailures deletes empty entries + their lastBcryptAt). Also
+  // drop any orphaned lastBcryptAt (e.g. bcrypt threw before a failure recorded).
+  // unref so this timer never keeps the process alive on shutdown.
   setInterval(() => {
-    for (const ip of authFailures.keys()) recentFailures(ip);
+    for (const key of authFailures.keys()) recentFailures(key);
+    const bcryptCutoff = Date.now() - AUTH_FAIL_WINDOW_MS;
+    for (const [key, at] of lastBcryptAt) {
+      if (at < bcryptCutoff && !authFailures.has(key)) lastBcryptAt.delete(key);
+    }
   }, AUTH_FAIL_WINDOW_MS).unref();
 
   rpc.on('client', (client: Client) => {
@@ -97,6 +145,10 @@ async function main() {
         Sentry.captureException(err);
       });
     client.on('close', () => {
+      if (get(cpId) !== client) {
+        logger.info({ cpId, connected: size() }, 'stale client disconnected');
+        return;
+      }
       unregister(cpId);
       prisma.charger
         .updateMany({ where: { ocppChargePointId: cpId }, data: { ocppConnectedAt: null } })
@@ -119,11 +171,32 @@ async function main() {
     uptimeSec: Math.round(process.uptime()),
     clients: size(),
   }));
-  app.get('/_sentry-test', async () => {
-    Sentry.captureException(new Error('sentry-smoke: csms'));
-    await Sentry.flush(2000);
-    return { fired: true };
+  app.get('/readyz', async (_req, reply) => {
+    try {
+      await prisma.$queryRaw`SELECT 1`;
+      return {
+        status: 'ok' as const,
+        service: 'csms',
+        dependencies: { database: 'ok' as const },
+        clients: size(),
+      };
+    } catch (err) {
+      logger.error({ err }, 'csms readiness check failed');
+      return reply.code(503).send({
+        status: 'error' as const,
+        service: 'csms',
+        dependencies: { database: 'error' as const },
+        clients: size(),
+      });
+    }
   });
+  if (process.env.NODE_ENV !== 'production') {
+    app.get('/_sentry-test', async () => {
+      Sentry.captureException(new Error('sentry-smoke: csms'));
+      await Sentry.flush(2000);
+      return { fired: true, dsnConfigured: !!process.env.SENTRY_DSN_CSMS };
+    });
+  }
   await app.ready();
 
   app.server.on('upgrade', (req: IncomingMessage, socket: Socket, head: Buffer) => {
@@ -143,13 +216,18 @@ async function main() {
     'csms listening (OCPP + HTTP) — single-instance only (in-memory registry); do not horizontally scale (see lib/registry.ts)',
   );
 
-  startCommandConsumer(env.REDIS_URL);
+  const commandWorker = startCommandConsumer(env.REDIS_URL);
   logger.info('ocpp-commands consumer started');
 
+  let shuttingDown = false;
   const shutdown = async () => {
+    if (shuttingDown) return;
+    shuttingDown = true;
     await (rpc as RPCServer & { close: (opts: { code: number }) => Promise<void> }).close({
       code: 1001,
     });
+    await commandWorker.close();
+    await closeHandlerQueues();
     await app.close();
     process.exit(0);
   };

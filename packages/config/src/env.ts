@@ -1,3 +1,4 @@
+/** @file packages/config/src/env.ts. */
 import { z } from 'zod';
 import { config as loadDotenv } from 'dotenv';
 import { existsSync } from 'node:fs';
@@ -32,7 +33,9 @@ const EnvSchema = z.object({
   SUPABASE_SERVICE_ROLE_KEY: z.string().optional(),
 
   STRIPE_SECRET_KEY: z.string().optional(),
+  STRIPE_PUBLISHABLE_KEY: z.string().optional(),
   STRIPE_WEBHOOK_SECRET: z.string().optional(),
+  STRIPE_WEBHOOK_SECRET_CONNECT: z.string().optional(),
 
   // Symmetric key (pgcrypto) for encrypting stored OCPP passwords. Only the API
   // uses it; it validates presence at point of use (charger router) and throws a
@@ -50,9 +53,43 @@ const EnvSchema = z.object({
   API_PORT: z.coerce.number().int().positive().default(3000),
   CSMS_PORT: z.coerce.number().int().positive().default(3100),
   WORKER_PORT: z.coerce.number().int().positive().default(3200),
+}).superRefine((env, ctx) => {
+  if (env.NODE_ENV !== 'production') return;
+  if (!env.DATABASE_URL) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['DATABASE_URL'],
+      message: 'DATABASE_URL is required in production.',
+    });
+  }
+  if (!process.env.REDIS_URL || isLocalRedisUrl(env.REDIS_URL)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['REDIS_URL'],
+      message: 'REDIS_URL must be set to a non-local Redis endpoint in production.',
+    });
+  }
 });
 
 export type Env = z.infer<typeof EnvSchema>;
+
+export function isLocalRedisUrl(raw: string): boolean {
+  try {
+    const url = new URL(raw);
+    const host = url.hostname.toLowerCase();
+    return (
+      host === 'localhost' ||
+      host.endsWith('.localhost') ||
+      host === '127.0.0.1' ||
+      host.startsWith('127.') ||
+      host === '0.0.0.0' ||
+      host === '::1' ||
+      host === '[::1]'
+    );
+  } catch {
+    return true;
+  }
+}
 
 export function loadEnv(): Env {
   const parsed = EnvSchema.safeParse(process.env);
