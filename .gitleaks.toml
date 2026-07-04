@@ -1,0 +1,21 @@
+title = "EdnaCharge gitleaks config"
+
+# Use gitleaks' built-in rules, plus the allowlist below for files that
+# legitimately contain public, non-secret material (client-side config that
+# ships in the app bundle, lockfile integrity hashes, generated docs).
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Public client config, lockfiles, and generated/vendored files — no real secrets"
+paths = [
+  '''pnpm-lock\.yaml''',
+  # eas.json holds EXPO_PUBLIC_* values that ship in the client bundle by design
+  # (Supabase anon/publishable key, Mapbox pk. token, Stripe publishable key).
+  '''apps/mobile/eas\.json''',
+  '''\.env\.example''',
+  '''docs/openapi\.yaml''',
+  '''(^|/)node_modules/''',
+  '''(^|/)dist/''',
+  '''(^|/)ios/''',
+]
