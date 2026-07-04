@@ -24,7 +24,6 @@
     "bcryptjs": "^2.4.3",
     "bullmq": "^5.20.0",
     "fastify": "^4.28.1",
-    "firebase-admin": "^13.8.0",
     "ioredis": "^5.4.1",
     "mqtt": "^5.15.1",
     "pino": "^9.4.0",

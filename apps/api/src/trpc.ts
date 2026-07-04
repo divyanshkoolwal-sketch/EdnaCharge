@@ -1,22 +1,22 @@
 import { initTRPC, TRPCError } from '@trpc/server';
 import type { CreateFastifyContextOptions } from '@trpc/server/adapters/fastify';
-import { verifyFirebaseIdToken, type VerifiedFirebaseUser } from './lib/firebase.js';
+import { verifyAccessToken, type VerifiedUser } from './lib/auth.js';
 import { prisma } from '@edna/db';
 
 export type Context = {
   userId: string | null;
   email: string | null;
-  firebaseUser: VerifiedFirebaseUser | null;
+  authUser: VerifiedUser | null;
 };
 
 export async function createContext({ req }: CreateFastifyContextOptions): Promise<Context> {
   const auth = req.headers.authorization;
-  if (!auth?.startsWith('Bearer ')) return { userId: null, email: null, firebaseUser: null };
+  if (!auth?.startsWith('Bearer ')) return { userId: null, email: null, authUser: null };
   const token = auth.slice('Bearer '.length);
-  const v = await verifyFirebaseIdToken(token);
+  const v = await verifyAccessToken(token);
   return v
-    ? { userId: null, email: v.email, firebaseUser: v }
-    : { userId: null, email: null, firebaseUser: null };
+    ? { userId: null, email: v.email, authUser: v }
+    : { userId: null, email: null, authUser: null };
 }
 
 const t = initTRPC.context<Context>().create({
@@ -42,17 +42,20 @@ export const publicProcedure = t.procedure;
 // we hit "Record to update not found" / FK violations on any procedure that
 // runs before the mobile app happens to call `auth.getSession`. Cheap (one
 // indexed lookup) and idempotent.
+//
+// Identity model: `User.id` IS the Supabase auth user id (auth.users.id). This
+// is what makes RLS `auth.uid() = User.id` (and the FK-based party policies)
+// line up for the authenticated client.
 export const protectedProcedure = t.procedure.use(async ({ ctx, next }) => {
-  if (!ctx.firebaseUser) throw new TRPCError({ code: 'UNAUTHORIZED' });
-  const authUser = ctx.firebaseUser;
+  if (!ctx.authUser) throw new TRPCError({ code: 'UNAUTHORIZED' });
+  const authUser = ctx.authUser;
 
-  // Email-verification gate. Allow phone-only accounts (Firebase issues those
-  // without an email field) and dev tokens (no `email` field unless we set
-  // it). Reject email-based sign-ups whose address hasn't been verified —
-  // otherwise anyone can register `fake@anything.com` and use the app.
-  //
-  // App Store reviewers explicitly probe for this; failing it causes a
-  // "your app accepts unverified accounts" flag.
+  // Email-verification gate. Allow accounts without an email (dev tokens).
+  // Reject email accounts whose address hasn't been confirmed — otherwise
+  // anyone can register `fake@anything.com` and use the app. (App Store
+  // reviewers probe for this.) With Supabase email-confirmation disabled today
+  // this passes immediately; it becomes meaningful the moment confirmation is
+  // turned on.
   const hasEmail = authUser.email && authUser.email.length > 0;
   if (hasEmail && authUser.emailVerified === false) {
     throw new TRPCError({
@@ -63,45 +66,41 @@ export const protectedProcedure = t.procedure.use(async ({ ctx, next }) => {
 
   const email = hasEmail
     ? authUser.email!.toLowerCase()
-    : `firebase-${authUser.firebaseUid}@ednacharge.local`;
+    : `user-${authUser.id}@ednacharge.local`;
   const fullName = authUser.name?.trim() || email.split('@')[0] || 'user';
 
-  // SECURITY: identity is keyed on the Firebase UID ONLY. We deliberately do
-  // NOT look an account up by email — matching on email and then rebinding
-  // `firebaseUid` (as the old OR-lookup did) let a second Firebase identity
-  // carrying the same provider-verified email silently take over an existing
-  // account (and its bookings / host profile / Stripe customer). If the email
-  // is already owned by a different UID we refuse rather than merge.
+  // Identity is keyed on the Supabase auth id ONLY (User.id === auth.users.id).
+  // We never look up by email and rebind (that was an account-takeover vector).
+  // If the email is already owned by a different id we refuse rather than merge.
   let user = await prisma.user.findUnique({
-    where: { firebaseUid: authUser.firebaseUid },
-    select: { id: true, firebaseUid: true, fullName: true, avatarUrl: true },
+    where: { id: authUser.id },
+    select: { id: true, fullName: true, avatarUrl: true },
   });
 
   if (user) {
-    // Returning user — the UID already matches, so only refresh avatar/name.
-    // The firebaseUid is never rewritten.
+    // Returning user — id already matches, so only refresh avatar/name.
     const shouldUpdate =
-      (authUser.picture && user.avatarUrl !== authUser.picture) ||
+      (authUser.avatarUrl && user.avatarUrl !== authUser.avatarUrl) ||
       (!user.fullName && fullName);
 
     if (shouldUpdate) {
       user = await prisma.user.update({
         where: { id: user.id },
         data: {
-          avatarUrl: authUser.picture ?? user.avatarUrl,
+          avatarUrl: authUser.avatarUrl ?? user.avatarUrl,
           fullName: user.fullName || fullName,
         },
-        select: { id: true, firebaseUid: true, fullName: true, avatarUrl: true },
+        select: { id: true, fullName: true, avatarUrl: true },
       });
     }
   } else {
-    // No account for this UID. Refuse if the email is already taken by another
-    // UID (no implicit account merge/takeover).
+    // No account for this auth id yet. Refuse if the email is already taken by
+    // another id (no implicit account merge/takeover).
     const emailOwner = await prisma.user.findUnique({
       where: { email },
-      select: { firebaseUid: true },
+      select: { id: true },
     });
-    if (emailOwner && emailOwner.firebaseUid !== authUser.firebaseUid) {
+    if (emailOwner && emailOwner.id !== authUser.id) {
       throw new TRPCError({
         code: 'CONFLICT',
         message:
@@ -111,22 +110,22 @@ export const protectedProcedure = t.procedure.use(async ({ ctx, next }) => {
     user = await prisma.user
       .create({
         data: {
-          firebaseUid: authUser.firebaseUid,
+          id: authUser.id,
           email,
           fullName,
-          avatarUrl: authUser.picture,
+          avatarUrl: authUser.avatarUrl,
         },
-        select: { id: true, firebaseUid: true, fullName: true, avatarUrl: true },
+        select: { id: true, fullName: true, avatarUrl: true },
       })
       .catch(async (err: { code?: string }) => {
         if (err?.code !== 'P2002') throw err;
-        // Unique-constraint race. If our UID's row now exists, use it; otherwise
-        // the email was just claimed by a different UID → refuse.
-        const byUid = await prisma.user.findUnique({
-          where: { firebaseUid: authUser.firebaseUid },
-          select: { id: true, firebaseUid: true, fullName: true, avatarUrl: true },
+        // Unique-constraint race. If our id's row now exists, use it; otherwise
+        // the email was just claimed by a different id → refuse.
+        const byId = await prisma.user.findUnique({
+          where: { id: authUser.id },
+          select: { id: true, fullName: true, avatarUrl: true },
         });
-        if (byUid) return byUid;
+        if (byId) return byId;
         throw new TRPCError({
           code: 'CONFLICT',
           message:
@@ -135,5 +134,5 @@ export const protectedProcedure = t.procedure.use(async ({ ctx, next }) => {
       });
   }
 
-  return next({ ctx: { userId: user.id, email, firebaseUser: authUser } });
+  return next({ ctx: { userId: user.id, email, authUser } });
 });

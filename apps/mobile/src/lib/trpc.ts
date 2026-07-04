@@ -7,15 +7,15 @@ export const trpc = createTRPCReact<AppRouter>();
 
 /**
  * Fetch wrapper around the tRPC HTTP client that:
- *  1. Attaches the current Firebase ID token as `Authorization: Bearer …`.
+ *  1. Attaches the current Supabase access token as `Authorization: Bearer …`.
  *  2. On HTTP 401 OR a body containing `"code":"UNAUTHORIZED"`, force-refreshes
  *     the token via `refreshAuthToken()` and retries the request once.
  *  3. If refresh also fails, returns the original 401 — `handleError`
  *     catches it and signs the user out via the auth listener.
  *
- * Without this wrapper, Firebase ID tokens (1h TTL) silently expire and every
- * subsequent tRPC call returns UNAUTHORIZED until the user manually signs in
- * again. With it, the next call after expiry transparently refreshes.
+ * Without this wrapper, Supabase access tokens (1h TTL) silently expire and
+ * every subsequent tRPC call returns UNAUTHORIZED until the user manually signs
+ * in again. With it, the next call after expiry transparently refreshes.
  */
 async function authFetch(
   input: RequestInfo | URL,

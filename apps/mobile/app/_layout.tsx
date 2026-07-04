@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { AppState, LogBox } from 'react-native';
+import { AppState } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { StripeProvider } from '@stripe/stripe-react-native';
@@ -21,10 +21,6 @@ initAnalytics();
 // Keep the native splash up until the first auth state resolves, so the app
 // never flashes a white/empty frame before deciding welcome vs. home.
 void SplashScreen.preventAutoHideAsync();
-
-LogBox.ignoreLogs([
-  'This method is deprecated (as well as all React Native Firebase namespaced API)',
-]);
 
 export default function RootLayout() {
   const [queryClient] = useState(
@@ -49,7 +45,7 @@ export default function RootLayout() {
   const authLoading = useAuth((s) => s.loading);
   const router = useRouter();
 
-  // Reveal the app only once Firebase has reported the initial auth state.
+  // Reveal the app only once Supabase has reported the initial auth state.
   useEffect(() => {
     if (!authLoading) void SplashScreen.hideAsync().catch(() => undefined);
   }, [authLoading]);
@@ -72,7 +68,7 @@ export default function RootLayout() {
     prevSession.current = session;
   }, [session, router, queryClient]);
 
-  // Force-refresh the Firebase ID token whenever the app foregrounds. Without
+  // Force-refresh the Supabase access token whenever the app foregrounds. Without
   // this, an app that's been backgrounded for >1h returns from suspend with an
   // expired token and the very first tRPC call fails. Combined with the 401
   // retry in trpc.ts, this gives users a seamless reentry.

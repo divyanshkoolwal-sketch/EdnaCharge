@@ -31,7 +31,7 @@ export default function SignIn() {
       setBusy(true);
       if (mode === 'create') {
         // Min-length + breached-password (HIBP k-anonymity) screening before
-        // we ever hand the password to Firebase. Fails open on network error.
+        // we ever hand the password to Supabase. Fails open on network error.
         const pwError = await validateNewPassword(password);
         if (pwError) {
           Alert.alert('Choose a stronger password', pwError);
