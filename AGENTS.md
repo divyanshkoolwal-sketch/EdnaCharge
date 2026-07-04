@@ -49,6 +49,18 @@ pnpm demo:loop
 
 `pnpm demo:loop` needs API, CSMS, and worker reachable on the configured ports.
 
+## Quality Tooling & CI
+
+Beyond the required checks, these run in CI (`.github/workflows/`) and are available locally:
+
+- `pnpm lint:eslint` — ESLint (flat config; naming, complexity, unused-code rules, seeded at `warn`).
+- `pnpm deadcode` / `pnpm deps:check` / `pnpm dupcheck` / `pnpm depcruise` / `pnpm size` — knip, syncpack, jscpd, dependency-cruiser, size-limit (informational).
+- `pnpm test:coverage` — Vitest coverage with per-app thresholds; `pnpm test:perf` — verbose timing.
+- `pnpm openapi:check` — keeps `docs/openapi.yaml` in sync with the tRPC router; `pnpm todos` — technical-debt scan.
+- `pnpm changeset` — add a release note for user-facing changes; `pnpm docs:typedoc` — API reference.
+
+Observability: services expose `/metrics` (Prometheus) and propagate `x-request-id`; see `docs/OBSERVABILITY.md`. Feature flags: `docs/FEATURE_FLAGS.md`. Some GitHub settings (branch protection, secret scanning) are admin-only — see `docs/runbooks/repo-settings.md`.
+
 ## Second-Model Review
 
 When Claude Code is available, use it as an advisory reviewer for meaningful code changes. Do not send secrets or large credential/config files to Claude. If Claude is unavailable or its secret guard refuses the prompt, continue locally and say so.

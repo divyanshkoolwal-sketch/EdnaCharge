@@ -1,0 +1,25 @@
+# EdnaCharge code owners.
+# Owners are requested for review automatically on matching paths. Keep the
+# service split reviewable: each backend service and the shared packages have a
+# named owner. Update the handles below to real GitHub users/teams.
+
+# Default owner for everything.
+*                       @divyanshkoolwal-sketch
+
+# Backend services.
+/apps/api/              @divyanshkoolwal-sketch
+/apps/csms/             @divyanshkoolwal-sketch
+/apps/worker/           @divyanshkoolwal-sketch
+/apps/mobile/           @divyanshkoolwal-sketch
+
+# Shared contracts — changes here ripple across every service.
+/packages/schemas/      @divyanshkoolwal-sketch
+/packages/db/           @divyanshkoolwal-sketch
+/packages/server-utils/ @divyanshkoolwal-sketch
+/packages/config/       @divyanshkoolwal-sketch
+
+# Infra, CI, and money/security-sensitive paths.
+/.github/               @divyanshkoolwal-sketch
+/render.yaml            @divyanshkoolwal-sketch
+/apps/api/src/webhooks/ @divyanshkoolwal-sketch
+/apps/api/src/lib/stripe.ts @divyanshkoolwal-sketch

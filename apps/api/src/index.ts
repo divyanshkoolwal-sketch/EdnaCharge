@@ -6,16 +6,18 @@ import rateLimit from '@fastify/rate-limit';
 import { fastifyTRPCPlugin, type FastifyTRPCPluginOptions } from '@trpc/server/adapters/fastify';
 import { loadEnv } from '@edna/config';
 import { prisma } from '@edna/db';
-import { initServiceSentry, Sentry } from '@edna/server-utils';
+import { initServiceSentry, Sentry, registerRequestId, registerMetrics } from '@edna/server-utils';
 import { logger } from './logger.js';
 import { appRouter, type AppRouter } from './router.js';
 import { createContext } from './trpc.js';
 import { registerStripeWebhooks } from './webhooks/stripe.js';
 import { registerLegalPages } from './legal.js';
+import { initServerAnalytics, shutdownServerAnalytics } from './lib/analytics.js';
 
 async function main() {
   const env = loadEnv();
   initServiceSentry('api', 'SENTRY_DSN_API', logger);
+  initServerAnalytics();
 
   // Defense-in-depth: refuse to boot a production server with any dev auth /
   // Stripe bypass enabled. Dev tokens use a known HMAC secret, so a misconfig
@@ -68,13 +70,16 @@ async function main() {
   // no cookies), so browser cross-origin access is not needed in production.
   // Allow an explicit allowlist via CORS_ORIGINS; otherwise deny cross-origin
   // in production and reflect any origin only in dev.
-  const corsOrigins = process.env.CORS_ORIGINS?.split(',').map((s) => s.trim()).filter(Boolean);
+  const corsOrigins = process.env.CORS_ORIGINS?.split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
   await app.register(cors, {
-    origin: corsOrigins && corsOrigins.length > 0
-      ? corsOrigins
-      : process.env.NODE_ENV === 'production'
-        ? false
-        : true,
+    origin:
+      corsOrigins && corsOrigins.length > 0
+        ? corsOrigins
+        : process.env.NODE_ENV === 'production'
+          ? false
+          : true,
   });
 
   // Security headers. CSP is disabled because this service is a JSON API plus a
@@ -85,6 +90,11 @@ async function main() {
   // Global rate limit (per IP). Generous for normal app + Stripe webhook
   // traffic; blunts brute-force / scraping / abuse of the expensive geo query.
   await app.register(rateLimit, { max: 300, timeWindow: '1 minute' });
+
+  // X-Request-ID correlation + Prometheus metrics (/metrics). Registered before
+  // routes so the onRequest/onResponse hooks cover every handler.
+  registerRequestId(app, logger);
+  registerMetrics(app, 'api');
 
   app.get('/healthz', async () => ({
     status: 'ok',
@@ -134,13 +144,23 @@ async function main() {
   app.get('/stripe/onboarding/return', async (_req, reply) => {
     reply
       .type('text/html')
-      .send(onboardingPage('All set', 'You can close this window and return to EdnaCharge — your payout account is being verified.'));
+      .send(
+        onboardingPage(
+          'All set',
+          'You can close this window and return to EdnaCharge — your payout account is being verified.',
+        ),
+      );
   });
 
   app.get('/stripe/onboarding/refresh', async (_req, reply) => {
     reply
       .type('text/html')
-      .send(onboardingPage('Link expired', 'This onboarding link expired. Close this window and tap “Continue to payouts” again in EdnaCharge to get a fresh link.'));
+      .send(
+        onboardingPage(
+          'Link expired',
+          'This onboarding link expired. Close this window and tap “Continue to payouts” again in EdnaCharge to get a fresh link.',
+        ),
+      );
   });
 
   // Public legal pages (/privacy, /terms) — required by the app stores and
@@ -183,6 +203,7 @@ async function main() {
   const shutdown = async (signal: NodeJS.Signals) => {
     logger.info({ signal }, 'api shutting down');
     try {
+      await shutdownServerAnalytics();
       await app.close();
       process.exit(0);
     } catch (err) {

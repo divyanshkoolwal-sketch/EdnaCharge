@@ -19,6 +19,34 @@
 - Keep all TS/TSX/JS source files at or under 300 LOC.
 - Keep one top file docstring in every TS/TSX/JS source file.
 
+## Agent-Readiness Tooling (2026-07-04)
+
+Added CI/CD, linting, security-scanning, and observability scaffolding to raise the
+Factory agent-readiness level. New dependencies, justified per the AGENTS.md rule:
+
+- **ESLint flat config + `typescript-eslint` + `eslint-plugin-react-hooks`** — real
+  linting beyond `tsc` (naming, complexity, unused code, RN hooks rules). Seeded at
+  `warn` so it never blocks the build; wired into `pnpm lint`.
+- **`knip` / `jscpd` / `dependency-cruiser` / `syncpack` / `size-limit`** — dead-code,
+  duplicate-code, module-boundary, version-drift, and code-size scanning. Dev-only,
+  run as informational `pnpm` scripts + CI jobs; none block `pnpm lint`.
+- **`husky` + `lint-staged` + `@commitlint/*`** — staged-file format/lint on
+  pre-commit and Conventional-Commit enforcement (feeds release notes).
+- **`@changesets/cli`** — release-notes + release automation for the workspace.
+- **`typedoc`** — generated API reference for the shared packages.
+- **`@vitest/coverage-v8`** — coverage thresholds/reports (dev-only).
+- **`prom-client`** (runtime) — Prometheus `/metrics` on api/csms/worker: standard,
+  dependency-light, no vendor lock-in, scrape model fits Render.
+- **`opossum`** (runtime) — circuit breaker around external HTTP (Mapbox) so a
+  dependency outage fails fast instead of exhausting the event loop.
+- **`posthog-node`** (runtime) — server-authoritative product events the client
+  can't be trusted to report; gated behind the `BACKEND_ANALYTICS` flag + `POSTHOG_KEY`.
+- Request-ID correlation and the feature-flag registry are **custom, zero-dependency**
+  modules in `packages/server-utils` / `packages/config`.
+
+Full plan + coverage matrix: `docs/superpowers/specs/2026-07-04-agent-readiness-remediation-design.md`.
+Repo settings a repo admin must still apply manually: `docs/runbooks/repo-settings.md`.
+
 ## Superseded Decisions
 
 - Host-set pricing is superseded by demand pricing.

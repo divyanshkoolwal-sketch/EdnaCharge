@@ -1,0 +1,45 @@
+name: Bug report
+description: Something is broken or behaving incorrectly.
+title: '[bug]: '
+labels: ['type: bug', 'priority: P2']
+body:
+  - type: dropdown
+    id: service
+    attributes:
+      label: Affected service
+      options:
+        - api
+        - csms (OCPP)
+        - worker
+        - mobile
+        - shared packages
+        - not sure
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: A clear description of the bug and what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. …
+        2. …
+        3. …
+    validations:
+      required: true
+  - type: input
+    id: request-id
+    attributes:
+      label: Request ID (x-request-id, if available)
+      description: From the response header or logs — helps correlate across services.
+  - type: textarea
+    id: context
+    attributes:
+      label: Environment / logs
+      description: App version, device/OS, relevant log lines (scrub any PII).

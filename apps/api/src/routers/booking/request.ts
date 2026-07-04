@@ -18,6 +18,7 @@ import { assertLaunchHardwareTier, assertOcppReady } from '../../lib/charger-rea
 import { assertWindowAvailable } from '../../lib/availability.js';
 import { authorizeBookingHold } from './payment-holds.js';
 import { requireUserAccess } from '../../lib/access.js';
+import { capture } from '../../lib/analytics.js';
 
 export const requestBooking = protectedProcedure
   .input(RequestBookingInputZ)
@@ -212,5 +213,6 @@ export const requestBooking = protectedProcedure
       hostId: charger.hostId,
       bookingId: booking.id,
     });
+    capture(ctx.userId, 'booking_requested', { chargerId: charger.id });
     return { booking, thread, estimate: est };
   });

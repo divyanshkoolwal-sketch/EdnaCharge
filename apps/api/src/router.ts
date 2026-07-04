@@ -10,6 +10,7 @@ import { notificationRouter } from './routers/notification.js';
 import { moderationRouter } from './routers/moderation.js';
 import { supportRouter } from './routers/support.js';
 import { accessRouter } from './routers/access.js';
+import { privacyRouter } from './routers/privacy.js';
 
 export const appRouter = router({
   health: publicProcedure.query(() => ({
@@ -27,6 +28,7 @@ export const appRouter = router({
   moderation: moderationRouter,
   support: supportRouter,
   access: accessRouter,
+  privacy: privacyRouter,
 });
 
 export type AppRouter = typeof appRouter;

@@ -1,0 +1,12 @@
+{
+  "$schema": "https://unpkg.com/syncpack@13/dist/schema.json",
+  "dependencyTypes": ["prod", "dev", "peer"],
+  "versionGroups": [
+    {
+      "label": "Intentionally-pinned mobile toolchain versions (Expo SDK compatibility)",
+      "packages": ["@edna/mobile"],
+      "dependencies": ["typescript", "@types/react"],
+      "isIgnored": true
+    }
+  ]
+}

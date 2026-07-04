@@ -18,7 +18,9 @@
     "seed": "tsx seed/index.ts",
     "invite:generate": "tsx scripts/generate-invite-codes.ts",
     "test": "vitest run",
-    "test:rls": "vitest run test/rls.test.ts"
+    "test:rls": "vitest run test/rls.test.ts",
+    "test:coverage": "vitest run --coverage",
+    "test:perf": "vitest run --reporter=verbose"
   },
   "dependencies": {
     "@prisma/client": "^5.22.0"

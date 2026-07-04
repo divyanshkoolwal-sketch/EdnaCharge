@@ -1,0 +1,29 @@
+name: Feature request
+description: Propose a change or new capability.
+title: '[feat]: '
+labels: ['type: enhancement', 'priority: P3']
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem / motivation
+      description: What user problem does this solve? Why now?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: What should change? Which service(s)?
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Scope check
+      options:
+        - label: This is the smallest change that satisfies the need (AGENTS.md)
