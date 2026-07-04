@@ -18,7 +18,7 @@ export const PRIVACY: LegalDoc = {
     {
       heading: 'Information we collect',
       bullets: [
-        'Account & profile: name, email, phone number, and password (authentication is handled by Google Firebase). Drivers may add vehicle make, model, year, connector type, and optionally a license plate. Hosts provide legal name, date of birth, and address.',
+        'Account & profile: name, email, phone number, and password (authentication is handled by Supabase). Drivers may add vehicle make, model, year, connector type, and optionally a license plate. Hosts provide legal name, date of birth, and address.',
         "Location: with your permission, your device's precise location to show nearby chargers and provide directions. You can disable this in your device settings.",
         'Identity verification: to keep the marketplace safe, identity checks are performed by Stripe Identity, which may collect a government ID and a selfie. These documents are processed by Stripe; EdnaCharge receives only a verification result and basic verified details, not your ID images.',
         'Payments & payouts: card and bank details are collected and processed by Stripe. We do not store full card numbers. Host payout details are held by Stripe Connect.',
@@ -42,7 +42,7 @@ export const PRIVACY: LegalDoc = {
       heading: 'How we share your information',
       bullets: [
         "With other users: to complete a booking, a host sees the driver's name and rating; a driver sees the host's name, charger details, location, and rating. A host's gate or access code, if provided, is shared with the driver after a booking is confirmed.",
-        'Service providers who process data on our behalf: Stripe (payments and identity), Google Firebase (authentication), Supabase (database hosting), Mapbox (maps), Sentry (diagnostics), PostHog (analytics), and Expo (push notifications).',
+        'Service providers who process data on our behalf: Stripe (payments and identity), Supabase (authentication and database hosting), Mapbox (maps), Sentry (diagnostics), PostHog (analytics), and Expo (push notifications).',
         'Legal: when required by law or to protect rights, safety, and the integrity of the service.',
         'We do not sell your personal information.',
       ],

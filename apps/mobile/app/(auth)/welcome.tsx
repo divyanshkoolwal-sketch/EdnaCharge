@@ -130,7 +130,7 @@ export default function Welcome() {
           onPress={() => continueWithProvider('apple', signInWithApple, 'Apple sign-in')}
           style={{ marginTop: 10 }}
         />
-        {/* Group fast OAuth above; email/phone below — clearer first-run choice. */}
+        {/* Group fast OAuth above; email below — clearer first-run choice. */}
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 14 }}>
           <View style={{ flex: 1, height: 1, backgroundColor: c.line }} />
           <Muted style={{ fontSize: 11 }} accessibilityElementsHidden>
@@ -143,13 +143,6 @@ export default function Welcome() {
           variant="secondary"
           disabled={busyProvider !== null}
           onPress={() => router.push('/(auth)/sign-in')}
-          style={{ marginTop: 10 }}
-        />
-        <Button
-          label="Continue with phone"
-          variant="secondary"
-          disabled={busyProvider !== null}
-          onPress={() => router.push('/(auth)/phone' as never)}
           style={{ marginTop: 10 }}
         />
         <Muted style={{ textAlign: 'center', marginTop: 12, fontSize: 11, color: c.muted2 }}>

@@ -63,11 +63,11 @@ const USER_ID = 'driver-1';
 const ctx = {
   userId: USER_ID,
   email: 'driver@test.local',
-  firebaseUser: {
-    firebaseUid: 'fb-uid-1',
+  authUser: {
+    id: USER_ID,
     email: 'driver@test.local',
     name: 'Test Driver',
-    picture: null,
+    avatarUrl: null,
     emailVerified: true,
   },
 } as const;

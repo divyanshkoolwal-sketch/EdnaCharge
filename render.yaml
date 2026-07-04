@@ -47,15 +47,9 @@ services:
       - fromGroup: edna-shared
       - key: NODE_ENV
         value: production
-      # Firebase Admin (verifies mobile ID tokens). Set EITHER these three, OR a
-      # single FIREBASE_SERVICE_ACCOUNT_JSON. The trio is what .env uses; the
-      # PRIVATE_KEY keeps its literal \n escapes (the code converts them).
-      - key: FIREBASE_PROJECT_ID
-        sync: false
-      - key: FIREBASE_CLIENT_EMAIL
-        sync: false
-      - key: FIREBASE_PRIVATE_KEY
-        sync: false
+      # Auth: mobile signs in with Supabase; the API verifies the access token
+      # via supabase.auth.getUser using SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY
+      # (already inherited from the edna-shared group). No Firebase vars needed.
       - key: STRIPE_WEBHOOK_SECRET            # whsec_... from the "account events" webhook
         sync: false
       - key: STRIPE_WEBHOOK_SECRET_CONNECT    # whsec_... from the "connected accounts" webhook

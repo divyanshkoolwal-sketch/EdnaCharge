@@ -15,7 +15,6 @@ module.exports = {
     ios: {
       ...app.expo.ios,
       usesAppleSignIn: true,
-      googleServicesFile: './GoogleService-Info.plist',
       infoPlist: {
         ...app.expo.ios.infoPlist,
         CFBundleURLTypes: [...baseUrlTypes, googleUrlType],
@@ -24,7 +23,6 @@ module.exports = {
     android: {
       ...(app.expo.android ?? {}),
       package: app.expo.android?.package ?? 'edna.charge',
-      googleServicesFile: './google-services.json',
     },
     plugins: [...app.expo.plugins, 'expo-apple-authentication'].map((p) =>
       // Android gradle fetches the Mapbox SDK from a credentialed Maven repo, so

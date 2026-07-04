@@ -11,7 +11,7 @@ import {
   UploadAvatarInputZ,
 } from '@edna/schemas';
 import { setHardwareSetup } from '../lib/hardwareSetup.js';
-import { uploadAvatar } from '../lib/supabase.js';
+import { uploadAvatar, supabase } from '../lib/supabase.js';
 import { logger } from '../logger.js';
 
 const USER_PUBLIC_SELECT = {
@@ -360,6 +360,17 @@ export const authRouter = router({
 
     // 4. Delete the User row. Cascades clean the rest.
     await prisma.user.delete({ where: { id: ctx.userId } });
+
+    // 5. Delete the Supabase auth user (User.id === auth.users.id), so the
+    //    login identity is gone too — not just the app profile. Best-effort.
+    const sb = supabase();
+    if (sb) {
+      try {
+        await sb.auth.admin.deleteUser(ctx.userId);
+      } catch (err) {
+        logger.warn({ err, userId: ctx.userId }, 'failed to delete supabase auth user');
+      }
+    }
 
     return { ok: true as const };
   }),

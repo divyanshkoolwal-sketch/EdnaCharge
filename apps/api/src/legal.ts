@@ -31,7 +31,7 @@ const PRIVACY = page(
 
 <h2>Information we collect</h2>
 <ul>
-<li><b>Account &amp; profile:</b> name, email, phone number, and password (authentication is handled by Google Firebase). Drivers may add vehicle make, model, year, connector type, and optionally a license plate. Hosts provide legal name, date of birth, and address.</li>
+<li><b>Account &amp; profile:</b> name, email, phone number, and password (authentication is handled by Supabase). Drivers may add vehicle make, model, year, connector type, and optionally a license plate. Hosts provide legal name, date of birth, and address.</li>
 <li><b>Location:</b> with your permission, your device's precise location to show nearby chargers and provide directions. You can disable this in your device settings.</li>
 <li><b>Identity verification:</b> to keep the marketplace safe, identity checks are performed by Stripe Identity, which may collect a government ID and a selfie. These documents are processed by Stripe; EdnaCharge receives only a verification result and basic verified details, not your ID images.</li>
 <li><b>Payments &amp; payouts:</b> card and bank details are collected and processed by Stripe. We do not store full card numbers. Host payout details are held by Stripe Connect.</li>
@@ -53,7 +53,7 @@ const PRIVACY = page(
 <h2>How we share your information</h2>
 <ul>
 <li><b>With other users:</b> to complete a booking, a host sees the driver's name and rating; a driver sees the host's name, charger details, location, and rating. A host's gate or access code, if provided, is shared with the driver after a booking is confirmed.</li>
-<li><b>Service providers</b> who process data on our behalf: Stripe (payments and identity), Google Firebase (authentication), Supabase (database hosting), Mapbox (maps), Sentry (diagnostics), PostHog (analytics), and Expo (push notifications).</li>
+<li><b>Service providers</b> who process data on our behalf: Stripe (payments and identity), Supabase (authentication and database hosting), Mapbox (maps), Sentry (diagnostics), PostHog (analytics), and Expo (push notifications).</li>
 <li><b>Legal:</b> when required by law or to protect rights, safety, and the integrity of the service.</li>
 <li>We <b>do not sell</b> your personal information.</li>
 </ul>
