@@ -1,4 +1,3 @@
-/** @file apps/api/src/lib/pricing.ts. */
 import { platformFeeCents } from './stripe.js';
 
 export type Estimate = {
@@ -12,7 +11,7 @@ export type Estimate = {
 /**
  * Estimate the cost of a booking at an explicit demand-based rate.
  *
- * Pricing is $/kWh only (demand-based, computed in @edna/schemas). Energy is
+ * Pricing is $/kWh only (demand-based, computed in demand-pricing.ts). Energy is
  * estimated as the charger's power (kW) × duration (hours) = kWh. The rate is
  * passed in explicitly so the SAME function serves quote-time and any re-quote,
  * and the caller locks the rate on the Booking so the pre-auth and the final

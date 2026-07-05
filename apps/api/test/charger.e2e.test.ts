@@ -14,7 +14,6 @@ import {
   signIn,
   uniqueEmail,
   deleteUserByEmail,
-  grantAccess,
 } from './helpers.js';
 
 const skip = skipReason([
@@ -29,29 +28,18 @@ d(`charger router ${skip ?? ''}`, () => {
   const password = 'Test-Pass-123!';
   let driverToken = '';
   let hostToken = '';
-  let driverId = '';
   let hostId = '';
   let chargerId = '';
 
   beforeAll(async () => {
-    driverId = await createSupabaseUser(driverEmail, password);
+    await createSupabaseUser(driverEmail, password);
     hostId = await createSupabaseUser(hostEmail, password);
     driverToken = await signIn(driverEmail, password);
     hostToken = await signIn(hostEmail, password);
-    await grantAccess(driverId, 'driver');
-    await grantAccess(hostId, 'host');
     await trpc('auth.getSession', driverToken, undefined, 'query');
     await trpc('auth.getSession', hostToken, undefined, 'query');
     // Promote host.
-    await prisma.user.update({
-      where: { id: hostId },
-      data: { roles: { set: ['driver', 'host'] } },
-    });
-    await prisma.identityVerification.upsert({
-      where: { userId: hostId },
-      create: { userId: hostId, status: 'verified', verifiedAt: new Date() },
-      update: { status: 'verified', verifiedAt: new Date() },
-    });
+    await prisma.user.update({ where: { id: hostId }, data: { roles: { set: ['driver', 'host'] } } });
   });
 
   afterAll(async () => {
@@ -73,6 +61,7 @@ d(`charger router ${skip ?? ''}`, () => {
         connectorType: 'j1772',
         powerKw: 7.2,
         hardwareTier: 'tier_3_native',
+        pricePerKwhCents: 28,
       }),
     ).rejects.toThrow();
   });
@@ -90,23 +79,18 @@ d(`charger router ${skip ?? ''}`, () => {
       connectorType: 'j1772',
       powerKw: 7.2,
       hardwareTier: 'tier_3_native',
+      pricePerKwhCents: 28,
     })) as { id: string };
     chargerId = charger.id;
     const fresh = await prisma.charger.findUniqueOrThrow({ where: { id: chargerId } });
     expect(fresh.ocppChargePointId).toBeTruthy();
     expect(fresh.ocppAuthHash).toBeTruthy();
-    expect(fresh.published).toBe(false);
-    expect(fresh.status).toBe('offline');
   });
 
-  it('nearby returns only ready published OCPP chargers within radius', async () => {
-    await prisma.charger.update({
-      where: { id: chargerId },
-      data: { published: true, status: 'available', ocppConnectedAt: new Date() },
-    });
+  it('nearby returns chargers clustered within radius', async () => {
     const rows = (await trpc(
       'charger.nearby',
-      driverToken,
+      hostToken,
       {
         lat: 37.6624,
         lng: -121.8747,

@@ -1,4 +1,3 @@
-/** @file apps/mobile/src/components/ui/Stepper.tsx. */
 import { View, Text } from 'react-native';
 import { useTheme } from '../../theme/useTheme';
 

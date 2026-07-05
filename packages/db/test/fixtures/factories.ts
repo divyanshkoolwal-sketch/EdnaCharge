@@ -1,11 +1,10 @@
-/** @file packages/db/test/fixtures/factories.ts. */
 import { prisma } from '../../src/index.js';
 import type { ConnectorType, HardwareTier } from '@prisma/client';
 
 let seq = 0;
 const nextSeq = () => ++seq;
 
-async function createUser(overrides: Partial<{ email: string; fullName: string; roles: ('driver' | 'host')[] }> = {}) {
+export async function createUser(overrides: Partial<{ email: string; fullName: string; roles: ('driver' | 'host')[] }> = {}) {
   const n = nextSeq();
   return prisma.user.create({
     data: {

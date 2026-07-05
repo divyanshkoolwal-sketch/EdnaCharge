@@ -2,7 +2,7 @@
  * Payment e2e — setupIntent returns a usable client_secret, and listPaymentMethods
  * reflects a card attached via Stripe test-mode.
  *
- * docs/AGENT_CONTEXT.md: real Stripe test-mode, no HTTP mocking. When
+ * CLAUDE.md non-negotiable #4: real Stripe test-mode, no HTTP mocking. When
  * secrets are absent the suite marks itself SKIP (surfaced by vitest), never
  * fakes a pass.
  */
@@ -19,7 +19,6 @@ import {
   signIn,
   uniqueEmail,
   deleteUserByEmail,
-  grantAccess,
 } from './helpers.js';
 
 const skip = skipReason([
@@ -33,12 +32,10 @@ d(`payment router ${skip ?? ''}`, () => {
   const email = uniqueEmail('pay');
   const password = 'Test-Pass-123!';
   let token = '';
-  let userId = '';
 
   beforeAll(async () => {
-    userId = await createSupabaseUser(email, password);
+    await createSupabaseUser(email, password);
     token = await signIn(email, password);
-    await grantAccess(userId, 'driver');
     await trpc('auth.getSession', token, undefined, 'query');
   });
 

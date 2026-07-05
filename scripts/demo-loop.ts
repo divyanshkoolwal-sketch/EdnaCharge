@@ -1,7 +1,12 @@
-/** @file scripts/demo-loop.ts. */
-import '../packages/config/src/env.js';
+// Phase 0 demo loop: verify /healthz on api, csms, worker.
+// Expanded in later phases (Phase 6+) to run a full scripted booking flow.
 
-// Demo loop: verify /healthz on api, csms, worker.
+// ensure repo-root .env is loaded before reading process.env below.
+import { existsSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { config as loadDotenv } from 'dotenv';
+const rootEnv = resolve(import.meta.dirname ?? '.', '..', '.env');
+if (existsSync(rootEnv)) loadDotenv({ path: rootEnv, override: false });
 
 type Check = { name: string; url: string };
 

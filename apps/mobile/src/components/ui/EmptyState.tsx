@@ -1,4 +1,3 @@
-/** @file apps/mobile/src/components/ui/EmptyState.tsx. */
 import { View } from 'react-native';
 import { H2, Muted } from './Typography';
 import { Button } from './Button';

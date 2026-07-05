@@ -1,4 +1,3 @@
-/** @file apps/mobile/app/(auth)/sign-in.tsx. */
 import { useState } from 'react';
 import { Alert, Pressable, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
@@ -8,10 +7,6 @@ import { trpc } from '../../src/lib/trpc';
 import { authErrorMessage, useAuth } from '../../src/state/auth';
 import { useTheme } from '../../src/theme/useTheme';
 import { MIN_PASSWORD_LENGTH, validateNewPassword } from '../../src/lib/passwordPolicy';
-import { routeAfterAuthSession } from '../../src/lib/authRouting';
-import { useRole } from '../../src/state/role';
-import { track } from '../../src/lib/analytics';
-import { Sentry } from '../../src/lib/sentry';
 
 export default function SignIn() {
   const router = useRouter();
@@ -28,11 +23,7 @@ export default function SignIn() {
   // users with shorter (pre-policy) passwords are never locked out.
   const minLen = mode === 'create' ? MIN_PASSWORD_LENGTH : 6;
   const passwordTooShort = password.length > 0 && password.length < minLen;
-  // Basic email format check so a malformed address fails fast client-side
-  // instead of round-tripping to the auth server for an opaque error.
-  const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
-  const emailInvalid = email.trim().length > 0 && !emailValid;
-  const canSubmit = emailValid && password.length >= minLen;
+  const canSubmit = email.trim().length > 3 && password.length >= minLen;
 
   const submit = async () => {
     if (!canSubmit) return;
@@ -48,22 +39,20 @@ export default function SignIn() {
           return;
         }
         await createAccountWithEmail(email, password);
-        Alert.alert(
-          'Verify your email',
-          'We sent a verification link to your inbox. Open it, then sign in with your email and password.',
-        );
-        setMode('sign-in');
-        setPassword('');
-        return;
       } else {
         await signInWithEmail(email, password);
-        track('sign_in_completed', { method: 'email' });
       }
       const session = await utils.auth.getSession.fetch();
-      routeAfterAuthSession(router, session, useRole.getState().role);
+      if (!session.driverProfile && !session.hostProfile) {
+        router.replace('/(auth)/pick-role' as never);
+      } else if (session.driverProfile && !session.hostProfile) {
+        router.replace('/(driver)/map');
+      } else if (session.hostProfile && !session.driverProfile) {
+        router.replace('/(host)/home');
+      } else {
+        router.replace('/');
+      }
     } catch (err) {
-      Sentry.addBreadcrumb({ category: 'auth.failure', message: mode });
-      Sentry.captureException(err);
       Alert.alert(
         mode === 'create' ? 'Account creation failed' : 'Sign-in failed',
         authErrorMessage(err)
@@ -91,13 +80,7 @@ export default function SignIn() {
 
   return (
     <Screen keyboardAvoiding contentStyle={{ paddingBottom: 24 }}>
-      <Pressable
-        onPress={() => router.back()}
-        accessibilityRole="button"
-        accessibilityLabel="Go back"
-        hitSlop={12}
-        style={{ paddingTop: 8 }}
-      >
+      <Pressable onPress={() => router.back()} style={{ paddingTop: 8 }}>
         <ChevronLeft />
       </Pressable>
       <View style={{ marginTop: 24 }}>
@@ -116,7 +99,6 @@ export default function SignIn() {
           autoComplete="email"
           keyboardType="email-address"
           textContentType="emailAddress"
-          error={emailInvalid ? 'Enter a valid email address.' : undefined}
         />
         <Input
           label="Password"

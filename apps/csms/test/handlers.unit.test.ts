@@ -128,24 +128,22 @@ describe('OCPP 1.6 handlers', () => {
 
   it('StatusNotification → maps OCPP status to ChargerStatus enum + persists', async () => {
     findCharger.mockResolvedValue({ id: 'charger-1' });
-    // StatusNotification also refreshes ocppConnectedAt (liveness heartbeat), so
-    // the charger stays "connected" even without an explicit Heartbeat.
     await bindAndCall('StatusNotification', { status: 'Available' });
     expect(updateCharger).toHaveBeenCalledWith({
       where: { id: 'charger-1' },
-      data: { ocppConnectedAt: expect.any(Date), status: 'available' },
+      data: { status: 'available' },
     });
 
     await bindAndCall('StatusNotification', { status: 'Charging' });
     expect(updateCharger).toHaveBeenLastCalledWith({
       where: { id: 'charger-1' },
-      data: { ocppConnectedAt: expect.any(Date), status: 'occupied' },
+      data: { status: 'occupied' },
     });
 
     await bindAndCall('StatusNotification', { status: 'Faulted' });
     expect(updateCharger).toHaveBeenLastCalledWith({
       where: { id: 'charger-1' },
-      data: { ocppConnectedAt: expect.any(Date), status: 'faulted' },
+      data: { status: 'faulted' },
     });
   });
 

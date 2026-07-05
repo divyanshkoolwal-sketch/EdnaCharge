@@ -1,4 +1,3 @@
-/** @file apps/mobile/src/state/auth.ts. */
 import { Platform } from 'react-native';
 import * as AppleAuthentication from 'expo-apple-authentication';
 import * as Crypto from 'expo-crypto';
@@ -187,7 +186,7 @@ export function bootstrapAuthListener() {
     useAuth.getState().setSession(toSession(data.session?.user));
   });
   // Single source of truth for session changes (sign-in, sign-out, token
-  // refresh, initial session) via the Supabase auth listener.
+  // refresh, initial session) — replaces the old dual Firebase-SDK listeners.
   const { data } = client.auth.onAuthStateChange((_event: string, session: Session | null) => {
     useAuth.getState().setSession(toSession(session?.user));
   });

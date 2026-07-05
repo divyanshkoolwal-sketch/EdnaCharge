@@ -1,17 +1,9 @@
-/** @file apps/api/src/webhooks/stripe.ts. */
 import type { FastifyInstance, FastifyPluginAsync } from 'fastify';
 import Stripe from 'stripe';
 import { stripe } from '../lib/stripe.js';
-import { grantHostAccess } from '../lib/access.js';
 import { prisma } from '@edna/db';
 import { logger } from '../logger.js';
-import { Sentry } from '@edna/server-utils';
-import {
-  handleChargeRefunded,
-  handleDispute,
-  handlePaymentFailed,
-  handlePayoutFailed,
-} from './stripe-payment-events.js';
+import { Sentry } from '../sentry.js';
 
 // AUDIT C2: Encapsulate the Stripe webhook in its own plugin so the raw-body
 // content-type parser is scoped to this plugin's routes only. If installed at
@@ -24,14 +16,13 @@ export async function registerStripeWebhooks(app: FastifyInstance) {
 
 const stripeWebhookPlugin: FastifyPluginAsync = async (scoped) => {
   // Scoped to this plugin only — does NOT leak to sibling routes (tRPC etc).
-  scoped.addContentTypeParser('application/json', { parseAs: 'buffer' }, (_req, body, done) =>
-    done(null, body),
+  scoped.addContentTypeParser(
+    'application/json',
+    { parseAs: 'buffer' },
+    (_req, body, done) => done(null, body),
   );
 
-  // Exempt from the global per-IP rate limit: Stripe delivers from a small pool
-  // of egress IPs, so a burst of legit webhooks could otherwise trip 300/min and
-  // force Stripe retries. Signature verification below is the real gate here.
-  scoped.post('/webhooks/stripe', { config: { rateLimit: false } }, async (req, reply) => {
+  scoped.post('/webhooks/stripe', async (req, reply) => {
     // We run two Stripe webhook destinations that POST to this same endpoint:
     //  - account events (payment_intent.*, identity.*) signed by STRIPE_WEBHOOK_SECRET
     //  - connected-account events (account.updated) signed by STRIPE_WEBHOOK_SECRET_CONNECT
@@ -46,7 +37,7 @@ const stripeWebhookPlugin: FastifyPluginAsync = async (scoped) => {
       return reply.code(500).send({ error: 'webhook secret missing' });
     }
     const sig = req.headers['stripe-signature'];
-    const sigHeader = Array.isArray(sig) ? (sig[0] ?? '') : (sig ?? '');
+    const sigHeader = Array.isArray(sig) ? (sig[0] ?? '') : sig ?? '';
     let event: Stripe.Event | null = null;
     let lastErr: unknown;
     for (const secret of secrets) {
@@ -62,35 +53,20 @@ const stripeWebhookPlugin: FastifyPluginAsync = async (scoped) => {
       return reply.code(400).send({ error: 'bad signature' });
     }
 
-    // Claim the event by inserting its id. The unique key is the lock: a
-    // concurrent delivery cannot also enter the handler. If the handler fails
-    // below we delete this claim so Stripe's retry can process the event.
-    try {
-      await prisma.stripeWebhookEvent.create({
-        data: { id: event.id, type: event.type },
-      });
-    } catch (err) {
-      // Row already exists. If a prior delivery fully PROCESSED it (processedAt
-      // set), this is a genuine duplicate — ack and stop. If it was only claimed
-      // but never processed (processedAt still null, e.g. the process was killed
-      // before the handler finished AND before its cleanup delete ran), fall
-      // through and re-run the handler so a crashed event isn't lost forever on
-      // Stripe's retry.
-      const existing = await prisma.stripeWebhookEvent.findUnique({
-        where: { id: event.id },
-        select: { processedAt: true },
-      });
-      if (existing?.processedAt != null) {
-        logger.info(
-          { eventId: event.id, type: event.type },
-          'stripe event already processed (duplicate)',
-        );
-        return { received: true, duplicate: true };
-      }
-      logger.warn(
-        { eventId: event.id, type: event.type },
-        'stripe event claimed but unprocessed — reprocessing on retry',
-      );
+    // AUDIT H8 + race fix: de-duplicate Stripe event deliveries with a
+    // race-safe upsert pattern. Two concurrent identical deliveries could
+    // both pass a `create()` + catch-unique check before either commits.
+    // The upsert + `processedAt IS NULL` guard makes that impossible:
+    // whoever wins the race processes the event and stamps `processedAt`,
+    // the other observes the stamp and bails.
+    const dedup = await prisma.stripeWebhookEvent.upsert({
+      where: { id: event.id },
+      create: { id: event.id, type: event.type },
+      update: {},
+    });
+    if (dedup.processedAt !== null) {
+      logger.info({ eventId: event.id, type: event.type }, 'stripe event already processed');
+      return { received: true, duplicate: true };
     }
 
     try {
@@ -105,7 +81,9 @@ const stripeWebhookPlugin: FastifyPluginAsync = async (scoped) => {
             // stale/replayed) event payload for sensitive role elevation.
             const account = await stripe().accounts.retrieve(evtAccount.id);
             const complete =
-              !!account.details_submitted && !!account.charges_enabled && !!account.payouts_enabled;
+              !!account.details_submitted &&
+              !!account.charges_enabled &&
+              !!account.payouts_enabled;
             await prisma.hostProfile.update({
               where: { userId: profile.userId },
               data: { stripeOnboardingComplete: complete },
@@ -115,9 +93,6 @@ const stripeWebhookPlugin: FastifyPluginAsync = async (scoped) => {
                 where: { id: profile.userId },
                 data: { roles: { set: ['driver', 'host'] } },
               });
-              // Host procedures gate on the UserAccessGrant, not User.roles —
-              // grant it here too or a Stripe-onboarded host stays FORBIDDEN.
-              await grantHostAccess(profile.userId);
             }
           }
           break;
@@ -136,8 +111,7 @@ const stripeWebhookPlugin: FastifyPluginAsync = async (scoped) => {
               where: { id: booking.id },
               data: {
                 status: 'errored',
-                declineReason:
-                  booking.declineReason ?? `stripe:${pi.cancellation_reason ?? 'canceled'}`,
+                declineReason: booking.declineReason ?? `stripe:${pi.cancellation_reason ?? 'canceled'}`,
               },
             });
             if (booking.chatThread) {
@@ -161,20 +135,9 @@ const stripeWebhookPlugin: FastifyPluginAsync = async (scoped) => {
           });
           if (!booking) break;
           if (pi.status === 'succeeded' && pi.amount_received > 0) {
-            const fresh = await stripe().paymentIntents.retrieve(pi.id, {
-              expand: ['latest_charge'],
-            });
-            const charge =
-              fresh.latest_charge && typeof fresh.latest_charge !== 'string'
-                ? fresh.latest_charge
-                : null;
             await prisma.booking.update({
               where: { id: booking.id },
-              data: {
-                capturedAmountCents: pi.amount_received,
-                stripeChargeId: charge?.id ?? booking.stripeChargeId,
-                stripeReceiptUrl: charge?.receipt_url ?? booking.stripeReceiptUrl,
-              },
+              data: { capturedAmountCents: pi.amount_received },
             });
           }
           break;
@@ -199,9 +162,7 @@ const stripeWebhookPlugin: FastifyPluginAsync = async (scoped) => {
               verifiedDob: dob,
               verifiedAddress: out?.address ? (out.address as unknown as object) : undefined,
               documentLast4: out?.id_number?.slice(-4) ?? null,
-              documentType:
-                (session.last_verification_report as unknown as { document?: { type?: string } })
-                  ?.document?.type ?? null,
+              documentType: (session.last_verification_report as unknown as { document?: { type?: string } })?.document?.type ?? null,
               failureReason: null,
             },
           });
@@ -226,22 +187,11 @@ const stripeWebhookPlugin: FastifyPluginAsync = async (scoped) => {
           });
           break;
         }
-        case 'payment_intent.payment_failed':
-          await handlePaymentFailed(event.data.object);
-          break;
-        case 'charge.refunded':
-          await handleChargeRefunded(event.data.object);
-          break;
-        case 'charge.dispute.created':
-        case 'charge.dispute.closed':
-          await handleDispute(event.data.object, event.type === 'charge.dispute.created');
-          break;
-        case 'payout.failed':
-          handlePayoutFailed(event.data.object);
-          break;
         default:
           logger.debug({ type: event.type }, 'stripe event unhandled');
       }
+      // Stamp `processedAt` so a concurrent retry of the same event sees
+      // it as already processed (race-safe dedup).
       await prisma.stripeWebhookEvent.update({
         where: { id: event.id },
         data: { processedAt: new Date() },
@@ -251,7 +201,6 @@ const stripeWebhookPlugin: FastifyPluginAsync = async (scoped) => {
       // failures that would otherwise appear as Stripe-side retries only.
       // We intentionally don't stamp `processedAt` here, so Stripe's retry
       // gets a fresh shot at the handler.
-      await prisma.stripeWebhookEvent.delete({ where: { id: event.id } }).catch(() => {});
       logger.error({ err, eventId: event.id, type: event.type }, 'stripe webhook handler error');
       Sentry.captureException(err);
       return reply.code(500).send({ error: 'handler failed' });

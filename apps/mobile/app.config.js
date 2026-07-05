@@ -1,9 +1,12 @@
-/** @file apps/mobile/app.config.js. */
 const app = require('./app.json');
 
-const googleIosUrlScheme = process.env.EXPO_PUBLIC_GOOGLE_IOS_URL_SCHEME;
+const googleIosUrlScheme =
+  process.env.EXPO_PUBLIC_GOOGLE_IOS_URL_SCHEME ??
+  'com.googleusercontent.apps.312909386856-k42nfrktnp3epe582hfm2d76h1kljmj1';
 const baseUrlTypes = app.expo.ios?.infoPlist?.CFBundleURLTypes ?? [];
-const googleUrlTypes = googleIosUrlScheme ? [{ CFBundleURLSchemes: [googleIosUrlScheme] }] : [];
+const googleUrlType = {
+  CFBundleURLSchemes: [googleIosUrlScheme],
+};
 
 module.exports = {
   ...app,
@@ -14,7 +17,7 @@ module.exports = {
       usesAppleSignIn: true,
       infoPlist: {
         ...app.expo.ios.infoPlist,
-        CFBundleURLTypes: [...baseUrlTypes, ...googleUrlTypes],
+        CFBundleURLTypes: [...baseUrlTypes, googleUrlType],
       },
     },
     android: {
@@ -27,10 +30,7 @@ module.exports = {
       // public pk. runtime token). Injected from the RNMAPBOX_DOWNLOAD_TOKEN EAS
       // env var — never committed. iOS doesn't require it.
       Array.isArray(p) && p[0] === '@rnmapbox/maps'
-        ? [
-            '@rnmapbox/maps',
-            { ...p[1], RNMapboxMapsDownloadToken: process.env.RNMAPBOX_DOWNLOAD_TOKEN },
-          ]
+        ? ['@rnmapbox/maps', { ...p[1], RNMapboxMapsDownloadToken: process.env.RNMAPBOX_DOWNLOAD_TOKEN }]
         : p,
     ),
   },

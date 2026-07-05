@@ -1,0 +1,17 @@
+diff --git a/ios/DevMenuViewController.swift b/ios/DevMenuViewController.swift
+index 3b2f5f1a77e3b57401f712f77ccfd27a19cd4b79..1f0a1fb2a9dfde5f00e6a7ab8a4dca0fc34a276a 100644
+--- a/ios/DevMenuViewController.swift
++++ b/ios/DevMenuViewController.swift
+@@ -63,7 +63,11 @@ public class DevMenuViewController: UIViewController, RCTBridgeDelegate, RCTInva
+   // MARK: private
+ 
+   private func initialProps() -> [String: Any] {
+-    let isSimulator = TARGET_IPHONE_SIMULATOR > 0
++    #if targetEnvironment(simulator)
++    let isSimulator = true
++    #else
++    let isSimulator = false
++    #endif
+ 
+     return [
+       "showOnboardingView": manager.shouldShowOnboarding(),

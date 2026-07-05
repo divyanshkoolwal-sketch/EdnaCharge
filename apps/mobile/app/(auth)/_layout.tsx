@@ -1,4 +1,3 @@
-/** @file apps/mobile/app/(auth)/_layout.tsx. */
 import { Stack } from 'expo-router';
 
 // Auth flow. The swipe-back gesture is disabled so a signed-out user can't drag

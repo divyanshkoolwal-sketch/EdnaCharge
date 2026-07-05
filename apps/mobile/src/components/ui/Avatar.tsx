@@ -1,4 +1,3 @@
-/** @file apps/mobile/src/components/ui/Avatar.tsx. */
 import { View, Text } from 'react-native';
 import { Image } from 'expo-image';
 import { useTheme } from '../../theme/useTheme';

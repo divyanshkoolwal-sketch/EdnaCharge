@@ -1,19 +1,14 @@
-/** @file apps/mobile/app/(auth)/welcome.tsx. */
 import { useState } from 'react';
-import { Alert, Platform, View } from 'react-native';
+import { Alert, View } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Image } from 'expo-image';
 import * as Google from 'expo-auth-session/providers/google';
 import { ResponseType } from 'expo-auth-session';
 import * as WebBrowser from 'expo-web-browser';
 import { Screen, Button, H1Lg, Body, Label, Muted, Row, StatusDot } from '../../src/components/ui';
+import { HomeChargerIllo } from '../../src/components/illustrations/HomeCharger';
 import { useTheme } from '../../src/theme/useTheme';
 import { trpc } from '../../src/lib/trpc';
 import { authErrorMessage, googleAuthConfig, isAuthCancel, useAuth } from '../../src/state/auth';
-import { routeAfterAuthSession } from '../../src/lib/authRouting';
-import { useRole } from '../../src/state/role';
-import { track } from '../../src/lib/analytics';
-import { Sentry } from '../../src/lib/sentry';
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -39,10 +34,21 @@ export default function Welcome() {
     },
   );
 
-  const finishAuth = async (method: AuthProvider) => {
+  const finishAuth = async () => {
     const session = await utils.auth.getSession.fetch();
-    track('sign_in_completed', { method });
-    routeAfterAuthSession(router, session, useRole.getState().role);
+    if (!session.driverProfile && !session.hostProfile) {
+      router.replace('/(auth)/pick-role' as never);
+      return;
+    }
+    if (session.driverProfile && !session.hostProfile) {
+      router.replace('/(driver)/map');
+      return;
+    }
+    if (session.hostProfile && !session.driverProfile) {
+      router.replace('/(host)/home');
+      return;
+    }
+    router.replace('/');
   };
 
   const continueWithProvider = async (
@@ -53,11 +59,9 @@ export default function Welcome() {
     try {
       setBusyProvider(provider);
       await action();
-      await finishAuth(provider);
+      await finishAuth();
     } catch (err) {
       if (!isAuthCancel(err)) {
-        Sentry.addBreadcrumb({ category: 'auth.failure', message: provider });
-        Sentry.captureException(err);
         Alert.alert(`${label} failed`, authErrorMessage(err));
       }
     } finally {
@@ -76,11 +80,9 @@ export default function Welcome() {
       const idToken = result.params.id_token ?? result.authentication?.idToken;
       if (!idToken) throw new Error('Google did not return an ID token.');
       await signInWithGoogleToken(idToken);
-      await finishAuth('google');
+      await finishAuth();
     } catch (err) {
       if (!isAuthCancel(err)) {
-        Sentry.addBreadcrumb({ category: 'auth.failure', message: 'google' });
-        Sentry.captureException(err);
         Alert.alert('Google sign-in failed', authErrorMessage(err));
       }
     } finally {
@@ -91,12 +93,7 @@ export default function Welcome() {
   return (
     <Screen style={{ paddingHorizontal: 24, paddingBottom: 30 }}>
       <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingTop: 30 }}>
-        <Image
-          source={require('../../assets/logo.png')}
-          contentFit="contain"
-          accessibilityLabel="EdnaCharge"
-          style={{ width: 220, height: 236 }}
-        />
+        <HomeChargerIllo size={220} />
       </View>
       <View>
         <Label style={{ marginBottom: 6 }}>EDNACHARGE</Label>
@@ -125,18 +122,14 @@ export default function Welcome() {
           onPress={continueWithGoogle}
           style={{ marginTop: 20 }}
         />
-        {/* Apple sign-in is iOS-only (expo-apple-authentication throws elsewhere),
-            so never show it on Android where it would immediately fail. */}
-        {Platform.OS === 'ios' ? (
-          <Button
-            label="Continue with Apple"
-            variant="secondary"
-            loading={busyProvider === 'apple'}
-            disabled={busyProvider !== null}
-            onPress={() => continueWithProvider('apple', signInWithApple, 'Apple sign-in')}
-            style={{ marginTop: 10 }}
-          />
-        ) : null}
+        <Button
+          label="Continue with Apple"
+          variant="secondary"
+          loading={busyProvider === 'apple'}
+          disabled={busyProvider !== null}
+          onPress={() => continueWithProvider('apple', signInWithApple, 'Apple sign-in')}
+          style={{ marginTop: 10 }}
+        />
         {/* Group fast OAuth above; email below — clearer first-run choice. */}
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 14 }}>
           <View style={{ flex: 1, height: 1, backgroundColor: c.line }} />

@@ -1,4 +1,3 @@
-/** @file apps/mobile/src/lib/supabase.ts. */
 import 'react-native-url-polyfill/auto';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';

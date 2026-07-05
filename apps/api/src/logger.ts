@@ -1,4 +1,10 @@
-/** @file apps/api/src/logger.ts. */
-import { createServiceLogger } from '@edna/server-utils';
+import pino from 'pino';
 
-export const logger = createServiceLogger('api');
+export const logger = pino({
+  level: process.env.LOG_LEVEL ?? 'info',
+  transport:
+    process.env.NODE_ENV === 'production'
+      ? undefined
+      : { target: 'pino-pretty', options: { colorize: true, singleLine: true } },
+  base: { service: 'api' },
+});

@@ -1,4 +1,3 @@
-/** @file apps/mobile/app/(host)/host-onboarding/identity.tsx. */
 import { useState } from 'react';
 import { View, Pressable, Alert, Platform, Text } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -35,14 +34,6 @@ export default function Identity() {
   const [city, setCity] = useState('');
   const [stateAbbr, setStateAbbr] = useState('');
   const [postalCode, setZip] = useState('');
-  const formValid =
-    legalName.trim().length > 0 &&
-    legalName.trim().length <= 120 &&
-    dobDate != null &&
-    addressLine1.trim().length > 0 &&
-    city.trim().length > 0 &&
-    stateAbbr.trim().length > 0 &&
-    postalCode.trim().length >= 3;
 
   const utils = trpc.useUtils();
   const mut = trpc.auth.submitHostIdentity.useMutation({
@@ -60,16 +51,16 @@ export default function Identity() {
   });
 
   const submit = () => {
-    if (!formValid || !dobDate) {
+    if (!legalName || !dobDate || !addressLine1 || !city || !stateAbbr || !postalCode) {
       return Alert.alert('Missing info', 'Fill in every field.');
     }
     mut.mutate({
-      legalName: legalName.trim(),
+      legalName,
       dob: dobDate.toISOString(),
-      addressLine1: addressLine1.trim(),
-      city: city.trim(),
-      state: stateAbbr.trim(),
-      postalCode: postalCode.trim(),
+      addressLine1,
+      city,
+      state: stateAbbr,
+      postalCode,
       country: 'US',
     });
   };
@@ -87,7 +78,7 @@ export default function Identity() {
           Required for Stripe Connect payouts.
         </Muted>
         <View style={{ marginTop: 18, gap: 10 }}>
-          <Input value={legalName} onChangeText={setName} placeholder="Legal full name" maxLength={120} />
+          <Input value={legalName} onChangeText={setName} placeholder="Legal full name" />
           <Pressable
             onPress={() => setShowDob((s) => !s)}
             accessibilityRole="button"
@@ -145,13 +136,12 @@ export default function Identity() {
                 onChangeText={setZip}
                 placeholder="ZIP"
                 keyboardType="number-pad"
-                error={postalCode.length > 0 && postalCode.trim().length < 3 ? 'Use at least 3 characters.' : undefined}
               />
             </View>
           </View>
         </View>
       <CTABar>
-        <Button label="Continue" loading={mut.isPending} disabled={!formValid || mut.isPending} onPress={submit} />
+        <Button label="Continue" loading={mut.isPending} onPress={submit} />
       </CTABar>
     </Screen>
   );

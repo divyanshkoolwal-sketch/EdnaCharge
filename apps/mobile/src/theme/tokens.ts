@@ -1,4 +1,3 @@
-/** @file apps/mobile/src/theme/tokens.ts. */
 // Design tokens lifted from EdnaCharge design canvas (styles.css).
 // Single source of truth for colors / radii / typography across all screens.
 
@@ -120,6 +119,8 @@ export const fontWeight = {
 
 // iOS uses SF Pro by default; Android uses Roboto. Both render the
 // design's geometric-sans look acceptably without bundling a font file.
+// Plus Jakarta Sans can be added later via expo-font without changing
+// any consumer code; just point fontFamily here at the loaded family.
 export const fontFamily = {
   regular: undefined as string | undefined,
   medium: undefined as string | undefined,
@@ -130,7 +131,7 @@ export const shadow = {
   card: {
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
+    shadowOpacity: 0.10,
     shadowRadius: 14,
     elevation: 3,
   },

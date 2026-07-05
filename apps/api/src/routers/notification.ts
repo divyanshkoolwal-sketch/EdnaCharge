@@ -1,4 +1,3 @@
-/** @file apps/api/src/routers/notification.ts. */
 import { z } from 'zod';
 import { router, protectedProcedure } from '../trpc.js';
 import { prisma } from '@edna/db';

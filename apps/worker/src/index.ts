@@ -1,19 +1,21 @@
-/** @file apps/worker/src/index.ts. */
 import Fastify from 'fastify';
+import IORedis from 'ioredis';
 import { Worker, type Job } from 'bullmq';
 import { loadEnv } from '@edna/config';
-import { createRedisConnection, initServiceSentry, Sentry } from '@edna/server-utils';
+import { initSentry, Sentry } from './sentry.js';
 import { logger } from './logger.js';
 import { autoDeclineById } from './jobs/auto-decline.js';
 import { settleSessionById } from './jobs/settle-session.js';
-import {
-  handleRemoteStartFailed,
-  type RemoteStartFailedPayload,
-} from './jobs/remote-start-failed.js';
 import { notify, type NotificationJob } from './jobs/notifications.js';
-import { sweepOrphanedSessions } from './jobs/orphan-sweep.js';
-import { cancelHold, type CancelHoldPayload } from './jobs/cancel-hold.js';
-import { bookingsQueue, closeQueues, notificationsQueue } from './lib/queues.js';
+import {
+  handleShellyStart,
+  handleShellyStop,
+  handleShellyMeterPoll,
+  type ShellyStartPayload,
+  type ShellyStopPayload,
+  type ShellyMeterPollPayload,
+} from './jobs/shelly-command.js';
+import { handleDeviceMonitor, type DeviceMonitorPayload } from './jobs/device-monitor.js';
 
 // AUDIT L2: discriminated union over BullMQ job payloads per queue.
 type AutoDeclinePayload = { bookingId: string };
@@ -28,23 +30,23 @@ type SettleByTxIdPayload = {
   chargePointId?: string;
 };
 
-type OrphanSweepPayload = Record<string, never>;
-
 type BookingsPayload =
   | AutoDeclinePayload
   | SettleSessionPayload
   | SettleByTxIdPayload
-  | RemoteStartFailedPayload
-  | OrphanSweepPayload
-  | CancelHoldPayload;
+  | ShellyStartPayload
+  | ShellyStopPayload
+  | ShellyMeterPollPayload
+  | DeviceMonitorPayload;
 
 type BookingsName =
   | 'auto_decline'
   | 'settle_session'
   | 'settle_session_by_txid'
-  | 'remote_start_failed'
-  | 'orphan_sweep'
-  | 'cancel_hold';
+  | 'shelly_start'
+  | 'shelly_stop'
+  | 'shelly_meter_poll'
+  | 'device_monitor';
 
 type NotifyPayload = NotificationJob['data'];
 type NotifyName = NotificationJob['name'];
@@ -69,15 +71,9 @@ function isSettleByTxIdPayload(payload: BookingsPayload): payload is SettleByTxI
 
 async function main() {
   const env = loadEnv();
-  // Fail fast: the worker captures / cancels / settles real payments (settle_session,
-  // cancel_hold, auto_decline), so a prod boot without the Stripe secret would run
-  // "healthy" while silently completing bookings with no money movement.
-  if (process.env.NODE_ENV === 'production' && !process.env.STRIPE_SECRET_KEY) {
-    throw new Error('Refusing to boot: STRIPE_SECRET_KEY is required in production for the worker.');
-  }
-  initServiceSentry('worker', 'SENTRY_DSN_WORKER', logger);
+  initSentry();
 
-  const connection = createRedisConnection(env.REDIS_URL);
+  const connection = new IORedis(env.REDIS_URL, { maxRetriesPerRequest: null });
   connection.on('error', (err) => logger.error({ err }, 'redis connection error'));
 
   const workers = [
@@ -108,13 +104,9 @@ async function main() {
             const { prisma } = await import('@edna/db');
             const session = await prisma.chargingSession.findUnique({
               where: { ocppTransactionId: data.transactionId },
-              include: { booking: true, charger: true },
             });
             if (!session) {
-              logger.warn(
-                { transactionId: data.transactionId },
-                'settle_session_by_txid: no session; giving up',
-              );
+              logger.warn({ transactionId: data.transactionId }, 'settle_session_by_txid: no session; giving up');
               return;
             }
             // SECURITY: only settle if the deferred stop came from the charger
@@ -127,64 +119,37 @@ async function main() {
               });
               if (!charger || charger.id !== session.chargerId) {
                 logger.warn(
-                  {
-                    transactionId: data.transactionId,
-                    chargePointId: data.chargePointId,
-                    sessionChargerId: session.chargerId,
-                  },
+                  { transactionId: data.transactionId, chargePointId: data.chargePointId, sessionChargerId: session.chargerId },
                   'settle_session_by_txid: charge point does not own this session; refusing',
                 );
                 return;
               }
             }
             if (!session.endedAt) {
-              const kwh =
-                data.meterStop != null
-                  ? Math.max(0, (data.meterStop - session.meterStartWh) / 1000)
-                  : 0;
-              // ATOMIC end-stamp guard — a duplicate deferred delivery would
-              // otherwise both pass the !endedAt check and double-stamp +
-              // double-notify session_stopped. Only the winner (count === 1)
-              // stamps and notifies; settleSessionById below is idempotent.
-              const ended = await prisma.chargingSession.updateMany({
-                where: { id: session.id, endedAt: null },
+              const kwh = data.meterStop != null ? Math.max(0, (data.meterStop - session.meterStartWh) / 1000) : 0;
+              await prisma.chargingSession.update({
+                where: { id: session.id },
                 data: {
                   endedAt: data.timestamp ? new Date(data.timestamp) : new Date(),
                   meterStopWh: data.meterStop ?? null,
                   finalKwh: kwh,
                 },
               });
-              if (ended.count === 1) {
-                await notificationsQueue().add(
-                  'session_stopped',
-                  {
-                    driverId: session.booking.driverId,
-                    hostId: session.charger.hostId,
-                    sessionId: session.id,
-                  },
-                  { jobId: `session_stopped:${session.id}` },
-                );
-              }
             }
             return settleSessionById(session.id);
           }
 
-          case 'remote_start_failed':
-            if (!hasStringProp(job.data, 'bookingId')) {
-              logger.warn({ jobId: job.id }, 'remote_start_failed: invalid payload');
-              return;
-            }
-            return handleRemoteStartFailed(job.data as RemoteStartFailedPayload);
+          case 'shelly_start':
+            return handleShellyStart(job as Job<ShellyStartPayload>);
 
-          case 'orphan_sweep':
-            return sweepOrphanedSessions();
+          case 'shelly_stop':
+            return handleShellyStop(job as Job<ShellyStopPayload>);
 
-          case 'cancel_hold':
-            if (!hasStringProp(job.data, 'paymentIntentId')) {
-              logger.warn({ jobId: job.id }, 'cancel_hold: invalid payload');
-              return;
-            }
-            return cancelHold(job.data as CancelHoldPayload);
+          case 'shelly_meter_poll':
+            return handleShellyMeterPoll(job as Job<ShellyMeterPollPayload>);
+
+          case 'device_monitor':
+            return handleDeviceMonitor(job as Job<DeviceMonitorPayload>);
 
           default:
             logger.warn({ name: job.name }, 'bookings queue: unknown job name');
@@ -197,23 +162,9 @@ async function main() {
     }),
   ];
 
-  // Repeatable watchdog: finalize charging sessions abandoned by a charger that
-  // dropped its websocket before StopTransaction, so pre-auth holds don't leak.
-  const ORPHAN_SWEEP_INTERVAL_MS = Number(process.env.ORPHAN_SWEEP_INTERVAL_MS ?? 5 * 60_000);
-  await bookingsQueue().add(
-    'orphan_sweep',
-    {},
-    { repeat: { every: ORPHAN_SWEEP_INTERVAL_MS }, removeOnComplete: true, removeOnFail: 100 },
-  );
-  logger.info({ everyMs: ORPHAN_SWEEP_INTERVAL_MS }, 'orphan-sweep watchdog scheduled');
-
   for (const w of workers) {
     w.on('failed', (job, err) => {
       logger.error({ queue: w.name, jobId: job?.id, err }, 'job failed');
-      Sentry.captureException(err);
-    });
-    w.on('error', (err) => {
-      logger.error({ queue: w.name, err }, 'worker error');
       Sentry.captureException(err);
     });
   }
@@ -225,46 +176,13 @@ async function main() {
     uptimeSec: Math.round(process.uptime()),
     queues: workers.map((w) => w.name),
   }));
-  app.get('/readyz', async (_req, reply) => {
-    try {
-      await connection.ping();
-      return {
-        status: 'ok' as const,
-        service: 'worker',
-        dependencies: { redis: 'ok' as const },
-        queues: workers.map((w) => w.name),
-      };
-    } catch (err) {
-      logger.error({ err }, 'worker readiness check failed');
-      return reply.code(503).send({
-        status: 'error' as const,
-        service: 'worker',
-        dependencies: { redis: 'error' as const },
-        queues: workers.map((w) => w.name),
-      });
-    }
+  app.get('/_sentry-test', async () => {
+    Sentry.captureException(new Error('sentry-smoke: worker'));
+    await Sentry.flush(2000);
+    return { fired: true };
   });
-  if (process.env.NODE_ENV !== 'production') {
-    app.get('/_sentry-test', async () => {
-      Sentry.captureException(new Error('sentry-smoke: worker'));
-      await Sentry.flush(2000);
-      return { fired: true, dsnConfigured: !!process.env.SENTRY_DSN_WORKER };
-    });
-  }
   await app.listen({ port: env.WORKER_PORT, host: '0.0.0.0' });
   logger.info({ port: env.WORKER_PORT }, 'worker listening');
-
-  let shuttingDown = false;
-  const shutdown = async () => {
-    if (shuttingDown) return;
-    shuttingDown = true;
-    logger.info('worker shutting down');
-    await Promise.allSettled(workers.map((w) => w.close()));
-    await Promise.allSettled([app.close(), closeQueues(), connection.quit()]);
-    process.exit(0);
-  };
-  process.on('SIGINT', shutdown);
-  process.on('SIGTERM', shutdown);
 }
 
 main().catch((err) => {

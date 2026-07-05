@@ -1,25 +1,36 @@
-/** @file apps/csms/src/handlers/index.ts. */
 import { randomInt } from 'node:crypto';
 import { prisma } from '@edna/db';
+import IORedis from 'ioredis';
+import { Queue } from 'bullmq';
+import { supabase } from '../lib/supabase.js';
 import { logger } from '../logger.js';
-import { bookingsQueue, notificationsQueue } from './queues.js';
-import { mapOcppStatus } from './ocpp-values.js';
-import { touchOcppConnectedAt } from './charger-liveness.js';
-import { recordMeterValues } from './meter-values.js';
-import type { Client, Ctx } from './types.js';
 
-export type { Client, Ctx } from './types.js';
+let _bookings: Queue | null = null;
+function bookingsQueue(): Queue {
+  if (_bookings) return _bookings;
+  const connection = new IORedis(process.env.REDIS_URL ?? 'redis://localhost:6379', {
+    maxRetriesPerRequest: null,
+  });
+  _bookings = new Queue('bookings', { connection });
+  return _bookings;
+}
 
-const SETTLEMENT_JOB_OPTS = {
-  attempts: 5,
-  backoff: { type: 'exponential', delay: 5000 },
-  removeOnComplete: { age: 3600, count: 100 },
-  removeOnFail: { age: 86400, count: 100 },
-} as const;
+// ocpp-rpc v2 doesn't export a named server-client type. We type it structurally
+// to avoid a runtime-only `any`.
+export type Client = {
+  handle: (method: string, handler: (ctx: { params: unknown }) => Promise<unknown>) => void;
+  on: (event: string, listener: (...args: unknown[]) => void) => void;
+  close: (code?: number, reason?: string) => void;
+  call: (method: string, params?: unknown, opts?: Record<string, unknown>) => Promise<unknown>;
+  identity?: string;
+  session: Record<string, unknown>;
+};
+
+type Ctx = { chargePointId: string };
 
 // Anti-theft authorization window: how long after the driver taps "Start
 // charging" the charger has to present the minted idTag. Generous enough for a
-// plug-in delay, short enough that a stale token cannot be replayed afterward.
+// plug-in delay, short enough that a stale token can't be replayed later.
 const START_AUTH_WINDOW_MS = 15 * 60 * 1000;
 
 async function chargerByCpId(cpId: string) {
@@ -37,15 +48,12 @@ async function chargerByCpId(cpId: string) {
  */
 async function authorizedBookingFor(chargerId: string, idTag?: string) {
   if (!idTag) return null;
-  const now = Date.now();
   return prisma.booking.findFirst({
     where: {
       chargerId,
       ocppStartToken: idTag,
       status: { in: ['confirmed', 'active'] },
       ocppAuthorizedAt: { gte: new Date(Date.now() - START_AUTH_WINDOW_MS) },
-      startAt: { lte: new Date(now + 5 * 60_000) },
-      endAt: { gte: new Date(now - 5 * 60_000) },
     },
   });
 }
@@ -61,29 +69,18 @@ export function bindHandlers(client: Client, ctx: Ctx): void {
     void Promise.resolve(
       client.call('ChangeConfiguration', { key: 'AuthorizeRemoteTxRequests', value: 'true' }),
     ).catch((err) =>
-      logger.info(
-        { err, cpId: ctx.chargePointId },
-        'ChangeConfiguration not applied (charger-dependent)',
-      ),
+      logger.info({ err, cpId: ctx.chargePointId }, 'ChangeConfiguration not applied (charger-dependent)'),
     );
     return { currentTime: new Date().toISOString(), interval: 30, status: 'Accepted' };
   });
 
-  client.handle('Heartbeat', async () => {
-    await touchOcppConnectedAt(ctx.chargePointId);
-    return { currentTime: new Date().toISOString() };
-  });
+  client.handle('Heartbeat', async () => ({ currentTime: new Date().toISOString() }));
 
   client.handle('StatusNotification', async ({ params }) => {
     const c = await chargerByCpId(ctx.chargePointId);
     if (!c) return {};
     const status = mapOcppStatus((params as { status?: string }).status);
-    // Refresh liveness alongside any status change (chargers that only emit
-    // StatusNotifications, no Heartbeat, still need to stay "connected").
-    await prisma.charger.update({
-      where: { id: c.id },
-      data: { ocppConnectedAt: new Date(), ...(status ? { status } : {}) },
-    });
+    if (status) await prisma.charger.update({ where: { id: c.id }, data: { status } });
     return {};
   });
 
@@ -135,19 +132,12 @@ export function bindHandlers(client: Client, ctx: Ctx): void {
       data: {
         bookingId: booking.id,
         chargerId: c.id,
-        // Use server receipt time for the billable window. Charger clocks can
-        // be wrong or malicious; MeterValue rows still keep charger timestamps.
-        startedAt: new Date(),
+        startedAt: p.timestamp ? new Date(p.timestamp) : new Date(),
         meterStartWh: p.meterStart ?? 0,
         ocppTransactionId: txId,
       },
     });
     await prisma.booking.update({ where: { id: booking.id }, data: { status: 'active' } });
-    await notificationsQueue().add('session_started', {
-      driverId: booking.driverId,
-      hostId: c.hostId,
-      sessionId: session.id,
-    });
     return { transactionId: session.ocppTransactionId ?? txId, idTagInfo: { status: 'Accepted' } };
   });
 
@@ -166,28 +156,41 @@ export function bindHandlers(client: Client, ctx: Ctx): void {
       where: { ocppTransactionId: p.transactionId },
     });
     if (!session) return {};
-    if (session.endedAt) {
-      logger.info(
-        { sessionId: session.id, transactionId: p.transactionId },
-        'MeterValues ignored after session end',
-      );
-      return {};
-    }
     // SECURITY: a charger may only report meter values for ITS OWN session.
     // Without this, any authenticated charger could inject/distort another
     // charger's session by guessing/observing its transactionId.
     if (session.chargerId !== c.id) {
       logger.warn(
-        {
-          cpId: ctx.chargePointId,
-          transactionId: p.transactionId,
-          sessionChargerId: session.chargerId,
-        },
+        { cpId: ctx.chargePointId, transactionId: p.transactionId, sessionChargerId: session.chargerId },
         'MeterValues refused: transactionId belongs to a different charger',
       );
       return {};
     }
-    await recordMeterValues(session.id, p.meterValue);
+    // Bound the array so a compromised charger can't amplify DB writes/broadcasts.
+    for (const mv of p.meterValue.slice(0, 100)) {
+      const energy = mv.sampledValue.find(
+        (s) => s.measurand === 'Energy.Active.Import.Register' || !s.measurand,
+      );
+      const power = mv.sampledValue.find((s) => s.measurand === 'Power.Active.Import');
+      const voltage = mv.sampledValue.find((s) => s.measurand === 'Voltage');
+      const current = mv.sampledValue.find((s) => s.measurand === 'Current.Import');
+      const row = await prisma.meterValue.create({
+        data: {
+          sessionId: session.id,
+          ts: new Date(mv.timestamp),
+          energyWh: energy ? Math.round(Number(energy.value)) : 0,
+          powerW: power ? Math.round(Number(power.value)) : 0,
+          voltageV: voltage ? Number(voltage.value) : null,
+          currentA: current ? Number(current.value) : null,
+        },
+      });
+      const sb = supabase();
+      if (sb) {
+        await sb
+          .channel(`session:${session.id}`)
+          .send({ type: 'broadcast', event: 'meter_value', payload: row });
+      }
+    }
     return {};
   });
 
@@ -223,12 +226,12 @@ export function bindHandlers(client: Client, ctx: Ctx): void {
         {
           transactionId: p.transactionId,
           meterStop: p.meterStop,
-          timestamp: new Date().toISOString(),
+          timestamp: p.timestamp,
           // Pass the connecting charger so the deferred settle can verify the
           // stop came from the charger that actually owns the session.
           chargePointId: ctx.chargePointId,
         },
-        { delay: 5_000, ...SETTLEMENT_JOB_OPTS },
+        { delay: 5_000 },
       );
       return { idTagInfo: { status: 'Accepted' } };
     }
@@ -237,50 +240,42 @@ export function bindHandlers(client: Client, ctx: Ctx): void {
     // sabotage via a guessed/observed txId).
     if (c && session.chargerId !== c.id) {
       logger.warn(
-        {
-          cpId: ctx.chargePointId,
-          transactionId: p.transactionId,
-          sessionChargerId: session.chargerId,
-        },
+        { cpId: ctx.chargePointId, transactionId: p.transactionId, sessionChargerId: session.chargerId },
         'StopTransaction refused: transactionId belongs to a different charger',
       );
-      return { idTagInfo: { status: 'Accepted' } };
-    }
-    if (session.endedAt) {
-      logger.info(
-        { sessionId: session.id, transactionId: p.transactionId },
-        'StopTransaction ignored after session end',
-      );
-      await bookingsQueue().add(
-      'settle_session',
-      { sessionId: session.id },
-      { ...SETTLEMENT_JOB_OPTS, jobId: `settle:${session.id}` },
-    );
       return { idTagInfo: { status: 'Accepted' } };
     }
     // Guard against a meter register rollover / reset (meterStop < meterStart),
     // which would otherwise produce a negative finalKwh and a negative capture.
     const kwh = p.meterStop != null ? Math.max(0, (p.meterStop - session.meterStartWh) / 1000) : 0;
-    const ended = await prisma.chargingSession.update({
+    await prisma.chargingSession.update({
       where: { id: session.id },
       data: {
-        endedAt: new Date(),
+        endedAt: p.timestamp ? new Date(p.timestamp) : new Date(),
         meterStopWh: p.meterStop ?? null,
         finalKwh: kwh,
       },
-      include: { booking: true, charger: true },
-    });
-    await notificationsQueue().add('session_stopped', {
-      driverId: ended.booking.driverId,
-      hostId: ended.charger.hostId,
-      sessionId: ended.id,
     });
     // Hand off settlement + Stripe capture to the worker.
-    await bookingsQueue().add(
-      'settle_session',
-      { sessionId: session.id },
-      { ...SETTLEMENT_JOB_OPTS, jobId: `settle:${session.id}` },
-    );
+    await bookingsQueue().add('settle_session', { sessionId: session.id });
     return { idTagInfo: { status: 'Accepted' } };
   });
+}
+
+function mapOcppStatus(s?: string): 'available' | 'occupied' | 'faulted' | 'offline' | null {
+  switch (s) {
+    case 'Available':
+      return 'available';
+    case 'Preparing':
+    case 'Charging':
+    case 'SuspendedEV':
+    case 'SuspendedEVSE':
+    case 'Finishing':
+      return 'occupied';
+    case 'Faulted':
+    case 'Unavailable':
+      return 'faulted';
+    default:
+      return null;
+  }
 }

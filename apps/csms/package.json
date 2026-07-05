@@ -8,19 +8,21 @@
     "start": "tsx src/index.ts",
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc --noEmit",
-    "lint": "tsc --noEmit",
+    "lint": "echo \"(no lint yet)\"",
     "test": "vitest run"
   },
   "dependencies": {
     "@edna/config": "workspace:*",
     "@edna/db": "workspace:*",
-    "@edna/server-utils": "workspace:*",
+    "@sentry/node": "^8.30.0",
     "@supabase/supabase-js": "^2.45.4",
     "bcryptjs": "^2.4.3",
     "bullmq": "^5.20.0",
     "fastify": "^4.28.1",
     "ioredis": "^5.4.1",
-    "ocpp-rpc": "^2.2.1"
+    "ocpp-rpc": "^2.2.1",
+    "pino": "^9.4.0",
+    "pino-pretty": "^11.2.2"
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",

@@ -1,4 +1,3 @@
-/** @file apps/mobile/src/components/ui/Input.tsx. */
 import { useState } from 'react';
 import { TextInput, View, Text, type TextInputProps } from 'react-native';
 import { useTheme } from '../../theme/useTheme';

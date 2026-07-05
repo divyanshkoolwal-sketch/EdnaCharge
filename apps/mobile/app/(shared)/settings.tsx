@@ -1,4 +1,3 @@
-/** @file apps/mobile/app/(shared)/settings.tsx. */
 import { Alert, View, Pressable } from 'react-native';
 import { useRouter } from 'expo-router';
 import {
@@ -49,7 +48,7 @@ export default function Settings() {
             // Double-confirm — App Store reviewers test this, easy to misclick.
             Alert.alert(
               'Are you sure?',
-              "This is permanent and you'll lose all of your account data.",
+              "This is permanent. Type 'DELETE' isn't required, but you'll lose all of your data.",
               [
                 { text: 'Cancel', style: 'cancel' },
                 {
@@ -67,13 +66,7 @@ export default function Settings() {
 
   return (
     <Screen scroll contentStyle={{ paddingBottom: 40 }}>
-      <Pressable
-        onPress={() => router.back()}
-        accessibilityRole="button"
-        accessibilityLabel="Go back"
-        hitSlop={12}
-        style={{ paddingTop: 8 }}
-      >
+      <Pressable onPress={() => router.back()} style={{ paddingTop: 8 }}>
         <ChevronLeft />
       </Pressable>
       <H1 style={{ marginTop: 14 }}>Settings</H1>

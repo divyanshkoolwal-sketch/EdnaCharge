@@ -1,11 +1,9 @@
-/** @file apps/mobile/src/components/RatingsSection.tsx. */
-import { Alert, Pressable, View } from 'react-native';
+import { View } from 'react-native';
 import type { inferRouterOutputs } from '@trpc/server';
 import type { AppRouter } from '../../../api/src/router';
 import { Card, Row, Body, Muted, SectionHeader, Avatar } from './ui';
 import { Star } from './icons/Icon';
 import { trpc } from '../lib/trpc';
-import { handleError } from '../lib/errors';
 
 type ReviewRow = inferRouterOutputs<AppRouter>['review']['forUser']['rows'][number];
 
@@ -25,13 +23,8 @@ function Stars({ n }: { n: number }) {
  * (aggregate) and review.forUser (list, includes the author).
  */
 export function RatingsSection({ userId }: { userId?: string }) {
-  const safeUserId = userId ?? '';
-  const summary = trpc.review.summary.useQuery({ userId: safeUserId }, { enabled: !!safeUserId });
-  const list = trpc.review.forUser.useQuery({ userId: safeUserId }, { enabled: !!safeUserId });
-  const reportReview = trpc.moderation.reportReview.useMutation({
-    onSuccess: () => Alert.alert('Report sent', 'Thanks. We’ll review this rating.'),
-    onError: (e) => handleError(e, { feature: 'Safety' }),
-  });
+  const summary = trpc.review.summary.useQuery({ userId: userId! }, { enabled: !!userId });
+  const list = trpc.review.forUser.useQuery({ userId: userId! }, { enabled: !!userId });
   const count = summary.data?.count ?? 0;
   const avg = summary.data?.avg;
   const rows = list.data?.rows ?? [];
@@ -71,29 +64,6 @@ export function RatingsSection({ userId }: { userId?: string }) {
               {r.text ? (
                 <Muted style={{ fontSize: 13, marginTop: 4, lineHeight: 19 }}>{r.text}</Muted>
               ) : null}
-              <Pressable
-                onPress={() =>
-                  Alert.alert(
-                    'Report this review?',
-                    'Our team will review it for policy violations. This cannot be undone.',
-                    [
-                      { text: 'Cancel', style: 'cancel' },
-                      {
-                        text: 'Report',
-                        style: 'destructive',
-                        onPress: () => reportReview.mutate({ reviewId: r.id, reason: 'other' }),
-                      },
-                    ],
-                  )
-                }
-                disabled={reportReview.isPending}
-                hitSlop={8}
-                accessibilityRole="button"
-                accessibilityLabel="Report review"
-                style={{ alignSelf: 'flex-start', marginTop: 8 }}
-              >
-                <Muted style={{ fontSize: 12 }}>Report</Muted>
-              </Pressable>
             </View>
           </Row>
         </Card>

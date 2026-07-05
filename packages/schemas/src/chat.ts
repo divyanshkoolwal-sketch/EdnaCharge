@@ -1,4 +1,3 @@
-/** @file packages/schemas/src/chat.ts. */
 import { z } from 'zod';
 
 export const SendMessageInputZ = z.object({

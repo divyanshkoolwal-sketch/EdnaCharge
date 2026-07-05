@@ -1,4 +1,3 @@
-/** @file apps/mobile/src/components/illustrations/HomeCharger.tsx. */
 // Reusable home + charger illustration matching the design canvas's
 // Welcome / Host-Intro hero. Pure SVG; no native deps beyond react-native-svg.
 import { View } from 'react-native';

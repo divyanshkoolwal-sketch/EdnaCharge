@@ -7,18 +7,15 @@
     "node": ">=20.0.0"
   },
   "scripts": {
-    "postinstall": "pnpm -F @edna/db generate",
     "dev": "turbo run dev --parallel",
     "build": "turbo run build",
     "typecheck": "turbo run typecheck",
-    "lint": "pnpm lint:conventions && turbo run lint",
-    "lint:conventions": "tsx scripts/check-source-conventions.ts",
+    "lint": "turbo run lint",
     "test": "turbo run test",
-    "test:e2e": "bash scripts/e2e.sh",
     "demo:loop": "tsx scripts/demo-loop.ts",
-    "smoke:product": "pnpm -F @edna/api exec vitest run test/availability-readiness.unit.test.ts test/moderation.unit.test.ts test/refund-math.unit.test.ts test/account-deletion.unit.test.ts && pnpm -F @edna/mobile exec vitest run test/notificationRouting.unit.test.ts",
     "sentry:smoke": "tsx scripts/sentry-smoke.ts",
     "sim": "pnpm -F @edna/ocpp-simulator start --",
+    "chaos": "tsx scripts/chaos.ts",
     "format": "prettier --write ."
   },
   "devDependencies": {

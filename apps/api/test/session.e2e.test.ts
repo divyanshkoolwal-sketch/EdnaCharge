@@ -3,9 +3,10 @@
  * the CSMS handlers produces a ChargingSession with finalKwh; settle_session
  * captures the Stripe PI and writes a Payout row.
  *
- * Rather than spinning up a full OCPP client here, we invoke the handler
- * functions directly against the DB and enqueue settle_session on the real
- * BullMQ queue so the running worker processes it.
+ * Rather than spinning up a full OCPP client here (the simulator covers that
+ * via chaos-fast.ts), we invoke the handler functions directly against the DB
+ * and enqueue settle_session on the real BullMQ queue — the running worker
+ * processes it.
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import Stripe from 'stripe';

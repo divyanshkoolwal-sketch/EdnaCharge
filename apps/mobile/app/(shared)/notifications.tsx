@@ -1,4 +1,3 @@
-/** @file apps/mobile/app/(shared)/notifications.tsx. */
 import { View, Pressable, FlatList, RefreshControl } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import {
@@ -15,7 +14,6 @@ import {
 import { ChevronLeft, Bell } from '../../src/components/icons/Icon';
 import { useTheme } from '../../src/theme/useTheme';
 import { trpc } from '../../src/lib/trpc';
-import { notificationRouteFromData } from '../../src/lib/notificationRouting';
 
 type Role = 'driver' | 'host';
 
@@ -63,8 +61,38 @@ export default function Notifications() {
     // Prefer the role recorded when the notification was created (correct even
     // for dual-role users — every host is also a driver); fall back to the
     // entry-point role only for legacy rows without it.
-    const route = notificationRouteFromData(n, role);
-    if (route) router.push(route as never);
+    const side: Role = n.recipientRole === 'host' || n.recipientRole === 'driver' ? n.recipientRole : role;
+    switch (n.kind) {
+      case 'new_booking_request':
+        if (n.bookingId) router.push({ pathname: '/(host)/request/[id]', params: { id: n.bookingId } });
+        return;
+      case 'booking_accepted':
+      case 'booking_declined':
+      case 'booking_auto_declined':
+        if (n.bookingId) router.push({ pathname: '/(driver)/booking/[id]', params: { id: n.bookingId } });
+        return;
+      case 'new_chat_message':
+        if (!n.bookingId) return;
+        if (side === 'host')
+          router.push({ pathname: '/(host)/chat/[bookingId]', params: { bookingId: n.bookingId } });
+        else
+          router.push({ pathname: '/(driver)/chat/[bookingId]', params: { bookingId: n.bookingId } });
+        return;
+      case 'session_started':
+      case 'session_stopped':
+        // Drivers have a live session screen; hosts don't, so send them to their
+        // dashboard (which surfaces active sessions) rather than a dead tap.
+        if (side === 'driver' && n.sessionId)
+          router.push({ pathname: '/(driver)/session/[id]', params: { id: n.sessionId } });
+        else if (side === 'host') router.push('/(host)/home');
+        return;
+      case 'review_left':
+        if (!n.bookingId) return;
+        if (side === 'host')
+          router.push({ pathname: '/(host)/review/[bookingId]', params: { bookingId: n.bookingId } });
+        else router.push({ pathname: '/(driver)/receipt/[id]', params: { id: n.bookingId } });
+        return;
+    }
   };
 
   return (

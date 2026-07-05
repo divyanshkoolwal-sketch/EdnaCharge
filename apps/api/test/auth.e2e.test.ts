@@ -1,6 +1,6 @@
 /**
  * Auth e2e — bootstraps a user, drives driver profile, host identity, and
- * host identity.
+ * charger identification through all 4 hardware-tier outcomes.
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { prisma } from '@edna/db';
@@ -13,7 +13,6 @@ import {
   signIn,
   uniqueEmail,
   deleteUserByEmail,
-  grantAccess,
 } from './helpers.js';
 
 const skip = skipReason([
@@ -31,8 +30,6 @@ d(`auth router ${skip ?? ''}`, () => {
   beforeAll(async () => {
     userId = await createSupabaseUser(email, password);
     token = await signIn(email, password);
-    await grantAccess(userId, 'driver');
-    await grantAccess(userId, 'host');
   });
 
   it('getSession bootstraps a User row on first call', async () => {
@@ -59,7 +56,7 @@ d(`auth router ${skip ?? ''}`, () => {
     expect(dp.connectorType).toBe('nacs');
   });
 
-  it('submitHostIdentity persists host profile data', async () => {
+  it('submitHostIdentity + all 4 charger-tier outcomes persist', async () => {
     await trpc('auth.submitHostIdentity', token, {
       legalName: 'E2E Host',
       dob: '1990-01-01T00:00:00.000Z',
@@ -69,9 +66,28 @@ d(`auth router ${skip ?? ''}`, () => {
       postalCode: '94566',
       country: 'US',
     });
-    const hp = await prisma.hostProfile.findUniqueOrThrow({ where: { userId } });
-    expect(hp.legalName).toBe('E2E Host');
-    expect(hp.city).toBe('Pleasanton');
+
+    const tiers = [
+      'tier_1_smart_plug',
+      'tier_2_bridge_kit',
+      'tier_3_native',
+      'tier_4_unmetered',
+    ] as const;
+
+    for (const tier of tiers) {
+      await trpc('auth.submitChargerIdentification', token, {
+        chargerLocation: 'installed_level2',
+        chargerBrand: 'Wallbox',
+        chargerModel: 'Pulsar Plus',
+        hasWifi: true,
+        connectorType: 'j1772',
+        powerKw: 7.2,
+        hardwareTier: tier,
+      });
+      const hp = await prisma.hostProfile.findUniqueOrThrow({ where: { userId } });
+      const hs = hp.hardwareSetup as { hardwareTier?: string } | null;
+      expect(hs?.hardwareTier).toBe(tier);
+    }
   });
 
   afterAll(async () => {

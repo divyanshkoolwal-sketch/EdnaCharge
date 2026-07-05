@@ -1,4 +1,3 @@
-/** @file apps/worker/src/jobs/notifications.ts. */
 import type { Job } from 'bullmq';
 import { prisma } from '@edna/db';
 import { logger } from '../logger.js';
@@ -16,8 +15,6 @@ type NotificationName =
   | 'booking_accepted'
   | 'booking_declined'
   | 'booking_auto_declined'
-  | 'booking_errored'
-  | 'booking_cancelled'
   | 'new_chat_message'
   | 'session_started'
   | 'session_stopped'
@@ -57,7 +54,7 @@ async function notifyUser(
   } catch (err) {
     logger.warn({ err, userId: ref.id, kind }, 'failed to persist notification');
   }
-  const data: Record<string, string> = { kind, recipientRole };
+  const data: Record<string, string> = {};
   if (link.bookingId) data.bookingId = link.bookingId;
   if (link.threadId) data.threadId = link.threadId;
   if (link.sessionId) data.sessionId = link.sessionId;
@@ -102,30 +99,14 @@ export async function notify(job: NotificationJob) {
       // Booking requests only ever go to the host.
       if (!hasStringProp(p, 'hostId') || !hasStringProp(p, 'bookingId')) break;
       const u = await prisma.user.findUnique({ where: { id: p.hostId } });
-      if (u)
-        await notifyUser(
-          u,
-          name,
-          'New booking request',
-          'Tap to review.',
-          { bookingId: p.bookingId },
-          'host',
-        );
+      if (u) await notifyUser(u, name, 'New booking request', 'Tap to review.', { bookingId: p.bookingId }, 'host');
       break;
     }
     case 'booking_accepted': {
       // Accept/decline outcomes only ever go to the driver.
       if (!hasStringProp(p, 'driverId') || !hasStringProp(p, 'bookingId')) break;
       const u = await prisma.user.findUnique({ where: { id: p.driverId } });
-      if (u)
-        await notifyUser(
-          u,
-          name,
-          'Booking confirmed',
-          "You're all set.",
-          { bookingId: p.bookingId },
-          'driver',
-        );
+      if (u) await notifyUser(u, name, 'Booking confirmed', "You're all set.", { bookingId: p.bookingId }, 'driver');
       break;
     }
     case 'booking_declined': {
@@ -135,8 +116,7 @@ export async function notify(job: NotificationJob) {
       const reason = b?.declineReason
         ? `Reason: ${b.declineReason.replace(/_/g, ' ')}`
         : 'Try a different charger nearby.';
-      if (u)
-        await notifyUser(u, name, 'Booking declined', reason, { bookingId: p.bookingId }, 'driver');
+      if (u) await notifyUser(u, name, 'Booking declined', reason, { bookingId: p.bookingId }, 'driver');
       break;
     }
     case 'booking_auto_declined': {
@@ -150,49 +130,6 @@ export async function notify(job: NotificationJob) {
           "The host didn't respond in time. Try a different charger nearby.",
           { bookingId: p.bookingId },
           'driver',
-        );
-      }
-      break;
-    }
-    case 'booking_errored': {
-      if (
-        !hasStringProp(p, 'driverId') ||
-        !hasStringProp(p, 'hostId') ||
-        !hasStringProp(p, 'bookingId')
-      )
-        break;
-      for (const uid of [p.driverId, p.hostId]) {
-        const u = await prisma.user.findUnique({ where: { id: uid } });
-        if (u) {
-          await notifyUser(
-            u,
-            name,
-            'Charging could not start',
-            'The charger did not accept the remote start. The hold was released.',
-            { bookingId: p.bookingId },
-            uid === p.driverId ? 'driver' : 'host',
-          );
-        }
-      }
-      break;
-    }
-    case 'booking_cancelled': {
-      if (!hasStringProp(p, 'bookingId')) break;
-      const recipient = hasStringProp(p, 'driverId')
-        ? { id: p.driverId, role: 'driver' as const }
-        : hasStringProp(p, 'hostId')
-          ? { id: p.hostId, role: 'host' as const }
-          : null;
-      if (!recipient) break;
-      const u = await prisma.user.findUnique({ where: { id: recipient.id } });
-      if (u) {
-        await notifyUser(
-          u,
-          name,
-          'Booking cancelled',
-          'Open the booking for details.',
-          { bookingId: p.bookingId },
-          recipient.role,
         );
       }
       break;
@@ -214,17 +151,10 @@ export async function notify(job: NotificationJob) {
       });
       const role = thread && thread.booking.driverId === p.userId ? 'driver' : 'host';
       if (u)
-        await notifyUser(
-          u,
-          name,
-          'New message',
-          p.preview,
-          {
-            threadId: p.threadId,
-            bookingId: thread?.booking.id,
-          },
-          role,
-        );
+        await notifyUser(u, name, 'New message', p.preview, {
+          threadId: p.threadId,
+          bookingId: thread?.booking.id,
+        }, role);
       break;
     }
     case 'session_started':
@@ -259,15 +189,7 @@ export async function notify(job: NotificationJob) {
         select: { driverId: true },
       });
       const role = b && b.driverId === p.userId ? 'driver' : 'host';
-      if (u)
-        await notifyUser(
-          u,
-          name,
-          'New review',
-          'Someone left you a review.',
-          { bookingId: p.bookingId },
-          role,
-        );
+      if (u) await notifyUser(u, name, 'New review', 'Someone left you a review.', { bookingId: p.bookingId }, role);
       break;
     }
     default:

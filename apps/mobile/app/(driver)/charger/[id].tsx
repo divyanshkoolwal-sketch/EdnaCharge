@@ -1,4 +1,3 @@
-/** @file apps/mobile/app/(driver)/charger/[id].tsx. */
 import { View, ActivityIndicator, ScrollView, Pressable } from 'react-native';
 import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -21,7 +20,6 @@ import {
   FrameSoft,
   Button,
   CTABar,
-  ErrorState,
 } from '../../../src/components/ui';
 import { ChevronLeft, Star, Bolt } from '../../../src/components/icons/Icon';
 import { ChargerIllo } from '../../../src/components/illustrations/HomeCharger';
@@ -32,19 +30,18 @@ export default function ChargerDetail() {
   const { c } = useTheme();
   const q = trpc.charger.get.useQuery({ id: id! }, { enabled: !!id });
   const userCoords = useUserLocation((s) => s.coords);
-  const route = trpc.charger.routeEstimate.useQuery(
-    {
-      chargerId: id!,
-      origin: { lat: userCoords?.lat ?? 0, lng: userCoords?.lng ?? 0 },
-    },
-    { enabled: !!id && !!userCoords && !!q.data },
-  );
 
-  // Prefer server-proxied Mapbox ETA; fall back to local Haversine if unavailable.
+  // Compute distance + a rough drive time using a 30 km/h heuristic (fine for
+  // v1; an accurate ETA would need Mapbox Directions API). We render this on
+  // the same row as the host name so the user can scan it instantly.
   const distanceLabel = (() => {
     if (!userCoords || !q.data) return null;
-    if (route.data) return formatRouteEstimate(route.data.distanceM, route.data.durationSeconds);
-    const km = haversineKm(userCoords.lat, userCoords.lng, q.data.lat, q.data.lng);
+    const km = haversineKm(
+      userCoords.lat,
+      userCoords.lng,
+      q.data.lat,
+      q.data.lng,
+    );
     return formatDistanceAndDriveTime(km);
   })();
 
@@ -57,15 +54,8 @@ export default function ChargerDetail() {
   }
   if (q.error || !q.data) {
     return (
-      <Screen contentStyle={{ padding: 24 }}>
-        <Pressable onPress={() => router.back()} style={{ paddingTop: 8 }} hitSlop={10}>
-          <ChevronLeft />
-        </Pressable>
-        <ErrorState
-          title="Charger unavailable"
-          subtitle="We couldn't load this charger. It may have been removed, or check your connection."
-          onRetry={() => q.refetch()}
-        />
+      <Screen style={{ alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+        <Body>{q.error?.message ?? 'Not found'}</Body>
       </Screen>
     );
   }
@@ -81,10 +71,7 @@ export default function ChargerDetail() {
       <Pressable onPress={() => router.back()} style={{ paddingTop: 8 }}>
         <ChevronLeft />
       </Pressable>
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingBottom: 130 }}
-      >
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 130 }}>
         {ch.photoUrl ? (
           <Image
             source={{ uri: ch.photoUrl }}
@@ -144,16 +131,18 @@ export default function ChargerDetail() {
           <Muted>No reviews yet — be the first.</Muted>
         ) : (
           <View style={{ gap: 10 }}>
-            {ch.hostReviews.map((r: { id: string; stars: number; text: string | null }) => (
-              <FrameSoft key={r.id}>
-                <Row gap={4} style={{ marginBottom: 4 }}>
-                  {Array.from({ length: r.stars }).map((_, i) => (
-                    <Star key={i} size={11} />
-                  ))}
-                </Row>
-                <Body>{r.text ?? ''}</Body>
-              </FrameSoft>
-            ))}
+            {ch.hostReviews.map(
+              (r: { id: string; stars: number; text: string | null }) => (
+                <FrameSoft key={r.id}>
+                  <Row gap={4} style={{ marginBottom: 4 }}>
+                    {Array.from({ length: r.stars }).map((_, i) => (
+                      <Star key={i} size={11} />
+                    ))}
+                  </Row>
+                  <Body>{r.text ?? ''}</Body>
+                </FrameSoft>
+              ),
+            )}
           </View>
         )}
       </ScrollView>
@@ -174,10 +163,6 @@ function tierForCharger(t: string): string {
   // tier_3_native → '3', tier_4_unmetered → '4'
   const m = /tier_(\d)/.exec(t);
   return m ? m[1]! : '?';
-}
-
-function formatRouteEstimate(distanceM: number, durationSeconds: number): string {
-  return `${(distanceM / 1609.34).toFixed(1)} mi · ${Math.max(1, Math.round(durationSeconds / 60))} min drive`;
 }
 
 function HostRatingInline({ hostId }: { hostId: string }) {

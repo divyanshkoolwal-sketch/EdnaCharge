@@ -1,4 +1,3 @@
-/** @file apps/api/src/trpc.ts. */
 import { initTRPC, TRPCError } from '@trpc/server';
 import type { CreateFastifyContextOptions } from '@trpc/server/adapters/fastify';
 import { verifyAccessToken, type VerifiedUser } from './lib/auth.js';

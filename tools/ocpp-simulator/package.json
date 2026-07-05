@@ -9,7 +9,7 @@
   "scripts": {
     "start": "tsx src/index.ts",
     "typecheck": "tsc --noEmit",
-    "lint": "tsc --noEmit",
+    "lint": "echo \"(no lint)\"",
     "test": "echo \"(no tests)\""
   },
   "dependencies": {

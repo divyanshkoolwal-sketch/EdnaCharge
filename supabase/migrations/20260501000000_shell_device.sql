@@ -2,9 +2,7 @@
 -- Creates the ShellDevice table and DeviceStatus enum.
 -- Applied automatically by `supabase db reset` or `prisma db push`.
 
-DO $$ BEGIN
-  CREATE TYPE "DeviceStatus" AS ENUM ('provisioned', 'active', 'offline', 'error');
-EXCEPTION WHEN duplicate_object THEN null; END $$;
+CREATE TYPE "DeviceStatus" AS ENUM ('provisioned', 'active', 'offline', 'error');
 
 CREATE TABLE IF NOT EXISTS "ShellDevice" (
   "id"              UUID PRIMARY KEY DEFAULT gen_random_uuid(),

@@ -1,4 +1,3 @@
-/** @file apps/mobile/app/(shared)/edit-profile.tsx. */
 import { useState } from 'react';
 import { View, Pressable, ActivityIndicator, Alert } from 'react-native';
 import { useRouter } from 'expo-router';

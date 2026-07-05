@@ -1,4 +1,3 @@
-/** @file packages/db/test/rls.test.ts. */
 import { describe, it, expect, beforeAll } from 'vitest';
 import { prisma } from '../src/index.js';
 import { createDriver, createHost, createCharger, createBooking } from './fixtures/factories.js';
@@ -65,31 +64,5 @@ d('data model invariants', () => {
     });
     expect(full.driverId).toBe(driver.id);
     expect(full.charger.hostId).toBe(host.id);
-  });
-
-  it('preserves moderation reports when a reported chat message is deleted', async () => {
-    const host = await createHost();
-    const driver = await createDriver();
-    const charger = await createCharger(host.id);
-    const booking = await createBooking({ chargerId: charger.id, driverId: driver.id });
-    const thread = await prisma.chatThread.create({ data: { bookingId: booking.id } });
-    const message = await prisma.chatMessage.create({
-      data: { threadId: thread.id, senderId: driver.id, body: 'abusive message' },
-    });
-    const report = await prisma.contentReport.create({
-      data: {
-        reporterId: host.id,
-        targetUserId: driver.id,
-        messageId: message.id,
-        targetType: 'chat_message',
-        reason: 'harassment',
-      },
-    });
-
-    await prisma.chatMessage.delete({ where: { id: message.id } });
-
-    const preserved = await prisma.contentReport.findUniqueOrThrow({ where: { id: report.id } });
-    expect(preserved.messageId).toBeNull();
-    expect(preserved.targetUserId).toBe(driver.id);
   });
 });

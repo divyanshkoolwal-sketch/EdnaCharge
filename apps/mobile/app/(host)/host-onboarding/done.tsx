@@ -1,4 +1,3 @@
-/** @file apps/mobile/app/(host)/host-onboarding/done.tsx. */
 import { useEffect } from 'react';
 import { View } from 'react-native';
 import { useRouter } from 'expo-router';

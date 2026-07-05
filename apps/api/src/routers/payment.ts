@@ -1,30 +1,11 @@
-/** @file apps/api/src/routers/payment.ts. */
 import { TRPCError } from '@trpc/server';
 import { router, protectedProcedure } from '../trpc.js';
 import { prisma } from '@edna/db';
 import { stripe, devBypassStripe } from '../lib/stripe.js';
 import { SetDefaultPaymentMethodInputZ, DetachPaymentMethodInputZ } from '@edna/schemas';
-import { requireUserAccess } from '../lib/access.js';
 
 const DEV_PM_ID = 'pm_dev_card';
 const DEV_CUSTOMER_PREFIX = 'cus_dev_';
-const MARKET_TIME_ZONE = 'America/Los_Angeles';
-
-function marketDateParts(date: Date) {
-  const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone: MARKET_TIME_ZONE,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    weekday: 'short',
-  }).formatToParts(date);
-  const value = (type: Intl.DateTimeFormatPartTypes) =>
-    parts.find((part) => part.type === type)?.value ?? '';
-  return {
-    key: `${value('year')}-${value('month')}-${value('day')}`,
-    weekday: value('weekday'),
-  };
-}
 
 async function ensureStripeCustomer(userId: string, email: string): Promise<string> {
   const user = await prisma.user.findUniqueOrThrow({ where: { id: userId } });
@@ -48,14 +29,10 @@ async function ensureStripeCustomer(userId: string, email: string): Promise<stri
   // Real Stripe is now live but we have a leftover `cus_dev_*` customer id
   // (or no customer at all) from earlier dev-bypass state. Create a real
   // customer and clear the placeholder default PM at the same time.
-  const customer = await stripe().customers.create(
-    { email, metadata: { ednaUserId: userId } },
-    // Idempotent on the user so a double-tap / retry can't create two Stripe
-    // customers for the same account. (SetupIntent/ephemeralKey are intentionally
-    // NOT keyed — a per-user key would collapse legitimate sequential card-adds
-    // within Stripe's 24h window; unused SetupIntents expire harmlessly.)
-    { idempotencyKey: `customer:${userId}` },
-  );
+  const customer = await stripe().customers.create({
+    email,
+    metadata: { ednaUserId: userId },
+  });
   await prisma.user.update({
     where: { id: userId },
     data: {
@@ -70,7 +47,6 @@ async function ensureStripeCustomer(userId: string, email: string): Promise<stri
 
 export const paymentRouter = router({
   setupIntent: protectedProcedure.mutation(async ({ ctx }) => {
-    await requireUserAccess(ctx.userId, 'driver');
     if (devBypassStripe()) {
       // Dev bypass — caller decides whether to render a "cards disabled" banner.
       // We still ensure the User has a placeholder customer + default PM so
@@ -95,24 +71,16 @@ export const paymentRouter = router({
       { customer: customerId },
       { apiVersion: '2024-06-20' },
     );
-    const publishableKey = process.env.STRIPE_PUBLISHABLE_KEY;
-    if (!publishableKey) {
-      throw new TRPCError({
-        code: 'SERVICE_UNAVAILABLE',
-        message: 'Stripe publishable key is not configured on the API.',
-      });
-    }
     return {
       setupIntentClientSecret: si.client_secret!,
       customerId,
       ephemeralKey: ephemeralKey.secret!,
-      publishableKey,
+      publishableKey: process.env.STRIPE_PUBLISHABLE_KEY ?? '',
       devBypass: false as const,
     };
   }),
 
   listPaymentMethods: protectedProcedure.query(async ({ ctx }) => {
-    await requireUserAccess(ctx.userId, 'driver');
     const user = await prisma.user.findUniqueOrThrow({ where: { id: ctx.userId } });
     if (devBypassStripe()) {
       // Show one fake "Dev Card" so the driver's UI looks populated and the
@@ -164,47 +132,47 @@ export const paymentRouter = router({
   // Uses the `Payout` table which is created by `settle-session` after every
   // successful capture. `netCents` excludes the platform fee.
   hostStats: protectedProcedure.query(async ({ ctx }) => {
-    await requireUserAccess(ctx.userId, 'host');
-    const todayKey = marketDateParts(new Date()).key;
-    const eightDaysAgo = new Date(Date.now() - 8 * 24 * 60 * 60 * 1000);
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
 
-    const [activeBookings, weekPayouts, lifetime] = await Promise.all([
+    const [todayPayouts, activeBookings, weekPayouts] = await Promise.all([
+      prisma.payout.aggregate({
+        where: { hostId: ctx.userId, createdAt: { gte: startOfToday } },
+        _sum: { netCents: true },
+        _count: { _all: true },
+      }),
       prisma.booking.count({
         where: { charger: { hostId: ctx.userId }, status: 'active' },
       }),
       prisma.payout.findMany({
-        // Exclude payouts reversed by a refund / lost dispute — Stripe clawed
-        // those funds back, so they must not count toward host earnings.
-        where: { hostId: ctx.userId, createdAt: { gte: eightDaysAgo }, reversedAt: null },
+        where: { hostId: ctx.userId, createdAt: { gte: sevenDaysAgo } },
         select: { netCents: true, createdAt: true },
-      }),
-      prisma.payout.aggregate({
-        where: { hostId: ctx.userId, reversedAt: null },
-        _sum: { grossCents: true, netCents: true },
       }),
     ]);
 
     // Bucket the last 7 days, [oldest, ..., today].
     const buckets: { dayLabel: string; date: string; netCents: number }[] = [];
     for (let i = 6; i >= 0; i--) {
-      const { key, weekday } = marketDateParts(new Date(Date.now() - i * 24 * 60 * 60 * 1000));
+      const d = new Date();
+      d.setHours(0, 0, 0, 0);
+      d.setDate(d.getDate() - i);
+      const next = new Date(d);
+      next.setDate(next.getDate() + 1);
       const sum = weekPayouts
-        .filter((p) => marketDateParts(p.createdAt).key === key)
+        .filter((p) => p.createdAt >= d && p.createdAt < next)
         .reduce((acc, p) => acc + p.netCents, 0);
       buckets.push({
-        dayLabel: weekday,
-        date: key,
+        dayLabel: d.toLocaleDateString(undefined, { weekday: 'short' }),
+        date: d.toISOString().slice(0, 10),
         netCents: sum,
       });
     }
-    const todayPayouts = weekPayouts.filter((p) => marketDateParts(p.createdAt).key === todayKey);
 
     return {
-      todayNetCents: todayPayouts.reduce((acc, p) => acc + p.netCents, 0),
-      todaySessionCount: todayPayouts.length,
+      todayNetCents: todayPayouts._sum.netCents ?? 0,
+      todaySessionCount: todayPayouts._count._all,
       activeSessionCount: activeBookings,
-      lifetimeGrossCents: lifetime._sum.grossCents ?? 0,
-      lifetimeNetCents: lifetime._sum.netCents ?? 0,
       weekly: buckets,
     };
   }),
@@ -212,7 +180,6 @@ export const paymentRouter = router({
   setDefault: protectedProcedure
     .input(SetDefaultPaymentMethodInputZ)
     .mutation(async ({ ctx, input }) => {
-      await requireUserAccess(ctx.userId, 'driver');
       const user = await prisma.user.findUniqueOrThrow({ where: { id: ctx.userId } });
       if (!user.stripeCustomerId) {
         throw new TRPCError({ code: 'PRECONDITION_FAILED', message: 'Create a customer first.' });
@@ -241,7 +208,6 @@ export const paymentRouter = router({
   detachPaymentMethod: protectedProcedure
     .input(DetachPaymentMethodInputZ)
     .mutation(async ({ ctx, input }) => {
-      await requireUserAccess(ctx.userId, 'driver');
       if (devBypassStripe()) {
         // No real Stripe in dev bypass — the single fake card can't be removed.
         return { ok: true as const };

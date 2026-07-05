@@ -1,4 +1,3 @@
-/** @file apps/mobile/src/lib/trpc.ts. */
 import { createTRPCReact } from '@trpc/react-query';
 import { httpBatchLink } from '@trpc/client';
 import type { AppRouter } from '../../../api/src/router';
@@ -27,12 +26,11 @@ async function authFetch(
   if (token) headers.set('Authorization', `Bearer ${token}`);
 
   const first = await fetch(input, { ...(init ?? {}), headers });
-  // Detect auth failure from STATUS (rare) or the server's cheap `x-trpc-unauthorized`
-  // header (set via responseMeta) — with httpBatchLink a per-procedure UNAUTHORIZED
-  // is an HTTP 200, so we can't rely on status alone. This replaces the previous
-  // clone()+regex scan of EVERY successful response body.
-  if (first.status !== 401 && first.headers.get('x-trpc-unauthorized') !== '1') return first;
+  if (first.status !== 401) return first;
 
+  // tRPC over HTTP returns 200 with a body containing the error code in many
+  // cases. Status 401 is rarer but we still cover it. Body re-read happens
+  // only when status is 401 — saves a clone() on the happy path.
   let fresh: string | null = null;
   try {
     fresh = await refreshAuthToken();
@@ -55,8 +53,15 @@ export function trpcClientConfig() {
     links: [
       httpBatchLink({
         url: `${url}/trpc`,
-        // The fetch wrapper handles auth per actual HTTP call, including its
-        // forced-refresh retry.
+        // The fetch wrapper handles auth — `headers()` only runs once per
+        // request when batched, but the wrapper runs per actual HTTP call,
+        // including retries. Belt-and-suspenders: still attach the header
+        // here so the very first call has it without round-tripping through
+        // refresh.
+        async headers() {
+          const token = await getAuthToken();
+          return token ? { Authorization: `Bearer ${token}` } : {};
+        },
         fetch: authFetch as typeof fetch,
       }),
     ],

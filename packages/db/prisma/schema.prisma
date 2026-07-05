@@ -21,13 +21,6 @@ enum Role {
   host
 }
 
-enum AccessGrantSource {
-  invite_code
-  manual
-  backfill
-  stripe_onboarding
-}
-
 enum ConnectorType {
   j1772
   nacs
@@ -77,8 +70,6 @@ enum NotificationKind {
   booking_accepted
   booking_declined
   booking_auto_declined
-  booking_errored
-  booking_cancelled
   new_chat_message
   session_started
   session_stopped
@@ -90,146 +81,64 @@ enum NotificationKind {
 /// ------------------------------------------------------------------
 
 model User {
-  /// The Supabase auth user id (auth.users.id). Used directly as the PK so RLS
-  /// `auth.uid() = User.id` and the FK-based party policies line up.
-  id                     String   @id @default(uuid()) @db.Uuid
-  email                  String   @unique
-  phone                  String?  @unique
-  fullName               String
-  avatarUrl              String?
-  roles                  Role[]   @default([driver])
-  expoPushToken          String?
-  stripeCustomerId       String?
+  id              String   @id @default(uuid()) @db.Uuid
+  firebaseUid     String?  @unique
+  email           String   @unique
+  phone           String?  @unique
+  fullName        String
+  avatarUrl       String?
+  roles           Role[]   @default([driver])
+  expoPushToken   String?
+  stripeCustomerId String?
   defaultPaymentMethodId String?
-  /// Set when the account is deleted. The row is anonymized-in-place (PII nulled)
-  /// rather than hard-deleted, so counterparties' bookings, reviews, ratings, and
-  /// payout/tax records are preserved instead of being cascade-destroyed.
-  deletedAt              DateTime?
-  createdAt              DateTime @default(now())
-  updatedAt              DateTime @updatedAt
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
-  driverProfile         DriverProfile?
-  hostProfile           HostProfile?
-  identityVerification  IdentityVerification?
-  chargers              Charger[]             @relation("HostChargers")
-  driverBookings        Booking[]             @relation("DriverBookings")
-  sentMessages          ChatMessage[]         @relation("SentMessages")
-  reviewsAuthored       Review[]              @relation("AuthorReviews")
-  reviewsReceived       Review[]              @relation("SubjectReviews")
-  blocksCreated         UserBlock[]           @relation("UserBlocksCreated")
-  blocksReceived        UserBlock[]           @relation("UserBlocksReceived")
-  contentReportsFiled   ContentReport[]       @relation("ContentReportsFiled")
-  contentReportsAgainst ContentReport[]       @relation("ContentReportsAgainst")
-  payouts               Payout[]
-  chargerWaitlist       ChargerWaitlist[]     @relation("UserChargerWaitlist")
-  notifications         Notification[]
-  supportTickets        SupportTicket[]
-  accessGrants          UserAccessGrant[]
-  inviteRedemptions     InviteRedemption[]
-  appWaitlistEntries    AppWaitlistEntry[]
+  driverProfile   DriverProfile?
+  hostProfile     HostProfile?
+  identityVerification IdentityVerification?
+  chargers        Charger[]      @relation("HostChargers")
+  driverBookings  Booking[]      @relation("DriverBookings")
+  sentMessages    ChatMessage[]  @relation("SentMessages")
+  reviewsAuthored Review[]       @relation("AuthorReviews")
+  reviewsReceived Review[]       @relation("SubjectReviews")
+  payouts         Payout[]
+  chargerWaitlist ChargerWaitlist[] @relation("UserChargerWaitlist")
+  notifications   Notification[]
 
   @@index([email])
-}
-
-model InviteCode {
-  id              String    @id @default(uuid()) @db.Uuid
-  codeHash        String    @unique
-  role            Role
-  campaign        String
-  maxRedemptions  Int       @default(1)
-  redeemedCount   Int       @default(0)
-  expiresAt       DateTime?
-  disabledAt      DateTime?
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
-
-  redemptions InviteRedemption[]
-  grants      UserAccessGrant[]
-
-  @@index([role, campaign])
-  @@index([disabledAt, expiresAt])
-}
-
-model InviteRedemption {
-  id           String   @id @default(uuid()) @db.Uuid
-  userId       String   @db.Uuid
-  inviteCodeId String   @db.Uuid
-  role         Role
-  redeemedAt   DateTime @default(now())
-
-  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
-  inviteCode InviteCode @relation(fields: [inviteCodeId], references: [id], onDelete: Cascade)
-
-  @@unique([userId, inviteCodeId])
-  @@index([userId, role])
-}
-
-model UserAccessGrant {
-  userId       String            @db.Uuid
-  role         Role
-  source       AccessGrantSource
-  inviteCodeId String?           @db.Uuid
-  createdAt    DateTime          @default(now())
-
-  user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
-  inviteCode InviteCode? @relation(fields: [inviteCodeId], references: [id], onDelete: SetNull)
-
-  @@id([userId, role])
-  @@index([role])
-  @@index([inviteCodeId])
-}
-
-model AppWaitlistEntry {
-  id           String   @id @default(uuid()) @db.Uuid
-  userId       String   @db.Uuid
-  role         Role
-  city         String
-  postalCode   String
-  phone        String?
-  source       String?
-  campaign     String?
-  chargerBrand String?
-  hasOcpp      Boolean?
-  notes        String?
-  status       String   @default("open")
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@unique([userId, role])
-  @@index([role, status, createdAt])
+  @@index([firebaseUid])
 }
 
 model DriverProfile {
-  userId        String        @id @db.Uuid
+  userId        String  @id @db.Uuid
   vehicleMake   String
   vehicleModel  String
   vehicleYear   Int
   connectorType ConnectorType
   licensePlate  String?
-  createdAt     DateTime      @default(now())
-  updatedAt     DateTime      @updatedAt
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 /// PRD §7 hardware_setup lives in a JSON column with a typed Zod mirror in packages/schemas.
 model HostProfile {
-  userId                   String   @id @db.Uuid
-  legalName                String
-  dob                      DateTime
-  addressLine1             String
-  addressLine2             String?
-  city                     String
-  state                    String
-  postalCode               String
-  country                  String   @default("US")
-  stripeAccountId          String?
-  stripeOnboardingComplete Boolean  @default(false)
-  hardwareSetup            Json?
-  createdAt                DateTime @default(now())
-  updatedAt                DateTime @updatedAt
+  userId              String  @id @db.Uuid
+  legalName           String
+  dob                 DateTime
+  addressLine1        String
+  addressLine2        String?
+  city                String
+  state               String
+  postalCode          String
+  country             String   @default("US")
+  stripeAccountId     String?
+  stripeOnboardingComplete Boolean @default(false)
+  hardwareSetup       Json?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
@@ -239,51 +148,52 @@ model HostProfile {
 /// ------------------------------------------------------------------
 
 model Charger {
-  id                String                                @id @default(uuid()) @db.Uuid
-  hostId            String                                @db.Uuid
-  title             String
-  photoUrl          String?
-  addressLine1      String
-  city              String
-  state             String
-  postalCode        String
-  country           String                                @default("US")
-  lat               Float
-  lng               Float
+  id             String   @id @default(uuid()) @db.Uuid
+  hostId         String   @db.Uuid
+  title          String
+  photoUrl       String?
+  addressLine1   String
+  city           String
+  state          String
+  postalCode     String
+  country        String   @default("US")
+  lat            Float
+  lng            Float
   /// PostGIS geography(Point,4326). Maintained by trigger from lat/lng.
-  location          Unsupported("geography(Point,4326)")?
-  connectorType     ConnectorType
-  powerKw           Float
-  hardwareTier      HardwareTier
-  pricePerKwhCents  Int?
+  location       Unsupported("geography(Point,4326)")?
+  connectorType  ConnectorType
+  powerKw        Float
+  hardwareTier   HardwareTier
+  pricePerKwhCents Int?
   pricePerHourCents Int?
-  houseRules        String?
+  houseRules     String?
   /// Optional gate / building access code shared with drivers via chat
   /// when their booking is confirmed. Hosts who don't have one leave it null.
-  gateCode          String?
-  status            ChargerStatus                         @default(offline)
-  instantAvailable  Boolean                               @default(false)
-  published         Boolean                               @default(false)
+  gateCode       String?
+  status         ChargerStatus @default(offline)
+  instantAvailable Boolean @default(false)
+  published      Boolean @default(false)
   /// OCPP auth (Tier 3 only)
-  ocppChargePointId String?                               @unique
+  ocppChargePointId String? @unique
   /// bcrypt hash of the OCPP password — the CSMS verifies against this.
-  ocppAuthHash      String?
+  ocppAuthHash   String?
   /// The OCPP password, symmetrically encrypted (pgcrypto pgp_sym_encrypt, base64)
   /// so the host can re-view the SAME credentials without rotating them. Rotation
   /// happens only via an explicit regenerate action.
-  ocppSecretEnc     String?
+  ocppSecretEnc  String?
   /// Set when the physical OCPP charger is connected to the CSMS websocket,
   /// cleared on disconnect. Lets the API (a separate service from the in-memory
   /// CSMS registry) surface a live "charger connected" indicator to the host.
-  ocppConnectedAt   DateTime?
+  ocppConnectedAt DateTime?
   /// Weekly availability template: array of { dow: 0-6, start: "HH:MM", end: "HH:MM" }
-  availability      Json                                  @default("[]")
-  createdAt         DateTime                              @default(now())
-  updatedAt         DateTime                              @updatedAt
+  availability   Json     @default("[]")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
-  host        User              @relation("HostChargers", fields: [hostId], references: [id], onDelete: Cascade)
-  bookings    Booking[]
-  sessions    ChargingSession[]
+  host           User      @relation("HostChargers", fields: [hostId], references: [id], onDelete: Cascade)
+  bookings       Booking[]
+  sessions       ChargingSession[]
+  shellDevice    ShellDevice?
 
   @@index([hostId])
   @@index([status])
@@ -293,19 +203,16 @@ model Charger {
 /// locked to the vendor cloud). v1 is OCPP-only; we capture these as leads so
 /// we can notify them when broader hardware support ships.
 model ChargerWaitlist {
-  id           String   @id @default(uuid()) @db.Uuid
-  userId       String   @db.Uuid
-  email        String
-  chargerBrand String?
-  note         String?
-  status       String   @default("open")
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id            String   @id @default(uuid()) @db.Uuid
+  userId        String   @db.Uuid
+  email         String
+  chargerBrand  String?
+  note          String?
+  createdAt     DateTime @default(now())
 
-  user User @relation("UserChargerWaitlist", fields: [userId], references: [id], onDelete: Cascade)
+  user          User     @relation("UserChargerWaitlist", fields: [userId], references: [id], onDelete: Cascade)
 
-  @@unique([userId])
-  @@index([status, createdAt])
+  @@index([userId])
 }
 
 /// ------------------------------------------------------------------
@@ -313,54 +220,45 @@ model ChargerWaitlist {
 /// ------------------------------------------------------------------
 
 model Booking {
-  id                    String        @id @default(uuid()) @db.Uuid
-  chargerId             String        @db.Uuid
-  driverId              String        @db.Uuid
-  status                BookingStatus @default(pending)
-  startAt               DateTime
-  endAt                 DateTime
-  estimatedKwh          Float
-  estimatedCostCents    Int
-  platformFeeCents      Int
+  id              String   @id @default(uuid()) @db.Uuid
+  chargerId       String   @db.Uuid
+  driverId        String   @db.Uuid
+  status          BookingStatus @default(pending)
+  startAt         DateTime
+  endAt           DateTime
+  estimatedKwh    Float
+  estimatedCostCents Int
+  platformFeeCents   Int
   /// Demand-based $/kWh rate LOCKED at request/modify time (cents). Pricing is
   /// set automatically by demand + time of day, so the rate can change between
   /// bookings — we snapshot it here so the pre-auth and the final capture both
   /// use the exact rate the driver was quoted. Nullable for rows created before
   /// dynamic pricing; settlement falls back to the charger rate if null.
-  ratePerKwhCents       Int?
+  ratePerKwhCents Int?
   /// Driver's optional note attached at request time.
-  driverMessage         String?
+  driverMessage   String?
   /// Host's optional decline reason.
-  declineReason         String?
-  stripePaymentIntentId String?       @unique
-  stripeChargeId        String?
-  stripeReceiptUrl      String?
+  declineReason   String?
+  stripePaymentIntentId String? @unique
   preauthAmountCents    Int
   capturedAmountCents   Int?
-  /// Total refunded to the driver (cents), tracked from Stripe charge.refunded.
-  refundedAmountCents   Int?
-  /// Stripe dispute state when a charge is disputed / charged back:
-  /// 'open' | 'won' | 'lost' (null = no dispute). Drives host earnings display.
-  disputeStatus         String?
   /// Anti-theft: one-time idTag minted when the driver taps "Start charging".
   /// The CSMS only authorizes an OCPP Authorize/StartTransaction that presents
   /// this exact token within `ocppAuthorizedAt`'s window, so energy can never
   /// flow (or be billed) for a session the driver didn't explicitly start.
-  ocppStartToken        String?       @unique
+  ocppStartToken        String?  @unique
   ocppAuthorizedAt      DateTime?
-  createdAt             DateTime      @default(now())
-  updatedAt             DateTime      @updatedAt
-  respondedAt           DateTime?
-  autoDeclineAt         DateTime
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  respondedAt     DateTime?
+  autoDeclineAt   DateTime
 
-  charger        Charger          @relation(fields: [chargerId], references: [id], onDelete: Cascade)
-  driver         User             @relation("DriverBookings", fields: [driverId], references: [id], onDelete: Cascade)
-  session        ChargingSession?
-  chatThread     ChatThread?
-  reviews        Review[]
-  payouts        Payout[]
-  notifications  Notification[]
-  supportTickets SupportTicket[]
+  charger         Charger        @relation(fields: [chargerId], references: [id], onDelete: Cascade)
+  driver          User           @relation("DriverBookings", fields: [driverId], references: [id], onDelete: Cascade)
+  session         ChargingSession?
+  chatThread      ChatThread?
+  reviews         Review[]
+  payouts         Payout[]
 
   @@index([driverId, status])
   @@index([chargerId, status])
@@ -368,40 +266,38 @@ model Booking {
 }
 
 model ChargingSession {
-  id                String    @id @default(uuid()) @db.Uuid
-  bookingId         String    @unique @db.Uuid
-  chargerId         String    @db.Uuid
-  ocppTransactionId Int?      @unique
-  startedAt         DateTime  @default(now())
-  endedAt           DateTime?
-  meterStartWh      Int       @default(0)
-  meterStopWh       Int?
-  finalKwh          Float?
-  finalCostCents    Int?
-  errorCode         String?
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
+  id             String   @id @default(uuid()) @db.Uuid
+  bookingId      String   @unique @db.Uuid
+  chargerId      String   @db.Uuid
+  ocppTransactionId Int?  @unique
+  startedAt      DateTime @default(now())
+  endedAt        DateTime?
+  meterStartWh   Int      @default(0)
+  meterStopWh    Int?
+  finalKwh       Float?
+  finalCostCents Int?
+  errorCode      String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
-  booking        Booking         @relation(fields: [bookingId], references: [id], onDelete: Cascade)
-  charger        Charger         @relation(fields: [chargerId], references: [id], onDelete: Cascade)
+  booking        Booking   @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  charger        Charger   @relation(fields: [chargerId], references: [id], onDelete: Cascade)
   meterValues    MeterValue[]
-  notifications  Notification[]
-  supportTickets SupportTicket[]
 
   @@index([chargerId])
 }
 
 model MeterValue {
-  id        BigInt   @id @default(autoincrement())
-  sessionId String   @db.Uuid
-  ts        DateTime @default(now())
-  energyWh  Int
-  powerW    Int
-  voltageV  Float?
-  currentA  Float?
-  createdAt DateTime @default(now())
+  id             BigInt   @id @default(autoincrement())
+  sessionId      String   @db.Uuid
+  ts             DateTime @default(now())
+  energyWh       Int
+  powerW         Int
+  voltageV       Float?
+  currentA       Float?
+  createdAt      DateTime @default(now())
 
-  session ChargingSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  session        ChargingSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
 
   @@index([sessionId, ts])
 }
@@ -411,136 +307,67 @@ model MeterValue {
 /// ------------------------------------------------------------------
 
 model ChatThread {
-  id        String    @id @default(uuid()) @db.Uuid
-  bookingId String    @unique @db.Uuid
-  createdAt DateTime  @default(now())
-  closedAt  DateTime?
+  id             String   @id @default(uuid()) @db.Uuid
+  bookingId      String   @unique @db.Uuid
+  createdAt      DateTime @default(now())
+  closedAt       DateTime?
 
-  booking       Booking        @relation(fields: [bookingId], references: [id], onDelete: Cascade)
-  messages      ChatMessage[]
-  notifications Notification[]
+  booking        Booking       @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  messages       ChatMessage[]
 }
 
 model ChatMessage {
-  id        String      @id @default(uuid()) @db.Uuid
-  threadId  String      @db.Uuid
-  senderId  String?     @db.Uuid /// null = system
-  kind      MessageKind @default(text)
-  body      String
-  createdAt DateTime    @default(now())
-  readAt    DateTime?
+  id             String       @id @default(uuid()) @db.Uuid
+  threadId       String       @db.Uuid
+  senderId       String?      @db.Uuid /// null = system
+  kind           MessageKind  @default(text)
+  body           String
+  createdAt      DateTime     @default(now())
+  readAt         DateTime?
 
-  thread         ChatThread      @relation(fields: [threadId], references: [id], onDelete: Cascade)
-  sender         User?           @relation("SentMessages", fields: [senderId], references: [id], onDelete: SetNull)
-  contentReports ContentReport[]
+  thread         ChatThread   @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  sender         User?        @relation("SentMessages", fields: [senderId], references: [id])
 
   @@index([threadId, createdAt])
 }
 
 /// ------------------------------------------------------------------
-/// Reviews, moderation & payouts
+/// Reviews & payouts
 /// ------------------------------------------------------------------
 
 model Review {
-  id           String    @id @default(uuid()) @db.Uuid
-  bookingId    String    @db.Uuid
-  authorId     String    @db.Uuid
-  subjectId    String    @db.Uuid
-  stars        Int
-  text         String?
-  hiddenAt     DateTime?
-  hiddenReason String?
-  createdAt    DateTime  @default(now())
+  id             String   @id @default(uuid()) @db.Uuid
+  bookingId      String   @db.Uuid
+  authorId       String   @db.Uuid
+  subjectId      String   @db.Uuid
+  stars          Int
+  text           String?
+  createdAt      DateTime @default(now())
 
-  booking        Booking         @relation(fields: [bookingId], references: [id], onDelete: Cascade)
-  author         User            @relation("AuthorReviews", fields: [authorId], references: [id], onDelete: Cascade)
-  subject        User            @relation("SubjectReviews", fields: [subjectId], references: [id], onDelete: Cascade)
-  contentReports ContentReport[]
+  booking        Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  author         User     @relation("AuthorReviews", fields: [authorId], references: [id])
+  subject        User     @relation("SubjectReviews", fields: [subjectId], references: [id])
 
   @@unique([bookingId, authorId])
   @@index([subjectId])
 }
 
-model UserBlock {
-  blockerId String   @db.Uuid
-  blockedId String   @db.Uuid
-  createdAt DateTime @default(now())
-
-  blocker User @relation("UserBlocksCreated", fields: [blockerId], references: [id], onDelete: Cascade)
-  blocked User @relation("UserBlocksReceived", fields: [blockedId], references: [id], onDelete: Cascade)
-
-  @@id([blockerId, blockedId])
-  @@index([blockedId])
-}
-
-model ContentReport {
-  id           String   @id @default(uuid()) @db.Uuid
-  reporterId   String   @db.Uuid
-  targetUserId String?  @db.Uuid
-  messageId    String?  @db.Uuid
-  reviewId     String?  @db.Uuid
-  targetType   String
-  reason       String
-  details      String?
-  status       String   @default("open")
-  createdAt    DateTime @default(now())
-
-  reporter       User            @relation("ContentReportsFiled", fields: [reporterId], references: [id], onDelete: Cascade)
-  targetUser     User?           @relation("ContentReportsAgainst", fields: [targetUserId], references: [id], onDelete: SetNull)
-  message        ChatMessage?    @relation(fields: [messageId], references: [id], onDelete: SetNull)
-  review         Review?         @relation(fields: [reviewId], references: [id], onDelete: SetNull)
-  supportTickets SupportTicket[]
-
-  @@index([reporterId, createdAt])
-  @@index([targetUserId, createdAt])
-  @@index([status, createdAt])
-}
-
 model Payout {
-  id               String       @id @default(uuid()) @db.Uuid
-  hostId           String       @db.Uuid
+  id             String   @id @default(uuid()) @db.Uuid
+  hostId         String   @db.Uuid
   /// AUDIT H9: unique per booking — settle_session is idempotent via upsert.
-  bookingId        String       @unique @db.Uuid
-  grossCents       Int
+  bookingId      String   @unique @db.Uuid
+  grossCents     Int
   platformFeeCents Int
-  netCents         Int
+  netCents       Int
   stripeTransferId String?
-  status           PayoutStatus @default(pending)
-  /// Set when the underlying charge was refunded or a dispute was lost — Stripe
-  /// clawed the funds back, so this row must be excluded from host earnings.
-  reversedAt       DateTime?
-  createdAt        DateTime     @default(now())
+  status         PayoutStatus @default(pending)
+  createdAt      DateTime @default(now())
 
-  host           User            @relation(fields: [hostId], references: [id], onDelete: Cascade)
-  booking        Booking         @relation(fields: [bookingId], references: [id], onDelete: Cascade)
-  supportTickets SupportTicket[]
+  host           User     @relation(fields: [hostId], references: [id])
+  booking        Booking  @relation(fields: [bookingId], references: [id])
 
   @@index([hostId, status])
-}
-
-model SupportTicket {
-  id                    String   @id @default(uuid()) @db.Uuid
-  userId                String   @db.Uuid
-  bookingId             String?  @db.Uuid
-  sessionId             String?  @db.Uuid
-  payoutId              String?  @db.Uuid
-  contentReportId       String?  @db.Uuid
-  stripePaymentIntentId String?
-  subject               String
-  message               String
-  status                String   @default("open")
-  createdAt             DateTime @default(now())
-  updatedAt             DateTime @updatedAt
-
-  user          User             @relation(fields: [userId], references: [id], onDelete: Cascade)
-  booking       Booking?         @relation(fields: [bookingId], references: [id], onDelete: SetNull)
-  session       ChargingSession? @relation(fields: [sessionId], references: [id], onDelete: SetNull)
-  payout        Payout?          @relation(fields: [payoutId], references: [id], onDelete: SetNull)
-  contentReport ContentReport?   @relation(fields: [contentReportId], references: [id], onDelete: SetNull)
-
-  @@index([userId, createdAt])
-  @@index([bookingId])
-  @@index([status, createdAt])
 }
 
 /// ------------------------------------------------------------------
@@ -549,27 +376,24 @@ model SupportTicket {
 /// and the API exposes list / markRead / unreadCount.
 /// ------------------------------------------------------------------
 model Notification {
-  id            String           @id @default(uuid()) @db.Uuid
-  userId        String           @db.Uuid
-  kind          NotificationKind
+  id             String           @id @default(uuid()) @db.Uuid
+  userId         String           @db.Uuid
+  kind           NotificationKind
   /// Which interface the RECIPIENT was acting as for this notification
   /// ('driver' | 'host'). Set at write time so a tap deep-links to the correct
   /// side even for dual-role users (every host is also a driver).
-  recipientRole String?
-  title         String
-  body          String
+  recipientRole  String?
+  title          String
+  body           String
   /// Deep-link payload — the relevant id for this kind (one is set), so a tap
   /// can route to the booking / chat thread / session.
-  bookingId     String?          @db.Uuid
-  threadId      String?          @db.Uuid
-  sessionId     String?          @db.Uuid
-  readAt        DateTime?
-  createdAt     DateTime         @default(now())
+  bookingId      String?          @db.Uuid
+  threadId       String?          @db.Uuid
+  sessionId      String?          @db.Uuid
+  readAt         DateTime?
+  createdAt      DateTime         @default(now())
 
-  user    User             @relation(fields: [userId], references: [id], onDelete: Cascade)
-  booking Booking?         @relation(fields: [bookingId], references: [id], onDelete: SetNull)
-  thread  ChatThread?      @relation(fields: [threadId], references: [id], onDelete: SetNull)
-  session ChargingSession? @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+  user           User             @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, createdAt])
   @@index([userId, readAt])
@@ -602,10 +426,10 @@ enum VerificationStatus {
 }
 
 model IdentityVerification {
-  id                          String             @id @default(uuid()) @db.Uuid
-  userId                      String             @unique @db.Uuid
-  stripeVerificationSessionId String?            @unique
-  status                      VerificationStatus @default(unstarted)
+  id                          String              @id @default(uuid()) @db.Uuid
+  userId                      String              @unique @db.Uuid
+  stripeVerificationSessionId String?             @unique
+  status                      VerificationStatus  @default(unstarted)
   documentType                String?
   verifiedName                String?
   verifiedDob                 DateTime?
@@ -614,10 +438,45 @@ model IdentityVerification {
   documentExpiresOn           DateTime?
   verifiedAt                  DateTime?
   failureReason               String?
-  createdAt                   DateTime           @default(now())
-  updatedAt                   DateTime           @updatedAt
+  createdAt                   DateTime            @default(now())
+  updatedAt                   DateTime            @updatedAt
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user                        User                @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([status])
+}
+
+/// ------------------------------------------------------------------
+/// Hardware devices (Tier 1 smart plug + Tier 2 CT clamp bridge kit)
+/// ------------------------------------------------------------------
+
+enum DeviceStatus {
+  provisioned
+  active
+  offline
+  error
+}
+
+/// One ShellDevice row per physical Shelly device shipped to a host.
+/// Only Tier 1 and Tier 2 chargers have a linked device; Tier 3 uses OCPP.
+model ShellDevice {
+  id              String       @id @default(uuid()) @db.Uuid
+  chargerId       String       @unique @db.Uuid
+  shellyDeviceId  String       @unique
+  mac             String       @unique
+  mqttClientId    String
+  mqttTopicPrefix String
+  certFingerprint String?
+  firmwareVersion String?
+  hardwareModel   String
+  status          DeviceStatus @default(provisioned)
+  lastSeenAt      DateTime?
+  lastMeterKwh    Float        @default(0)
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  charger         Charger      @relation(fields: [chargerId], references: [id], onDelete: Cascade)
+
+  @@index([status])
+  @@index([shellyDeviceId])
 }

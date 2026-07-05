@@ -1,4 +1,3 @@
-/** @file apps/api/src/lib/auth.ts. */
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { supabase } from './supabase.js';
 import { logger } from '../logger.js';
@@ -15,16 +14,18 @@ export type VerifiedUser = {
 };
 
 // ---------------------------------------------------------------------------
-// Dev-token bypass (provider-independent). A `dev.<base64url-payload>.<hmac>`
-// token, HMAC'd with AUTH_DEV_SECRET. Enabled by ENABLE_DEV_BYPASS=1.
-// HARD-OFF in production.
+// Dev-token bypass (provider-independent; unchanged behavior).
+// A `dev.<base64url-payload>.<hmac>` token, HMAC'd with FIREBASE_AUTH_DEV_SECRET
+// (name kept for env compatibility). HARD-OFF in production.
 // ---------------------------------------------------------------------------
 function devTokenSecret(): string | null {
   if (process.env.NODE_ENV === 'production') return null;
-  if (process.env.ENABLE_DEV_BYPASS !== '1') return null;
-  const secret = process.env.AUTH_DEV_SECRET;
+  const enabled =
+    process.env.ENABLE_DEV_BYPASS === '1' || process.env.FIREBASE_AUTH_DEV_BYPASS === '1';
+  if (!enabled) return null;
+  const secret = process.env.FIREBASE_AUTH_DEV_SECRET;
   if (!secret || secret.length < 16) {
-    logger.warn('dev token bypass enabled but AUTH_DEV_SECRET is unset/too short — bypass disabled');
+    logger.warn('dev token bypass enabled but FIREBASE_AUTH_DEV_SECRET is unset/too short — bypass disabled');
     return null;
   }
   return secret;
@@ -64,8 +65,8 @@ function verifyDevToken(token: string): VerifiedUser | null {
 // We validate the token against Supabase Auth (getUser) rather than verifying a
 // JWT locally: it's correct regardless of the project's signing method (HS256
 // secret vs asymmetric keys), needs no extra secret, and reflects
-// bans/deletions immediately (a revoked user fails verification). A short
-// in-memory TTL cache keeps the per-request cost negligible.
+// bans/deletions (the equivalent of Firebase's checkRevoked). A short in-memory
+// TTL cache keeps the per-request cost negligible.
 // ---------------------------------------------------------------------------
 const CACHE_TTL_MS = 60_000;
 const tokenCache = new Map<string, { user: VerifiedUser; exp: number }>();

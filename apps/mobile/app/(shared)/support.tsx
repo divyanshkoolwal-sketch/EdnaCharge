@@ -1,7 +1,6 @@
-/** @file apps/mobile/app/(shared)/support.tsx. */
 import { useMemo, useState } from 'react';
-import { Alert, View, Pressable, Linking } from 'react-native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { View, Pressable, Linking } from 'react-native';
+import { useRouter } from 'expo-router';
 import {
   Screen,
   Card,
@@ -16,8 +15,6 @@ import {
 } from '../../src/components/ui';
 import { ChevronLeft, Search, ChevronRight, ChevronDown } from '../../src/components/icons/Icon';
 import { useTheme } from '../../src/theme/useTheme';
-import { trpc } from '../../src/lib/trpc';
-import { handleError } from '../../src/lib/errors';
 
 const SUPPORT_EMAIL = 'support@ednacharge.com';
 
@@ -57,29 +54,10 @@ const FAQS: Faq[] = [
 ];
 
 export default function Support() {
-  const params = useLocalSearchParams<{
-    bookingId?: string;
-    sessionId?: string;
-    payoutId?: string;
-    contentReportId?: string;
-  }>();
   const router = useRouter();
   const { c } = useTheme();
   const [query, setQuery] = useState('');
   const [openId, setOpenId] = useState<string | null>(null);
-  const [subject, setSubject] = useState(params.bookingId ? 'Help with my booking' : '');
-  const [message, setMessage] = useState('');
-  const createTicket = trpc.support.createTicket.useMutation({
-    onSuccess: () => {
-      setMessage('');
-      Alert.alert('Support ticket sent', 'We will follow up as soon as possible.');
-    },
-    onError: (e) =>
-      handleError(e, {
-        feature: 'Support',
-        title: "Couldn't send your ticket",
-      }),
-  });
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -99,46 +77,6 @@ export default function Support() {
         <ChevronLeft />
       </Pressable>
       <H1 style={{ marginTop: 14 }}>Help</H1>
-
-      <Card padding={14} style={{ marginTop: 14 }}>
-        <Body style={{ fontWeight: '700' }}>Contact support</Body>
-        <Muted style={{ fontSize: 12, marginTop: 4 }}>
-          We will attach the current booking or session automatically when available.
-        </Muted>
-        <Input
-          value={subject}
-          onChangeText={setSubject}
-          placeholder="Subject"
-          maxLength={120}
-          style={{ marginTop: 12 }}
-        />
-        <Input
-          value={message}
-          onChangeText={setMessage}
-          placeholder="What happened?"
-          multiline
-          maxLength={2000}
-          style={{ marginTop: 10, minHeight: 88, height: undefined, paddingTop: 14 }}
-        />
-        <Button
-          label={createTicket.isPending ? 'Sending...' : 'Send ticket'}
-          loading={createTicket.isPending}
-          disabled={
-            createTicket.isPending || subject.trim().length < 3 || message.trim().length < 10
-          }
-          onPress={() =>
-            createTicket.mutate({
-              subject: subject.trim(),
-              message: message.trim(),
-              bookingId: params.bookingId,
-              sessionId: params.sessionId,
-              payoutId: params.payoutId,
-              contentReportId: params.contentReportId,
-            })
-          }
-          style={{ marginTop: 12 }}
-        />
-      </Card>
 
       <Input
         value={query}
@@ -179,7 +117,11 @@ export default function Support() {
                 >
                   <Row between>
                     <Body style={{ flex: 1, fontSize: 13, fontWeight: '600' }}>{f.q}</Body>
-                    {open ? <ChevronDown color={c.muted2} /> : <ChevronRight color={c.muted2} />}
+                    {open ? (
+                      <ChevronDown color={c.muted2} />
+                    ) : (
+                      <ChevronRight color={c.muted2} />
+                    )}
                   </Row>
                   {open ? (
                     <Muted style={{ marginTop: 8, fontSize: 13, lineHeight: 20 }}>{f.a}</Muted>
@@ -193,11 +135,7 @@ export default function Support() {
 
       <Button
         label="Contact support"
-        onPress={() =>
-          Linking.openURL(`mailto:${SUPPORT_EMAIL}`).catch(() =>
-            Alert.alert('Contact support', `Email us at ${SUPPORT_EMAIL}.`),
-          )
-        }
+        onPress={() => Linking.openURL(`mailto:${SUPPORT_EMAIL}`)}
         style={{ marginTop: 18 }}
       />
       <Muted style={{ textAlign: 'center', marginTop: 10, fontSize: 12 }}>{SUPPORT_EMAIL}</Muted>

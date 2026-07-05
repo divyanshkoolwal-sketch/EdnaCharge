@@ -1,4 +1,3 @@
-/** @file apps/mobile/src/components/ui/Skeleton.tsx. */
 import { useEffect, useRef } from 'react';
 import { Animated, type ViewStyle, type DimensionValue } from 'react-native';
 import { useTheme } from '../../theme/useTheme';
@@ -23,7 +22,7 @@ function usePulse() {
   return v;
 }
 
-function Skeleton({
+export function Skeleton({
   width = '100%',
   height = 14,
   radius: r,
@@ -49,7 +48,7 @@ function Skeleton({
 }
 
 /** A card-shaped skeleton row, matching the list Card silhouette. */
-function SkeletonCard() {
+export function SkeletonCard() {
   const { c, radius } = useTheme();
   return (
     <Animated.View

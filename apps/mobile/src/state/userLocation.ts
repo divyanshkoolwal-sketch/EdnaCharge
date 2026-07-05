@@ -1,4 +1,3 @@
-/** @file apps/mobile/src/state/userLocation.ts. */
 // Tiny store so the charger detail screen can compute distance from the user
 // without re-asking for location permission. The driver map writes the user's
 // last known coords here on mount; downstream screens read.

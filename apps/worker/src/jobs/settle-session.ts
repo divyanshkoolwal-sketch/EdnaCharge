@@ -1,4 +1,4 @@
-/** @file apps/worker/src/jobs/settle-session.ts. */
+import type { Job } from 'bullmq';
 import Stripe from 'stripe';
 import { prisma } from '@edna/db';
 import { logger } from '../logger.js';
@@ -10,14 +10,8 @@ const stripe = process.env.STRIPE_SECRET_KEY
 const PLATFORM_FEE_BPS = 1500;
 const feeCents = (n: number) => Math.round((n * PLATFORM_FEE_BPS) / 10_000);
 
-function chargeFromIntent(pi: Stripe.PaymentIntent | null): Stripe.Charge | null {
-  const charge = pi?.latest_charge;
-  return charge && typeof charge !== 'string' ? charge : null;
-}
-
-async function retrievePaymentIntent(id: string): Promise<Stripe.PaymentIntent | null> {
-  if (!stripe || id.startsWith('pi_dev_')) return null;
-  return stripe.paymentIntents.retrieve(id, { expand: ['latest_charge'] });
+export async function settleSession(job: Job<{ sessionId: string }>) {
+  return settleSessionById(job.data.sessionId);
 }
 
 export async function settleSessionById(sessionId: string) {
@@ -27,6 +21,16 @@ export async function settleSessionById(sessionId: string) {
   });
   if (!session.endedAt) {
     throw new Error('Session not ended');
+  }
+
+  // AUDIT H9: short-circuit if already captured. Stripe returns an error on
+  // double-capture which would fail the job and BullMQ would retry forever.
+  if (session.booking.capturedAmountCents != null) {
+    logger.info(
+      { sessionId: session.id, bookingId: session.bookingId },
+      'settle_session: booking already captured; skipping',
+    );
+    return;
   }
 
   const charger = session.booking.charger;
@@ -54,19 +58,13 @@ export async function settleSessionById(sessionId: string) {
       : charger.pricePerHourCents != null
         ? Math.round(charger.pricePerHourCents * elapsedHours)
         : 0;
+  // AUDIT H6: fee and total must be computed on the same base that Stripe will
+  // actually capture. The PI was created with application_fee_amount =
+  // feeCents(totalCents); at capture time we compute the fee off the clamped
+  // amount_to_capture so Stripe accounting stays consistent.
   const rawTotal = energyCents + feeCents(energyCents);
   const amountToCapture = Math.min(rawTotal, session.booking.preauthAmountCents);
-  // Fee = 15% of min(energy, captured). Normal (un-clamped) capture → 15% of
-  // energy, and the host receives the full energy value.
-  //
-  // DELIBERATE PRODUCT DECISION (not a bug — reviewers keep re-raising it): when a
-  // session over-runs and the capture is clamped to the pre-auth, the shortfall is
-  // split 85/15 proportionally (fee = 15% of the clamped capture). The alternative
-  // is "host made whole first" (host takes the full clamp, platform fee → $0). See
-  // docs/todo.md — the "who eats the over-run shortfall?" decision is still open.
-  // Whichever is chosen, `fee` and the Payout must be computed on the SAME captured
-  // base so host earnings and the receipt agree.
-  const fee = feeCents(Math.min(energyCents, amountToCapture));
+  const fee = feeCents(amountToCapture);
 
   await prisma.chargingSession.update({
     where: { id: session.id },
@@ -84,54 +82,27 @@ export async function settleSessionById(sessionId: string) {
     process.env.NODE_ENV === 'production' &&
     session.booking.stripePaymentIntentId &&
     !isDevPi &&
+    amountToCapture > 0 &&
     !stripe
   ) {
-    throw new Error(
-      'STRIPE_SECRET_KEY not configured; refusing to settle a real booking without Stripe.',
-    );
+    throw new Error('STRIPE_SECRET_KEY not configured; refusing to settle a real booking without capture.');
   }
-  let pi: Stripe.PaymentIntent | null = null;
-  if (session.booking.capturedAmountCents != null) {
-    pi = session.booking.stripePaymentIntentId
-      ? await retrievePaymentIntent(session.booking.stripePaymentIntentId)
-      : null;
-  } else if (session.booking.stripePaymentIntentId && stripe && amountToCapture > 0 && !isDevPi) {
+  if (session.booking.stripePaymentIntentId && stripe && amountToCapture > 0 && !isDevPi) {
     // AUDIT H9: idempotency key so BullMQ retry after a partial failure doesn't
     // error with "already captured".
-    pi = await stripe.paymentIntents.capture(
+    await stripe.paymentIntents.capture(
       session.booking.stripePaymentIntentId,
       {
         amount_to_capture: amountToCapture,
         application_fee_amount: fee,
-        expand: ['latest_charge'],
       },
       { idempotencyKey: `capture:${session.bookingId}` },
     );
-  } else if (session.booking.stripePaymentIntentId && stripe && amountToCapture === 0 && !isDevPi) {
-    await stripe.paymentIntents.cancel(session.booking.stripePaymentIntentId, undefined, {
-      idempotencyKey: `cancel:${session.bookingId}:zero_capture`,
-    });
   }
-  const charge = chargeFromIntent(pi);
-  const recordedCapture = session.booking.capturedAmountCents ?? amountToCapture;
-  // Fee for the Payout, on the same base as the capture above but measured
-  // against what was ACTUALLY captured (the webhook-first path may have recorded
-  // a different amount than this run's amountToCapture).
-  const recordedFee = feeCents(Math.min(energyCents, recordedCapture));
-  const transferId = typeof charge?.transfer === 'string' ? charge.transfer : null;
 
   await prisma.booking.update({
     where: { id: session.bookingId },
-    data: {
-      status: 'completed',
-      capturedAmountCents: recordedCapture,
-      // Reconcile the fee to what was ACTUALLY taken (estimate-time fee stored at
-      // request can differ once metered kWh ≠ estimate). Host screens derive net
-      // as capturedAmountCents − platformFeeCents, so this keeps them correct.
-      platformFeeCents: recordedFee,
-      stripeChargeId: charge?.id ?? session.booking.stripeChargeId,
-      stripeReceiptUrl: charge?.receipt_url ?? session.booking.stripeReceiptUrl,
-    },
+    data: { status: 'completed', capturedAmountCents: amountToCapture },
   });
 
   // AUDIT H9: upsert keyed on bookingId (Payout.bookingId is @unique in the
@@ -141,22 +112,17 @@ export async function settleSessionById(sessionId: string) {
     create: {
       hostId: session.booking.charger.hostId,
       bookingId: session.bookingId,
-      grossCents: recordedCapture,
-      platformFeeCents: recordedFee,
-      netCents: recordedCapture - recordedFee,
-      stripeTransferId: transferId,
+      grossCents: amountToCapture,
+      platformFeeCents: fee,
+      netCents: amountToCapture - fee,
       status: 'pending',
     },
     update: {
-      grossCents: recordedCapture,
-      platformFeeCents: recordedFee,
-      netCents: recordedCapture - recordedFee,
-      stripeTransferId: transferId ?? undefined,
+      grossCents: amountToCapture,
+      platformFeeCents: fee,
+      netCents: amountToCapture - fee,
     },
   });
 
-  logger.info(
-    { sessionId: session.id, amountToCapture: recordedCapture, fee: recordedFee },
-    'session settled',
-  );
+  logger.info({ sessionId: session.id, amountToCapture, fee }, 'session settled');
 }

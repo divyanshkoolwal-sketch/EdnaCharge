@@ -4,7 +4,11 @@
  * January (always PST = UTC-8, no DST ambiguity) so the local hour is exact.
  */
 import { describe, it, expect } from 'vitest';
-import { demandTierAt, demandRateCents, DEMAND_RATE_CENTS } from '@edna/schemas';
+import {
+  demandTierAt,
+  demandRateCents,
+  DEMAND_RATE_CENTS,
+} from '../src/lib/demand-pricing.js';
 
 // Helper: a UTC instant that lands on `ptHour` Pacific Standard Time.
 // PST = UTC-8, so PT hour H → UTC hour (H + 8) mod 24 (with day rollover).
@@ -50,5 +54,6 @@ describe('demand pricing tiers', () => {
     expect(DEMAND_RATE_CENTS.off_peak).toBe(49);
     expect(DEMAND_RATE_CENTS.standard).toBe(68);
     expect(DEMAND_RATE_CENTS.peak).toBe(86);
+    expect(DEMAND_RATE_CENTS.super_peak).toBe(99);
   });
 });
