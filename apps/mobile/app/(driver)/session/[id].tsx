@@ -1,10 +1,10 @@
 // Live session — full-dark wow screen. Bypasses Screen+SafeAreaView wrapper so
 // the background extends edge-to-edge regardless of system theme.
-import { useEffect, useRef, useState } from 'react';
-import { View, Text, Pressable, ActivityIndicator } from 'react-native';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { View, Text, Pressable, ActivityIndicator, Alert, BackHandler } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { darkColors } from '../../../src/theme/tokens';
 import { trpc } from '../../../src/lib/trpc';
@@ -23,6 +23,7 @@ export default function LiveSession() {
   const latestRef = useRef<MeterSample | null>(null);
   const [stopping, setStopping] = useState(false);
   const [elapsed, setElapsed] = useState(0);
+  const navTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const c = darkColors;
   const utils = trpc.useUtils();
 
@@ -30,14 +31,18 @@ export default function LiveSession() {
   // host name. Without this we used to multiply by a hard-coded $0.28.
   const sessionInfo = trpc.booking.bySessionId.useQuery(
     { sessionId: id! },
-    { enabled: !!id },
+    {
+      enabled: !!id,
+      refetchInterval: (query) => (query.state.data?.endedAt ? false : 5000),
+    },
   );
 
   useEffect(() => {
     if (!id) return;
-    // Unique topic per mount so re-entering a session never re-attaches to an
-    // already-subscribed channel (same crash class as the map). See realtime.ts.
-    const sub = openRealtimeChannel(`session:${id}`);
+    // Broadcast delivery is topic-exact: the CSMS publishes meter values to the
+    // bare `session:<id>` topic, so we must subscribe to that exact topic (no
+    // per-mount suffix) or we receive nothing. See realtime.ts.
+    const sub = openRealtimeChannel(`session:${id}`, { exactTopic: true });
     if (!sub) return;
     sub.channel
       .on('broadcast', { event: 'meter_value' }, ({ payload }) => {
@@ -57,9 +62,29 @@ export default function LiveSession() {
   }, [id]);
 
   useEffect(() => {
-    const t = setInterval(() => setElapsed((e) => e + 1), 1000);
+    const startedAt = sessionInfo.data?.startedAt
+      ? new Date(sessionInfo.data.startedAt).getTime()
+      : Date.now();
+    const tick = () => setElapsed(Math.max(0, Math.floor((Date.now() - startedAt) / 1000)));
+    tick();
+    const t = setInterval(tick, 1000);
     return () => clearInterval(t);
-  }, []);
+  }, [sessionInfo.data?.startedAt]);
+
+  useEffect(
+    () => () => {
+      if (navTimeoutRef.current) clearTimeout(navTimeoutRef.current);
+    },
+    [],
+  );
+
+  // Host- or system-stopped sessions end without this device calling stopSession;
+  // the poll above surfaces `endedAt`, so navigate to the receipt when it lands.
+  useEffect(() => {
+    const bookingId = sessionInfo.data?.booking.id;
+    if (!bookingId || !sessionInfo.data?.endedAt) return;
+    router.replace({ pathname: '/(driver)/receipt/[id]', params: { id: bookingId } });
+  }, [router, sessionInfo.data?.booking.id, sessionInfo.data?.endedAt]);
 
   const stop = trpc.booking.stopSession.useMutation({
     onSuccess: () => {
@@ -69,7 +94,7 @@ export default function LiveSession() {
       // with the booking id, not the session id, or booking.get misses and the
       // receipt renders blank.
       const bookingId = sessionInfo.data?.booking.id;
-      setTimeout(
+      navTimeoutRef.current = setTimeout(
         () =>
           bookingId
             ? router.replace({ pathname: '/(driver)/receipt/[id]', params: { id: bookingId } })
@@ -83,7 +108,37 @@ export default function LiveSession() {
     },
   });
 
-  const kwh = latest ? latest.energyWh / 1000 : 0;
+  const requestStop = useCallback(() => {
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+    setStopping(true);
+    stop.mutate({ sessionId: id! });
+  }, [id, stop]);
+
+  // Android hardware/gesture back must not silently abandon a live session.
+  useFocusEffect(
+    useCallback(() => {
+      const onBack = () => {
+        if (stopping) return true;
+        Alert.alert(
+          'Charging in progress',
+          'This session is still running. Leaving will not stop it.',
+          [
+            { text: 'Keep charging', style: 'cancel' },
+            { text: 'Leave it running', onPress: () => router.back() },
+            { text: 'Stop now', style: 'destructive', onPress: requestStop },
+          ],
+        );
+        return true;
+      };
+      const sub = BackHandler.addEventListener('hardwareBackPress', onBack);
+      return () => sub.remove();
+    }, [stopping, requestStop, router]),
+  );
+
+  // Subtract the charger's lifetime meter reading at session start so we show
+  // only THIS session's energy, not the meter's running total.
+  const meterStartWh = sessionInfo.data?.meterStartWh ?? 0;
+  const kwh = latest ? Math.max(0, latest.energyWh - meterStartWh) / 1000 : 0;
   const kw = latest ? latest.powerW / 1000 : 0;
   // Real running cost at the demand rate LOCKED on this booking (falls back to
   // the charger's stored rate for legacy bookings).
@@ -91,6 +146,43 @@ export default function LiveSession() {
   const rateCents = sessionInfo.data?.booking.ratePerKwhCents ?? charger?.pricePerKwhCents ?? 0;
   const cost = (kwh * rateCents) / 100;
   const title = charger?.title ?? '';
+
+  if (sessionInfo.isError) {
+    return (
+      <View style={{ flex: 1, backgroundColor: c.bg }}>
+        <StatusBar style="light" />
+        <SafeAreaView style={{ flex: 1, paddingHorizontal: 24, paddingBottom: 32 }}>
+          <Pressable onPress={() => router.back()} style={{ paddingTop: 8 }}>
+            <Close size={22} color={c.ink} />
+          </Pressable>
+          <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+            <Text style={{ color: c.ink, fontSize: 18, fontWeight: '700', textAlign: 'center' }}>
+              Session unavailable
+            </Text>
+            <Text style={{ color: c.muted, marginTop: 8, fontSize: 13, textAlign: 'center' }}>
+              We couldn't load this charging session. Check your connection and try again.
+            </Text>
+            <Pressable
+              onPress={() => sessionInfo.refetch()}
+              disabled={sessionInfo.isFetching}
+              style={{
+                marginTop: 20,
+                paddingVertical: 12,
+                paddingHorizontal: 28,
+                borderRadius: 12,
+                backgroundColor: c.ink,
+                opacity: sessionInfo.isFetching ? 0.6 : 1,
+              }}
+            >
+              <Text style={{ color: c.bg, fontWeight: '700', fontSize: 15 }}>
+                {sessionInfo.isFetching ? 'Retrying…' : 'Try again'}
+              </Text>
+            </Pressable>
+          </View>
+        </SafeAreaView>
+      </View>
+    );
+  }
 
   return (
     <View style={{ flex: 1, backgroundColor: c.bg }}>
@@ -163,11 +255,7 @@ export default function LiveSession() {
         </View>
 
         <Pressable
-          onPress={() => {
-            void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-            setStopping(true);
-            stop.mutate({ sessionId: id! });
-          }}
+          onPress={requestStop}
           disabled={stopping}
           style={({ pressed }) => ({
             backgroundColor: stopping ? '#7A2A22' : c.red,

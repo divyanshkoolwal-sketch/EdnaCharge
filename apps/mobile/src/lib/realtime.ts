@@ -31,15 +31,42 @@ export type RealtimeSubscription = {
 };
 
 /**
- * Open a realtime channel whose topic is unique to this call.
+ * Open a realtime channel.
+ *
+ * By default the topic is made unique per call (remount-safety, see above) —
+ * correct for `postgres_changes` subscriptions, which are filter-scoped so the
+ * topic string is irrelevant.
+ *
+ * For `broadcast`, delivery is TOPIC-EXACT: the receiver's topic must equal the
+ * sender's. Pass `{ exactTopic: true }` so the topic matches the sender (e.g. the
+ * CSMS publishes meter values to `session:<id>` — a `#seq` suffix would silently
+ * drop every message). To stay remount-safe with a fixed topic we first remove
+ * any lingering channel on that topic, so callers never re-attach `.on()` to an
+ * already-subscribed channel.
+ *
  * Returns `null` when Supabase isn't configured (callers no-op).
  */
-export function openRealtimeChannel(baseTopic: string): RealtimeSubscription | null {
+export function openRealtimeChannel(
+  baseTopic: string,
+  opts?: { exactTopic?: boolean },
+): RealtimeSubscription | null {
   const client = supabase;
   if (!client) return null;
 
-  channelSeq += 1;
-  const channel = client.channel(`${baseTopic}#${channelSeq}`);
+  let topic: string;
+  if (opts?.exactTopic) {
+    topic = baseTopic;
+    // Drop any stale channel from a previous mount on this exact topic.
+    for (const existing of client.getChannels()) {
+      if (existing.topic === `realtime:${topic}` || existing.topic === topic) {
+        void client.removeChannel(existing);
+      }
+    }
+  } else {
+    channelSeq += 1;
+    topic = `${baseTopic}#${channelSeq}`;
+  }
+  const channel = client.channel(topic);
 
   let removed = false;
   return {
