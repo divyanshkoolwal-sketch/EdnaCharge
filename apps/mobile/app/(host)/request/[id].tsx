@@ -1,3 +1,4 @@
+/** @file apps/mobile/app/(host)/request/[id].tsx. */
 import { View, Pressable, Alert } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { handleError } from '../../../src/lib/errors';
@@ -22,10 +23,16 @@ import { ChevronLeft, Star } from '../../../src/components/icons/Icon';
 import { trpc } from '../../../src/lib/trpc';
 import { useTheme } from '../../../src/theme/useTheme';
 import { haptics } from '../../../src/lib/haptics';
+import { track } from '../../../src/lib/analytics';
 
 // Real decline reasons → the host isn't railroaded into a single hardcoded
 // "not available", and the driver gets a useful signal.
-const DECLINE_REASONS = ['Not available then', 'Charger needs maintenance', 'Already booked', 'Other'];
+const DECLINE_REASONS = [
+  'Not available then',
+  'Charger needs maintenance',
+  'Already booked',
+  'Other',
+];
 
 export default function HostRequestReview() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -39,10 +46,15 @@ export default function HostRequestReview() {
       utils.booking.list.invalidate();
       utils.booking.get.invalidate({ id: id! });
       utils.chat.getThread.invalidate();
+      track('booking_responded', { bookingId: vars.bookingId, decision: vars.decision });
       toast.show(vars.decision === 'accept' ? 'Booking accepted' : 'Request declined', 'success');
       router.back();
     },
-    onError: (e) => handleError(e, { feature: 'Booking' }),
+    onError: (e) => {
+      utils.booking.list.invalidate();
+      utils.booking.get.invalidate({ id: id! });
+      handleError(e, { feature: 'Booking' });
+    },
   });
 
   const confirmDecline = (bookingId: string) => {
@@ -74,6 +86,13 @@ export default function HostRequestReview() {
     );
   }
   const b = q.data;
+  const canRespond = b.status === 'pending';
+  // The host earns the full energy value: estimatedCostCents is energy-only and
+  // the 15% platform fee is a surcharge ADDED to the driver's bill (pricing.ts),
+  // not deducted from the host. Settlement pays the host = energy, so the "Your
+  // earnings" estimate must equal estimatedCostCents (subtracting the fee here
+  // under-stated it by 15%).
+  const estimatedNetCents = b.estimatedCostCents;
 
   return (
     <Screen scroll contentStyle={{ paddingBottom: 160 }}>
@@ -94,9 +113,7 @@ export default function HostRequestReview() {
 
       <View style={{ marginTop: 18, alignItems: 'center' }}>
         <Label>BOOKING WINDOW</Label>
-        <H1 style={{ marginTop: 4, fontSize: 24 }}>
-          {new Date(b.startAt).toLocaleString()}
-        </H1>
+        <H1 style={{ marginTop: 4, fontSize: 24 }}>{new Date(b.startAt).toLocaleString()}</H1>
       </View>
 
       <Card padding={14} style={{ marginTop: 14 }}>
@@ -107,7 +124,7 @@ export default function HostRequestReview() {
         <Row between>
           <Muted>Your earnings</Muted>
           <Body style={{ fontWeight: '700', fontSize: 18 }}>
-            ${((b.estimatedCostCents - b.platformFeeCents) / 100).toFixed(2)}
+            ${(estimatedNetCents / 100).toFixed(2)}
           </Body>
         </Row>
       </Card>
@@ -116,9 +133,7 @@ export default function HostRequestReview() {
         <>
           <SectionHeader>Their message</SectionHeader>
           <FrameSoft>
-            <Body style={{ fontStyle: 'italic', color: c.muted }}>
-              "{b.driverMessage}"
-            </Body>
+            <Body style={{ fontStyle: 'italic', color: c.muted }}>"{b.driverMessage}"</Body>
           </FrameSoft>
         </>
       ) : null}
@@ -136,24 +151,26 @@ export default function HostRequestReview() {
         />
       ) : null}
 
-      <CTABar>
-        <Button
-          label="Accept"
-          loading={respond.isPending}
-          onPress={() => {
-            haptics.medium();
-            respond.mutate({ bookingId: b.id, decision: 'accept' });
-          }}
-        />
-        <Button
-          label="Decline"
-          variant="destructive-outline"
-          height={44}
-          fontSize={14}
-          disabled={respond.isPending}
-          onPress={() => confirmDecline(b.id)}
-        />
-      </CTABar>
+      {canRespond ? (
+        <CTABar>
+          <Button
+            label="Accept"
+            loading={respond.isPending}
+            onPress={() => {
+              haptics.medium();
+              respond.mutate({ bookingId: b.id, decision: 'accept' });
+            }}
+          />
+          <Button
+            label="Decline"
+            variant="destructive-outline"
+            height={44}
+            fontSize={14}
+            disabled={respond.isPending}
+            onPress={() => confirmDecline(b.id)}
+          />
+        </CTABar>
+      ) : null}
     </Screen>
   );
 }

@@ -1,10 +1,12 @@
+/** @file apps/api/src/lib/supabase.ts. */
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { logger } from '../logger.js';
 
 let _client: SupabaseClient | null = null;
 
 // Service-role Supabase client (bypasses RLS). Used for Storage uploads
-// (avatars). Returns null if not configured so callers can degrade gracefully.
+// (avatars) and auth-admin operations (e.g. deleting a user's login on account
+// deletion). Returns null if not configured so callers can degrade gracefully.
 export function supabase(): SupabaseClient | null {
   if (_client) return _client;
   const url = process.env.SUPABASE_URL;

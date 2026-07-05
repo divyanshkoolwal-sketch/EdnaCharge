@@ -1,5 +1,6 @@
+/** @file apps/mobile/app/(driver)/bookings.tsx. */
 import { View, Pressable } from 'react-native';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'expo-router';
 import {
   Screen,
@@ -39,13 +40,25 @@ export default function Bookings() {
 
   const all = q.data?.pages.flatMap((p) => p.rows) ?? [];
   const now = Date.now();
-  const filtered = all.filter((b: { startAt: string; status: string }) => {
+  const filtered = all.filter((b: { startAt: string; endAt: string; status: string }) => {
     if (filter === 'all') return true;
     const start = new Date(b.startAt).getTime();
+    const end = new Date(b.endAt).getTime();
     const finished = ['completed', 'cancelled', 'declined', 'no_show'].includes(b.status);
-    if (filter === 'upcoming') return !finished && start >= now - 60 * 60 * 1000;
-    return finished || start < now - 60 * 60 * 1000;
+    const currentOrFuture = b.status === 'active' || end >= now;
+    if (filter === 'upcoming') return !finished && currentOrFuture;
+    return finished || (!currentOrFuture && start < now);
   });
+
+  // The Upcoming/Past filters run client-side over paginated data, so a page of
+  // all-past rows leaves the Upcoming list too short to trigger onEndReached and
+  // pagination stalls. Keep pulling pages until there's a screenful of matches
+  // (or no more pages).
+  useEffect(() => {
+    if (filter !== 'all' && q.hasNextPage && !q.isFetchingNextPage && filtered.length < 8) {
+      void q.fetchNextPage();
+    }
+  }, [filter, filtered.length, q.hasNextPage, q.isFetchingNextPage, q]);
 
   return (
     <Screen flush>

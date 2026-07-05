@@ -1,3 +1,4 @@
+/** @file apps/mobile/src/components/ui/Card.tsx. */
 import { View, type ViewProps } from 'react-native';
 import { useTheme } from '../../theme/useTheme';
 

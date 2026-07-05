@@ -1,28 +1,77 @@
-node_modules
-dist
-.turbo
-.next
-.expo
-.expo-shared
-ios/Pods
-android/.gradle
-.DS_Store
+# Dependencies
+node_modules/
+apps/*/node_modules/
+packages/*/node_modules/
+tools/*/node_modules/
+
+# Build/cache output
+dist/
+build/
+out/
+.turbo/
+.next/
+.expo/
+.expo-shared/
+coverage/
+*.tsbuildinfo
+.cache/
+
+# Logs and OS/editor noise
 *.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+
+# Local env and credentials
 .env
 .env.*
 !.env.example
-coverage
-*.tsbuildinfo
-supabase/.temp
-supabase/.branches
-dump.rdb
+CREDENTIALS.txt
+credentials/
+*.pem
+*.key
+*.crt
+*.cer
+*.p12
+*.p8
+AuthKey_*.p8
+*.mobileprovision
+*.keystore
+*.jks
 
-# Native projects are NOT committed — EAS (and local `expo prebuild`) regenerate
-# them from app config + config plugins. Keeping them out of git is what prevents
-# the SDK-version drift that made the old committed ios/ folder go stale.
+# Mobile native/generated projects and build credentials
+.eas/
 apps/mobile/ios/
 apps/mobile/android/
-
-# App Store Connect API key (.p8 private key) — never commit
 apps/mobile/credentials/
-*.p8
+apps/mobile/google-play-service-account.json
+apps/mobile/expo-env.d.ts
+apps/mobile/*.mobileprovision
+apps/mobile/*.provisionprofile
+*.ipa
+*.apk
+*.aab
+*.xcarchive/
+
+# Local agent/tooling scratch
+.context/
+.claude/
+.codex/
+.playwright-mcp/
+
+# Supabase/local infra state
+supabase/.temp/
+supabase/.branches/
+dump.rdb
+
+# Test artifacts
+playwright-report/
+test-results/
+maestro-results/

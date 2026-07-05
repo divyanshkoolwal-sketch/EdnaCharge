@@ -1,7 +1,8 @@
+/** @file apps/mobile/src/components/ui/Chip.tsx. */
 import { Pressable, Text, View, type PressableProps } from 'react-native';
 import { useTheme } from '../../theme/useTheme';
 
-export type ChipVariant = 'default' | 'green' | 'orange' | 'red' | 'dark' | 'outline';
+type ChipVariant = 'default' | 'green' | 'orange' | 'red' | 'dark' | 'outline';
 
 type Props = Omit<PressableProps, 'children'> & {
   label: string;

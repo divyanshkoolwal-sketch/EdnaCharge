@@ -1,5 +1,6 @@
+/** @file apps/mobile/app/(driver)/receipt/[id].tsx. */
 import { useEffect, useState } from 'react';
-import { View, Pressable, ActivityIndicator } from 'react-native';
+import { View, Pressable, ActivityIndicator, Linking } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { handleError } from '../../../src/lib/errors';
 import {
@@ -28,7 +29,19 @@ export default function Receipt() {
   const { c } = useTheme();
   const utils = trpc.useUtils();
   const toast = useToast();
-  const q = trpc.booking.get.useQuery({ id: id! }, { enabled: !!id, refetchInterval: 3000 });
+  // Settle-session can take a few seconds (BullMQ + Stripe); after 30s of
+  // 'Settling…' we surface a real error instead of pretending it's still
+  // processing. Counter starts when the receipt screen mounts.
+  const [settleStartedAt] = useState(() => Date.now());
+  const [settleTimedOut, setSettleTimedOut] = useState(false);
+  const q = trpc.booking.get.useQuery(
+    { id: id! },
+    {
+      enabled: !!id,
+      refetchInterval: (query) =>
+        query.state.data?.capturedAmountCents == null && !settleTimedOut ? 3000 : false,
+    },
+  );
   // Already-reviewed guard: if the driver rated this booking, show the submitted
   // state instead of letting a second submit hit a CONFLICT.
   const mine = trpc.review.mine.useQuery({ bookingId: id! }, { enabled: !!id });
@@ -36,6 +49,8 @@ export default function Receipt() {
     onSuccess: () => {
       utils.booking.list.invalidate();
       utils.charger.get.invalidate();
+      utils.review.mine.invalidate({ bookingId: id! });
+      utils.review.summary.invalidate();
       toast.show('Thanks for your review', 'success');
       router.replace('/(driver)/bookings');
     },
@@ -44,11 +59,6 @@ export default function Receipt() {
   const [stars, setStars] = useState(5);
   const [text, setText] = useState('');
 
-  // Settle-session can take a few seconds (BullMQ + Stripe); after 30s of
-  // 'Settling…' we surface a real error instead of pretending it's still
-  // processing. Counter starts when the receipt screen mounts.
-  const [settleStartedAt] = useState(() => Date.now());
-  const [settleTimedOut, setSettleTimedOut] = useState(false);
   useEffect(() => {
     if (q.data?.capturedAmountCents != null) return; // already settled
     const t = setTimeout(() => setSettleTimedOut(true), 30_000 - (Date.now() - settleStartedAt));
@@ -65,7 +75,11 @@ export default function Receipt() {
   if (q.isError || !q.data) {
     return (
       <Screen>
-        <Pressable onPress={() => router.replace('/(driver)/bookings')} style={{ paddingTop: 8 }} hitSlop={10}>
+        <Pressable
+          onPress={() => router.replace('/(driver)/bookings')}
+          style={{ paddingTop: 8 }}
+          hitSlop={10}
+        >
           <Close />
         </Pressable>
         <ErrorState onRetry={() => q.refetch()} />
@@ -75,8 +89,15 @@ export default function Receipt() {
   const b = q.data;
   const captured = b.capturedAmountCents ?? null;
   const kwh = b.session?.finalKwh ?? 0;
-  const energy = b.session?.finalCostCents ?? 0;
-  const fee = b.platformFeeCents;
+  const rawEnergy = b.session?.finalCostCents ?? 0;
+  // Mirror worker settlement (settle-session.ts): platform fee = 15% of the
+  // energy actually paid for, capped at the captured amount on an over-run.
+  // energy shown = captured − fee. Deriving fee as (captured − energy) instead
+  // wrongly collapsed the fee to $0 and showed the whole capture as "Energy" on
+  // a clamped over-run session.
+  const fee =
+    captured != null ? Math.round(Math.min(rawEnergy, captured) * 0.15) : b.platformFeeCents;
+  const energy = captured != null ? captured - fee : rawEnergy;
   const settling = captured == null && !settleTimedOut;
   const settleFailed = captured == null && settleTimedOut;
 
@@ -92,9 +113,7 @@ export default function Receipt() {
 
       <View style={{ alignItems: 'center', marginTop: 18 }}>
         <Body style={{ fontWeight: '600', fontSize: 14 }}>Session complete</Body>
-        <H1Lg style={{ marginTop: 8, fontSize: 56, letterSpacing: -1 }}>
-          {kwh.toFixed(2)}
-        </H1Lg>
+        <H1Lg style={{ marginTop: 8, fontSize: 56, letterSpacing: -1 }}>{kwh.toFixed(2)}</H1Lg>
         <Muted style={{ fontSize: 14, marginTop: 4 }}>kWh</Muted>
       </View>
 
@@ -102,6 +121,12 @@ export default function Receipt() {
         <Row between style={{ marginBottom: 8 }}>
           <Muted>Energy</Muted>
           <Body>${(energy / 100).toFixed(2)}</Body>
+        </Row>
+        <Row between style={{ marginBottom: 8 }}>
+          <Muted>Rate</Muted>
+          <Body>
+            {b.ratePerKwhCents != null ? `$${(b.ratePerKwhCents / 100).toFixed(2)}/kWh` : 'Legacy'}
+          </Body>
         </Row>
         <Row between style={{ marginBottom: 8 }}>
           <Muted>Platform fee (15%)</Muted>
@@ -118,18 +143,47 @@ export default function Receipt() {
                 : 'Settling…'}
           </Body>
         </Row>
+        {(b.refundedAmountCents ?? 0) > 0 ? (
+          <Row between style={{ marginTop: 8 }}>
+            <Muted style={{ color: c.green2 }}>Refunded</Muted>
+            <Body style={{ color: c.green2, fontWeight: '600' }}>
+              −${((b.refundedAmountCents ?? 0) / 100).toFixed(2)}
+            </Body>
+          </Row>
+        ) : null}
         {settleFailed ? (
           <Muted style={{ fontSize: 11, marginTop: 8, color: c.red }}>
             We couldn't finalize the charge yet. Don't worry — we'll keep retrying in the background
-            and email you a receipt once it settles. Contact support if you don't see one within 24 hours.
+            and email you a receipt once it settles. Contact support if you don't see one within 24
+            hours.
           </Muted>
         ) : (
           <Muted style={{ fontSize: 11, marginTop: 8 }}>
-            Pre-auth of ${(b.preauthAmountCents / 100).toFixed(2)} was released; we only captured what
-            you used.
+            {captured != null
+              ? `Pre-auth of $${(b.preauthAmountCents / 100).toFixed(2)} was released; we only captured what you used.`
+              : 'Finalizing the charge. Your pre-auth will be released once settlement completes.'}
           </Muted>
         )}
       </Card>
+
+      {b.stripeReceiptUrl ? (
+        <Button
+          label="Open Stripe receipt"
+          variant="secondary"
+          height={44}
+          fontSize={13}
+          onPress={() => Linking.openURL(b.stripeReceiptUrl!)}
+          style={{ marginTop: 12 }}
+        />
+      ) : null}
+      <Button
+        label="Contact support"
+        variant="secondary"
+        height={44}
+        fontSize={13}
+        onPress={() => router.push({ pathname: '/(shared)/support', params: { bookingId: b.id } })}
+        style={{ marginTop: 8 }}
+      />
 
       <SectionHeader>Rate your host</SectionHeader>
       {mine.data ? (
@@ -166,6 +220,7 @@ export default function Receipt() {
               value={text}
               onChangeText={setText}
               multiline
+              maxLength={500}
               placeholder="Add a comment (optional)"
               style={{ minHeight: 60, height: undefined, paddingTop: 14, paddingBottom: 14 }}
             />
@@ -179,18 +234,12 @@ export default function Receipt() {
         ) : (
           <>
             <Button
-              label={
-                settling
-                  ? 'Waiting for settlement…'
-                  : review.isPending
-                    ? 'Submitting…'
-                    : 'Submit review'
+              label={review.isPending ? 'Submitting…' : 'Submit review'}
+              onPress={() =>
+                review.mutate({ bookingId: b.id, stars, text: text.trim() || undefined })
               }
-              onPress={() => review.mutate({ bookingId: b.id, stars, text: text || undefined })}
               loading={review.isPending}
-              // Allow the review even after a settle timeout — the booking row
-              // can still receive a star rating; we just couldn't capture yet.
-              disabled={review.isPending || settling}
+              disabled={review.isPending}
             />
             <Button
               label="Done"

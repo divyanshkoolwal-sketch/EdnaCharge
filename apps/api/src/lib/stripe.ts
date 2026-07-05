@@ -1,3 +1,4 @@
+/** @file apps/api/src/lib/stripe.ts. */
 import Stripe from 'stripe';
 import { TRPCError } from '@trpc/server';
 import { logger } from '../logger.js';
@@ -25,7 +26,7 @@ export function stripe(): Stripe {
   return _stripe;
 }
 
-export function isStripeConfigured(): boolean {
+function isStripeConfigured(): boolean {
   return isUsable(process.env.STRIPE_SECRET_KEY);
 }
 
@@ -42,7 +43,7 @@ export function devBypassStripe(): boolean {
   return !isStripeConfigured();
 }
 
-export const PLATFORM_FEE_BPS = 1500; // 15% per PRD §1
+const PLATFORM_FEE_BPS = 1500; // 15% per PRD §1
 
 export function platformFeeCents(amountCents: number): number {
   return Math.round((amountCents * PLATFORM_FEE_BPS) / 10_000);

@@ -1,3 +1,4 @@
+/** @file apps/csms/src/lib/supabase.ts. */
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { logger } from '../logger.js';
 

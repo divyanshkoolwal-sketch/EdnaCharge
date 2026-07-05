@@ -1,12 +1,15 @@
 /**
- * RLS-under-JWT test. Verifies that when a user's JWT is the connection
- * credential (the postgrest/Supabase path used by mobile Realtime), a
- * non-party user sees ZERO rows for bookings / chat / sessions they don't
- * participate in.
+ * RLS-under-JWT test. Verifies that WHEN a per-user Supabase JWT is the
+ * connection credential, a non-party user sees ZERO rows for bookings / chat /
+ * sessions they don't participate in.
  *
- * We talk to Supabase's REST (PostgREST) endpoint directly via fetch — that
- * keeps @edna/db free of the supabase-js dependency while exercising the
- * exact RLS path the mobile app uses.
+ * IMPORTANT: this is a DEFENSIVE check, not the app's live data path. The mobile
+ * client's direct Supabase use is limited to Realtime (Charger postgres_changes +
+ * meter broadcasts); all user data reads go through the tRPC API (service role).
+ * This test proves RLS holds up IF the per-user JWT path is ever used for data.
+ *
+ * We talk to Supabase's REST (PostgREST) endpoint directly via fetch to keep
+ * @edna/db free of the supabase-js dependency.
  */
 import { describe, it, expect, beforeAll } from 'vitest';
 import { prisma } from '../../src/index.js';
@@ -60,6 +63,41 @@ async function restSelect(table: string, token: string, query = ''): Promise<unk
   return (await res.json()) as unknown[];
 }
 
+async function restPatch(
+  table: string,
+  token: string,
+  query: string,
+  body: Record<string, unknown>,
+): Promise<Response> {
+  return fetch(`${SUPABASE_URL}/rest/v1/${table}?${query}`, {
+    method: 'PATCH',
+    headers: {
+      apikey: SUPABASE_ANON_KEY,
+      authorization: `Bearer ${token}`,
+      'content-type': 'application/json',
+      prefer: 'return=representation',
+    },
+    body: JSON.stringify(body),
+  });
+}
+
+async function restPost(
+  table: string,
+  token: string,
+  body: Record<string, unknown>,
+): Promise<Response> {
+  return fetch(`${SUPABASE_URL}/rest/v1/${table}`, {
+    method: 'POST',
+    headers: {
+      apikey: SUPABASE_ANON_KEY,
+      authorization: `Bearer ${token}`,
+      'content-type': 'application/json',
+      prefer: 'return=representation',
+    },
+    body: JSON.stringify(body),
+  });
+}
+
 d('RLS under user JWT', () => {
   const ts = Date.now();
   const driverEmail = `rls-drv-${ts}@test.local`;
@@ -69,13 +107,15 @@ d('RLS under user JWT', () => {
   let driverToken = '';
   let hostToken = '';
   let outsiderToken = '';
+  let driverId = '';
+  let hostId = '';
   let bookingId = '';
   let threadId = '';
   let sessionId = '';
 
   beforeAll(async () => {
-    const driverId = await createUser(driverEmail, pass);
-    const hostId = await createUser(hostEmail, pass);
+    driverId = await createUser(driverEmail, pass);
+    hostId = await createUser(hostEmail, pass);
     await createUser(outsiderEmail, pass);
     driverToken = await signIn(driverEmail, pass);
     hostToken = await signIn(hostEmail, pass);
@@ -147,7 +187,11 @@ d('RLS under user JWT', () => {
   });
 
   it('outsider sees zero chat messages', async () => {
-    const rows = (await restSelect('ChatMessage', outsiderToken, `&threadId=eq.${threadId}`)) as unknown[];
+    const rows = (await restSelect(
+      'ChatMessage',
+      outsiderToken,
+      `&threadId=eq.${threadId}`,
+    )) as unknown[];
     expect(rows.length).toBe(0);
   });
 
@@ -158,5 +202,32 @@ d('RLS under user JWT', () => {
       `&id=eq.${sessionId}`,
     )) as unknown[];
     expect(rows.length).toBe(0);
+  });
+
+  it('driver cannot patch server-managed booking fields through PostgREST', async () => {
+    const res = await restPatch('Booking', driverToken, `id=eq.${bookingId}`, {
+      status: 'confirmed',
+      capturedAmountCents: 1,
+    });
+    expect(res.ok).toBe(false);
+  });
+
+  it('user cannot patch server-managed account fields through PostgREST', async () => {
+    const res = await restPatch('User', driverToken, `id=eq.${driverId}`, {
+      roles: ['driver', 'host'],
+      stripeCustomerId: 'cus_bad',
+    });
+    expect(res.ok).toBe(false);
+  });
+
+  it('driver cannot insert a review directly through PostgREST', async () => {
+    const res = await restPost('Review', driverToken, {
+      bookingId,
+      authorId: driverId,
+      subjectId: hostId,
+      stars: 5,
+      text: 'direct insert bypass',
+    });
+    expect(res.ok).toBe(false);
   });
 });

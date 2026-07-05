@@ -1,3 +1,4 @@
+/** @file apps/mobile/app/(host)/earnings.tsx. */
 import { View, FlatList, Pressable } from 'react-native';
 import { useRouter } from 'expo-router';
 import {
@@ -23,10 +24,7 @@ export default function Earnings() {
   const q = trpc.booking.list.useQuery({ role: 'host', status: 'completed' });
   const stats = trpc.payment.hostStats.useQuery();
 
-  const total = (q.data?.rows ?? []).reduce(
-    (sum: number, b: { capturedAmountCents: number | null }) => sum + (b.capturedAmountCents ?? 0),
-    0,
-  );
+  const total = stats.data?.lifetimeNetCents ?? 0;
   const dollars = Math.floor(total / 100);
   const cents = total % 100;
 
@@ -40,7 +38,7 @@ export default function Earnings() {
   return (
     <Screen scroll contentStyle={{ paddingBottom: 30 }}>
       <View style={{ marginTop: 14 }}>
-        <Label>LIFETIME GROSS</Label>
+        <Label>LIFETIME NET</Label>
         <View style={{ flexDirection: 'row', alignItems: 'baseline', marginTop: 4 }}>
           <H1 style={{ fontSize: 44, fontWeight: '800', letterSpacing: -1 }}>
             ${dollars.toLocaleString()}
@@ -101,9 +99,19 @@ export default function Earnings() {
         }
         renderItem={({ item }) => {
           const myReview = item.reviews?.[0] ?? null;
-          // Host NET (their 85%), consistent with the request/review screens —
-          // not the gross the driver paid.
-          const netCents = Math.max(0, (item.capturedAmountCents ?? 0) - item.platformFeeCents);
+          // Host net, mirroring the Payout reversal: a lost dispute zeroes it, a
+          // refund reduces it proportionally on the net basis (so this per-session
+          // row matches the reversed lifetime total, not clawed-back income).
+          const captured = item.capturedAmountCents ?? 0;
+          const grossNet = Math.max(0, captured - item.platformFeeCents);
+          const refunded = item.refundedAmountCents ?? 0;
+          const reversed = item.disputeStatus === 'lost';
+          const netCents = reversed
+            ? 0
+            : captured > 0
+              ? Math.max(0, Math.round((grossNet * (captured - refunded)) / captured))
+              : grossNet;
+          const clawedBack = reversed || refunded > 0;
           return (
             <Pressable
               accessibilityRole="button"
@@ -144,6 +152,11 @@ export default function Earnings() {
                 </Row>
               </View>
               <Row gap={6}>
+                {clawedBack ? (
+                  <Muted style={{ fontSize: 10, color: c.red }}>
+                    {reversed ? 'Disputed' : 'Refunded'}
+                  </Muted>
+                ) : null}
                 <Body style={{ fontWeight: '700' }}>${(netCents / 100).toFixed(2)}</Body>
                 <ChevronRight color={c.muted2} />
               </Row>

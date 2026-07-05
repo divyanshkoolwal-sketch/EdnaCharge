@@ -1,3 +1,4 @@
+/** @file packages/db/seed/index.ts. */
 import { prisma } from '../src/index.js';
 import { createHost, createCharger } from '../test/fixtures/factories.js';
 

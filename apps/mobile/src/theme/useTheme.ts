@@ -1,3 +1,4 @@
+/** @file apps/mobile/src/theme/useTheme.ts. */
 import {
   lightColors,
   radius,

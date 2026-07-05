@@ -1,7 +1,11 @@
 #!/usr/bin/env tsx
+/** @file tools/ocpp-simulator/src/index.ts. */
 // Simulator — mirrors real charger behavior over the same ocpp-rpc wire as the CSMS.
+// By default it connects and idles until a booking's RemoteStartTransaction drives
+// a session (matching production). To self-drive a session standalone, pass
+// --idTag <tag> to start one immediately; --session sets that standalone duration.
 // Usage:
-//   pnpm sim --charger sim-001 --session 30m [--csms ws://localhost:3100] [--password ...]
+//   pnpm sim --charger sim-001 [--idTag <tag>] [--session 30m] [--csms ws://localhost:3100] [--password ...]
 
 import { RPCClient } from 'ocpp-rpc';
 
@@ -24,6 +28,7 @@ async function main() {
   const sessionMs = parseDuration(arg('session') ?? '30m');
   const csms = arg('csms') ?? 'ws://localhost:3100';
   const password = arg('password') ?? process.env.OCPP_PASSWORD ?? '';
+  const autostartIdTag = arg('idTag');
 
   const url = `${csms}/ocpp/v1.6/${cpId}`;
   console.log(`[sim] connecting ${url} (session ${sessionMs / 1000}s)`);
@@ -50,58 +55,101 @@ async function main() {
     status: 'Available',
   });
 
-  const startRes = (await client.call('StartTransaction', {
-    connectorId: 1,
-    idTag: 'SIM',
-    meterStart: 0,
-    timestamp: new Date().toISOString(),
-  })) as { transactionId: number };
-
-  const transactionId = startRes.transactionId;
-  console.log(`[sim] transaction ${transactionId} started`);
-
   const samplePeriodMs = 10_000; // 6 samples / minute
   const powerW = 7200;
-  const startedAt = Date.now();
+  let transactionId: number | null = null;
+  let startedAt = 0;
   let energyWh = 0;
+  let timer: NodeJS.Timeout | null = null;
+  let finish: (() => void) | null = null;
 
-  const timer = setInterval(() => {
-    const elapsedH = (Date.now() - startedAt) / 3_600_000;
-    energyWh = Math.round(powerW * elapsedH);
-    void client
-      .call('MeterValues', {
-        connectorId: 1,
-        transactionId,
-        meterValue: [
-          {
-            timestamp: new Date().toISOString(),
-            sampledValue: [
-              { value: String(energyWh), measurand: 'Energy.Active.Import.Register', unit: 'Wh' },
-              { value: String(powerW), measurand: 'Power.Active.Import', unit: 'W' },
-              { value: '240', measurand: 'Voltage', unit: 'V' },
-              { value: '30', measurand: 'Current.Import', unit: 'A' },
-            ],
-          },
-        ],
-      })
-      .catch((err) => console.error('[sim] MeterValues error', err));
-  }, samplePeriodMs);
+  const stopTransaction = async () => {
+    if (!transactionId) return;
+    const tx = transactionId;
+    transactionId = null;
+    if (timer) clearInterval(timer);
+    timer = null;
+    await client.call('StopTransaction', {
+      transactionId: tx,
+      meterStop: energyWh,
+      timestamp: new Date().toISOString(),
+    });
+    await client.call('StatusNotification', {
+      connectorId: 1,
+      errorCode: 'NoError',
+      status: 'Available',
+    });
+    console.log(`[sim] done. energy=${energyWh}Wh`);
+    finish?.();
+  };
 
-  await new Promise((r) => setTimeout(r, sessionMs));
-  clearInterval(timer);
+  const startTransaction = async (idTag: string) => {
+    if (transactionId) return;
+    console.log(`[sim] remote start idTag=${idTag}`);
+    const startRes = (await client.call('StartTransaction', {
+      connectorId: 1,
+      idTag,
+      meterStart: 0,
+      timestamp: new Date().toISOString(),
+    })) as { transactionId: number; idTagInfo?: { status?: string } };
+    if (startRes.idTagInfo?.status === 'Invalid' || startRes.transactionId === 0) {
+      console.log('[sim] start refused by CSMS');
+      return;
+    }
+    transactionId = startRes.transactionId;
+    startedAt = Date.now();
+    energyWh = 0;
+    console.log(`[sim] transaction ${transactionId} started`);
+    await client.call('StatusNotification', {
+      connectorId: 1,
+      errorCode: 'NoError',
+      status: 'Charging',
+    });
+    timer = setInterval(() => {
+      if (!transactionId) return;
+      const elapsedH = (Date.now() - startedAt) / 3_600_000;
+      energyWh = Math.round(powerW * elapsedH);
+      void client
+        .call('MeterValues', {
+          connectorId: 1,
+          transactionId,
+          meterValue: [
+            {
+              timestamp: new Date().toISOString(),
+              sampledValue: [
+                { value: String(energyWh), measurand: 'Energy.Active.Import.Register', unit: 'Wh' },
+                { value: String(powerW), measurand: 'Power.Active.Import', unit: 'W' },
+                { value: '240', measurand: 'Voltage', unit: 'V' },
+                { value: '30', measurand: 'Current.Import', unit: 'A' },
+              ],
+            },
+          ],
+        })
+        .catch((err) => console.error('[sim] MeterValues error', err));
+    }, samplePeriodMs);
+    setTimeout(() => void stopTransaction(), sessionMs);
+  };
 
-  await client.call('StopTransaction', {
-    transactionId,
-    meterStop: energyWh,
-    timestamp: new Date().toISOString(),
+  client.handle('RemoteStartTransaction', async ({ params }) => {
+    const idTag = (params as { idTag?: string }).idTag;
+    if (!idTag) return { status: 'Rejected' };
+    void startTransaction(idTag).catch((err) => console.error('[sim] remote start error', err));
+    return { status: 'Accepted' };
   });
-  await client.call('StatusNotification', {
-    connectorId: 1,
-    errorCode: 'NoError',
-    status: 'Available',
+
+  client.handle('RemoteStopTransaction', async ({ params }) => {
+    const tx = (params as { transactionId?: number }).transactionId;
+    if (!transactionId || tx !== transactionId) return { status: 'Rejected' };
+    void stopTransaction().catch((err) => console.error('[sim] remote stop error', err));
+    return { status: 'Accepted' };
+  });
+
+  if (autostartIdTag) void startTransaction(autostartIdTag);
+
+  await new Promise<void>((resolve) => {
+    finish = resolve;
   });
   await client.close();
-  console.log(`[sim] done. energy=${energyWh}Wh`);
 }
 
 main().catch((err) => {

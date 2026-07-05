@@ -1,3 +1,4 @@
+/** @file apps/mobile/src/lib/passwordPolicy.ts. */
 import * as Crypto from 'expo-crypto';
 
 /**
@@ -21,7 +22,7 @@ export function passwordPolicyError(password: string): string | null {
     return `Use at least ${MIN_PASSWORD_LENGTH} characters.`;
   }
   if (password.length > 128) {
-    // Firebase rejects >4096; cap far lower to avoid DoS-y hashing inputs.
+    // Cap length well below any provider limit to avoid DoS-y hashing inputs.
     return 'Password is too long.';
   }
   // Trivial all-same-char / whitespace-only guards.

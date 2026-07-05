@@ -1,3 +1,4 @@
+/** @file apps/mobile/app/(shared)/payment-methods.tsx. */
 import { View, FlatList, Pressable, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useStripe } from '@stripe/stripe-react-native';
@@ -17,6 +18,7 @@ import { ChevronLeft } from '../../src/components/icons/Icon';
 import { useTheme } from '../../src/theme/useTheme';
 import { trpc } from '../../src/lib/trpc';
 import { handleError } from '../../src/lib/errors';
+import { track } from '../../src/lib/analytics';
 
 export default function PaymentMethods() {
   const router = useRouter();
@@ -71,7 +73,20 @@ export default function PaymentMethods() {
       }
       const { setupIntentClientSecret, customerId, ephemeralKey, publishableKey } = result;
       if (!publishableKey) {
-        Alert.alert('Stripe not configured', 'Set EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY in .env');
+        Alert.alert('Stripe not configured', 'Set STRIPE_PUBLISHABLE_KEY on the API service.');
+        return;
+      }
+      // The payment sheet uses the app-root StripeProvider key
+      // (EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY), but the SetupIntent was created on the
+      // API's Stripe account. If those keys are from different accounts (e.g. a
+      // test build against a live API), the sheet fails with an opaque "No such
+      // setup_intent". Detect it here and surface an actionable message instead.
+      const appKey = process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY ?? '';
+      if (appKey && publishableKey !== appKey) {
+        Alert.alert(
+          'Payment configuration mismatch',
+          "This app build's Stripe key doesn't match the server's. Card setup can't proceed — please update the app or contact support.",
+        );
         return;
       }
       const init = await initPaymentSheet({
@@ -90,6 +105,7 @@ export default function PaymentMethods() {
         handleError(present.error, { feature: 'Payment methods' });
         return;
       }
+      if (!present.error) track('payment_method_added');
       await utils.payment.listPaymentMethods.invalidate();
     } catch (err) {
       handleError(err, { feature: 'Payment methods' });
@@ -98,7 +114,13 @@ export default function PaymentMethods() {
 
   return (
     <Screen>
-      <Pressable onPress={() => router.back()} style={{ paddingTop: 8 }}>
+      <Pressable
+        onPress={() => router.back()}
+        accessibilityRole="button"
+        accessibilityLabel="Go back"
+        hitSlop={12}
+        style={{ paddingTop: 8 }}
+      >
         <ChevronLeft />
       </Pressable>
       <H1 style={{ marginTop: 14 }}>Payment methods</H1>

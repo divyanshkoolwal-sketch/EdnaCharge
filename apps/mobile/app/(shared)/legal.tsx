@@ -1,3 +1,4 @@
+/** @file apps/mobile/app/(shared)/legal.tsx. */
 import { View, Pressable } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Screen, H1, Body, Muted, SectionHeader } from '../../src/components/ui';

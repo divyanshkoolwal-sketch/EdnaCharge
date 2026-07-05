@@ -1,3 +1,4 @@
+/** @file apps/mobile/app/(host)/review/[bookingId].tsx. */
 import { useState } from 'react';
 import { View, Pressable } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -56,7 +57,7 @@ export default function HostReviewDriver() {
   const b = q.data;
   const driverName = b.driver?.fullName ?? 'Driver';
   const kwh = b.session?.finalKwh ?? 0;
-  const earnings = ((b.capturedAmountCents ?? 0) - b.platformFeeCents) / 100;
+  const earnings = Math.max(0, (b.capturedAmountCents ?? 0) - b.platformFeeCents) / 100;
   const already = mine.data ?? null;
 
   return (
@@ -122,6 +123,7 @@ export default function HostReviewDriver() {
                 value={text}
                 onChangeText={setText}
                 multiline
+                maxLength={500}
                 placeholder="Add a comment (optional)"
                 style={{ minHeight: 60, height: undefined, paddingTop: 14, paddingBottom: 14 }}
               />

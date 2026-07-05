@@ -1,9 +1,9 @@
+/** @file apps/mobile/app/(driver)/map.tsx. */
 // Driver map — Mapbox-rendered with the design's overlay chrome (search bar,
 // search-this-area pill, recenter FAB).
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
-import { View, Text, ActivityIndicator, Alert, Pressable, ScrollView, useColorScheme } from 'react-native';
+import { Alert, useColorScheme, View } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
-import * as Location from 'expo-location';
 import Mapbox, {
   MapView,
   Camera,
@@ -11,43 +11,31 @@ import Mapbox, {
   SymbolLayer,
   CircleLayer,
   UserLocation,
-  PointAnnotation,
   type MapState,
 } from '@rnmapbox/maps';
 import type { CameraRef } from '@rnmapbox/maps/lib/typescript/src/components/Camera';
-import type { FeatureCollection, Feature, Point, Geometry } from 'geojson';
 import { trpc } from '../../src/lib/trpc';
-import { openRealtimeChannel } from '../../src/lib/realtime';
 import { useTheme } from '../../src/theme/useTheme';
 import { useUserLocation } from '../../src/state/userLocation';
-import { Search, Recenter } from '../../src/components/icons/Icon';
-import { IconCircle, useToast } from '../../src/components/ui';
-import { VerificationBanner } from '../../src/components/VerificationBanner';
+import { useToast, Button, Body } from '../../src/components/ui';
+import { MapChrome } from '../../src/features/map/MapChrome';
+import { MapTokenFallback } from '../../src/features/map/MapTokenFallback';
+import {
+  chargerFeatures,
+  MAP_STYLES,
+  TRI_VALLEY,
+  type Coordinate,
+  type Charger,
+  type MapFeature,
+  type PointGeometry,
+} from '../../src/features/map/model';
+import { useDriverMapLocation } from '../../src/features/map/useDriverMapLocation';
+import { useChargerRealtimeRefetch } from '../../src/features/map/useChargerRealtime';
 
 const MAPBOX_TOKEN = process.env.EXPO_PUBLIC_MAPBOX_TOKEN ?? '';
 
 Mapbox.setAccessToken(MAPBOX_TOKEN);
 Mapbox.setTelemetryEnabled(false);
-
-type Charger = {
-  id: string;
-  title: string;
-  photoUrl: string | null;
-  lat: number;
-  lng: number;
-  connectorType: string;
-  powerKw: number;
-  pricePerKwhCents: number | null;
-  pricePerHourCents: number | null;
-  status: string;
-  distanceM: number;
-};
-
-const TRI_VALLEY: [number, number] = [-121.8747, 37.6819];
-const STYLES = {
-  light: 'mapbox://styles/mapbox/streets-v12',
-  dark: 'mapbox://styles/mapbox/dark-v11',
-};
 
 export default function Map() {
   const router = useRouter();
@@ -56,55 +44,37 @@ export default function Map() {
   const cameraRef = useRef<CameraRef>(null);
   const sourceRef = useRef<ShapeSource | null>(null);
 
-  const [userPos, setUserPos] = useState<[number, number] | null>(null);
-  const [searchCenter, setSearchCenter] = useState<[number, number]>(TRI_VALLEY);
-  const [viewCenter, setViewCenter] = useState<[number, number]>(TRI_VALLEY);
+  const [searchCenter, setSearchCenter] = useState<Coordinate>(TRI_VALLEY);
+  const [viewCenter, setViewCenter] = useState<Coordinate>(TRI_VALLEY);
   const [showSearchHere, setShowSearchHere] = useState(false);
   const [styleLoaded, setStyleLoaded] = useState(false);
-  const [locationLabel, setLocationLabel] = useState('Tri-Valley');
+  const [availableNow, setAvailableNow] = useState(true);
+  const [highPowerOnly, setHighPowerOnly] = useState(false);
+  const [capPeakPrice, setCapPeakPrice] = useState(false);
+  // Default to only showing plugs that match the driver's connector, but let
+  // them tap the "My plug" pill to widen the search to every connector type.
+  const [plugOnly, setPlugOnly] = useState(true);
   const setUserCoords = useUserLocation((s) => s.set);
   const utils = trpc.useUtils();
-
-  useEffect(() => {
-    (async () => {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') return;
-      try {
-        const pos = await Location.getCurrentPositionAsync({
-          accuracy: Location.Accuracy.Balanced,
-        });
-        const c: [number, number] = [pos.coords.longitude, pos.coords.latitude];
-        setUserPos(c);
-        setSearchCenter(c);
-        // Publish to the global store so charger detail can compute distance.
-        setUserCoords({ lng: c[0], lat: c[1] });
-        cameraRef.current?.setCamera({
-          centerCoordinate: c,
-          zoomLevel: 13,
-          animationDuration: 600,
-        });
-        // Best-effort reverse geocode label for the search bar.
-        try {
-          const res = await Location.reverseGeocodeAsync({
-            latitude: c[1],
-            longitude: c[0],
-          });
-          const place = res[0];
-          if (place?.city) setLocationLabel(`${place.city}${place.region ? `, ${place.region}` : ''}`);
-        } catch {
-          /* ignore */
-        }
-      } catch {
-        /* GPS off — fine */
-      }
-    })();
-  }, [setUserCoords]);
+  const session = trpc.auth.getSession.useQuery();
+  const driverConnector = session.data?.driverProfile?.connectorType;
+  const { userPos, locationLabel } = useDriverMapLocation({
+    cameraRef,
+    setSearchCenter,
+    setUserCoords,
+  });
 
   const nearby = trpc.charger.nearby.useQuery(
     {
       lat: searchCenter[1],
       lng: searchCenter[0],
       radiusMeters: 25_000,
+      filters: {
+        connectorType: plugOnly ? driverConnector : undefined,
+        availableNow,
+        minPowerKw: highPowerOnly ? 7 : undefined,
+        maxPriceCents: capPeakPrice ? 68 : undefined,
+      },
     },
     {
       // Belt-and-braces: even if Realtime is unreachable we still pick up new
@@ -114,10 +84,10 @@ export default function Map() {
     },
   );
 
-  // Surface nearby-charger load failures (previously silent → blank map).
+  // Transient heads-up; the persistent banner with a real Retry is rendered below.
   const toast = useToast();
   useEffect(() => {
-    if (nearby.isError) toast.show('Could not load nearby chargers. Retrying…', 'error');
+    if (nearby.isError) toast.show('Could not load nearby chargers.', 'error');
   }, [nearby.isError, toast]);
 
   // Refetch whenever the user returns to the Map tab so a charger they (or
@@ -128,43 +98,12 @@ export default function Map() {
     }, [utils]),
   );
 
-  // Realtime push: subscribe to inserts/updates on the Charger table. As soon
-  // as a host publishes via charger.create, every driver with the map open
-  // sees the new pin within ~1 second.
-  useEffect(() => {
-    // Unique topic per mount — a host→driver role switch (or tab/route
-    // re-entry) re-mounts this screen, and re-using a fixed channel topic made
-    // Supabase re-attach `.on()` to an already-subscribed channel and throw,
-    // which crashed the app on the way into the map. See src/lib/realtime.ts.
-    const sub = openRealtimeChannel('charger-inserts');
-    if (!sub) return undefined;
-    const invalidate = () => {
-      utils.charger.nearby.invalidate();
-    };
-    sub.channel
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'Charger' }, invalidate)
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'Charger' }, invalidate)
-      .subscribe();
-    return sub.remove;
-  }, [utils]);
+  // Realtime push: a newly published (or updated) charger appears within ~1s,
+  // coalesced so a platform-wide burst of Charger updates can't storm refetches.
+  useChargerRealtimeRefetch(() => utils.charger.nearby.invalidate());
 
-  const features: FeatureCollection<Point> = useMemo(
-    () => ({
-      type: 'FeatureCollection',
-      features: (nearby.data ?? []).map<Feature<Point>>((c: Charger) => ({
-        type: 'Feature',
-        id: c.id,
-        properties: {
-          id: c.id,
-          title: c.title,
-          status: c.status,
-          available: c.status === 'available',
-        },
-        geometry: { type: 'Point', coordinates: [c.lng, c.lat] },
-      })),
-    }),
-    [nearby.data],
-  );
+  const chargers = nearby.data ?? [];
+  const features = useMemo(() => chargerFeatures(chargers), [chargers]);
 
   const onMapIdle = useCallback(
     (state: MapState) => {
@@ -180,12 +119,12 @@ export default function Map() {
   );
 
   const onPressFeature = useCallback(
-    async (e: { features: Feature<Geometry>[] }) => {
+    async (e: { features: MapFeature[] }) => {
       const f = e.features[0];
       if (!f || f.geometry.type !== 'Point') return;
       const props = (f.properties ?? {}) as Record<string, unknown>;
       if (props.cluster) {
-        const cluster = f as Feature<Point> & {
+        const cluster = f as MapFeature<PointGeometry> & {
           properties: { cluster_id: number; point_count: number };
         };
         try {
@@ -225,48 +164,20 @@ export default function Map() {
     setSearchCenter(viewCenter);
     setShowSearchHere(false);
   }, [viewCenter]);
+  const openCharger = useCallback(
+    (id: string) => router.push({ pathname: '/(driver)/charger/[id]', params: { id } }),
+    [router],
+  );
 
   if (!MAPBOX_TOKEN) {
     return (
-      <View style={{ flex: 1, backgroundColor: theme.c.bg, padding: 20, paddingTop: 64 }}>
-        <Text style={{ color: theme.c.ink, fontSize: 28, fontWeight: '800' }}>Nearby chargers</Text>
-        <Text style={{ color: theme.c.muted, fontSize: 14, marginTop: 8 }}>
-          Map view needs EXPO_PUBLIC_MAPBOX_TOKEN. Showing available chargers as a list for now.
-        </Text>
-
-        {nearby.isLoading ? (
-          <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-            <ActivityIndicator />
-          </View>
-        ) : (
-          <ScrollView contentContainerStyle={{ gap: 10, paddingTop: 22, paddingBottom: 24 }}>
-            {(nearby.data ?? []).map((charger: Charger) => (
-              <Pressable
-                key={charger.id}
-                onPress={() => router.push({ pathname: '/(driver)/charger/[id]', params: { id: charger.id } })}
-                style={{
-                  backgroundColor: theme.c.card,
-                  borderRadius: 16,
-                  padding: 16,
-                  ...theme.shadow.cardLight,
-                }}
-              >
-                <Text style={{ color: theme.c.ink, fontSize: 16, fontWeight: '700' }}>
-                  {charger.title}
-                </Text>
-                <Text style={{ color: theme.c.muted, fontSize: 13, marginTop: 6 }}>
-                  {charger.connectorType} · {charger.powerKw} kW · {(charger.distanceM / 1609.34).toFixed(1)} mi
-                </Text>
-              </Pressable>
-            ))}
-            {!nearby.isLoading && (nearby.data ?? []).length === 0 ? (
-              <Text style={{ color: theme.c.muted, marginTop: 24, textAlign: 'center' }}>
-                {nearby.isError ? 'Could not load chargers. Pull to refresh.' : 'No nearby chargers found.'}
-              </Text>
-            ) : null}
-          </ScrollView>
-        )}
-      </View>
+      <MapTokenFallback
+        chargers={chargers}
+        isLoading={nearby.isLoading}
+        isError={nearby.isError}
+        onOpenCharger={openCharger}
+        theme={theme}
+      />
     );
   }
 
@@ -275,7 +186,7 @@ export default function Map() {
       <MapView
         style={{ flex: 1 }}
         accessibilityLabel="Map of nearby chargers"
-        styleURL={scheme === 'dark' ? STYLES.dark : STYLES.light}
+        styleURL={scheme === 'dark' ? MAP_STYLES.dark : MAP_STYLES.light}
         compassEnabled={false}
         scaleBarEnabled={false}
         attributionPosition={{ bottom: 8, right: 8 }}
@@ -288,7 +199,9 @@ export default function Map() {
           defaultSettings={{ centerCoordinate: TRI_VALLEY, zoomLevel: 11 }}
           animationDuration={0}
         />
-        {userPos ? <UserLocation visible androidRenderMode="normal" showsUserHeadingIndicator /> : null}
+        {userPos ? (
+          <UserLocation visible androidRenderMode="normal" showsUserHeadingIndicator />
+        ) : null}
         {styleLoaded ? (
           <ShapeSource
             ref={(r) => {
@@ -324,192 +237,62 @@ export default function Map() {
                 textIgnorePlacement: true,
               }}
             />
+            {/* Unclustered chargers as a GL CircleLayer, not a native
+                PointAnnotation each (which defeated clustering + stuttered pan). */}
+            <CircleLayer
+              id="charger-points"
+              filter={['!', ['has', 'point_count']]}
+              style={{
+                circleColor: ['case', ['get', 'available'], '#22A06B', '#9AA0A6'],
+                circleRadius: 10,
+                circleStrokeColor: '#FFFFFF',
+                circleStrokeWidth: 3,
+              }}
+            />
           </ShapeSource>
         ) : null}
-        {styleLoaded
-          ? (nearby.data ?? []).map((charger: Charger) => (
-              <PointAnnotation
-                key={charger.id}
-                id={`charger-${charger.id}`}
-                coordinate={[charger.lng, charger.lat]}
-                anchor={{ x: 0.5, y: 1 }}
-                onSelected={() =>
-                  router.push({
-                    pathname: '/(driver)/charger/[id]',
-                    params: { id: charger.id },
-                  })
-                }
-              >
-                <View
-                  style={{ alignItems: 'center', justifyContent: 'center', width: 36, height: 48 }}
-                >
-                  <View
-                    style={{
-                      width: 30,
-                      height: 30,
-                      borderRadius: 15,
-                      backgroundColor:
-                        charger.status === 'available' ? '#22A06B' : '#9AA0A6',
-                      borderWidth: 3,
-                      borderColor: '#FFFFFF',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      shadowColor: '#000',
-                      shadowOffset: { width: 0, height: 2 },
-                      shadowOpacity: 0.3,
-                      shadowRadius: 3,
-                    }}
-                  >
-                    <Text style={{ color: '#FFFFFF', fontSize: 14, fontWeight: '900' }}>⚡</Text>
-                  </View>
-                  <View
-                    style={{
-                      width: 0,
-                      height: 0,
-                      borderLeftWidth: 6,
-                      borderRightWidth: 6,
-                      borderTopWidth: 10,
-                      borderLeftColor: 'transparent',
-                      borderRightColor: 'transparent',
-                      borderTopColor:
-                        charger.status === 'available' ? '#22A06B' : '#9AA0A6',
-                      marginTop: -2,
-                    }}
-                  />
-                </View>
-              </PointAnnotation>
-            ))
-          : null}
       </MapView>
 
-      {/* Top floating search bar */}
-      <View
-        style={{
-          position: 'absolute',
-          top: 60,
-          left: 20,
-          right: 20,
-          flexDirection: 'row',
-          gap: 8,
+      <MapChrome
+        isFetching={nearby.isFetching}
+        locationLabel={locationLabel}
+        onRecenter={recenter}
+        onSearchHere={searchHere}
+        filters={{
+          availableNow,
+          highPowerOnly,
+          capPeakPrice,
+          hasConnector: !!driverConnector,
+          plugActive: plugOnly,
         }}
-      >
+        onToggleAvailable={() => setAvailableNow((v) => !v)}
+        onToggleHighPower={() => setHighPowerOnly((v) => !v)}
+        onToggleMaxPrice={() => setCapPeakPrice((v) => !v)}
+        onTogglePlug={() => setPlugOnly((v) => !v)}
+        showEmpty={!nearby.isLoading && !nearby.isError && chargers.length === 0}
+        showSearchHere={showSearchHere}
+        theme={theme}
+      />
+
+      {nearby.isError ? (
         <View
           style={{
-            flex: 1,
-            height: 44,
-            borderRadius: 22,
+            position: 'absolute',
+            left: 16,
+            right: 16,
+            bottom: 40,
             backgroundColor: theme.c.card,
-            ...theme.shadow.cardLight,
-            paddingHorizontal: 14,
-            flexDirection: 'row',
-            alignItems: 'center',
-            gap: 8,
+            borderRadius: 16,
+            borderWidth: 1,
+            borderColor: theme.c.line,
+            padding: 16,
+            gap: 10,
           }}
         >
-          <Search size={16} color={theme.c.muted} />
-          <Text style={{ color: theme.c.muted, fontSize: 13 }}>{locationLabel}</Text>
-        </View>
-      </View>
-
-      {/* Verification banner — only shows when not verified */}
-      <View style={{ position: 'absolute', top: 110, left: 20, right: 20 }}>
-        <VerificationBanner next="/(driver)/map" role="driver" />
-      </View>
-
-      {/* Search this area */}
-      {showSearchHere ? (
-        <View
-          style={{
-            position: 'absolute',
-            top: 116,
-            alignSelf: 'center',
-            left: 0,
-            right: 0,
-            alignItems: 'center',
-          }}
-        >
-          <View
-            style={{
-              backgroundColor: theme.c.ink,
-              paddingHorizontal: 14,
-              height: 32,
-              borderRadius: 16,
-              flexDirection: 'row',
-              alignItems: 'center',
-              gap: 6,
-              ...theme.shadow.pillFloat,
-            }}
-          >
-            <Search size={12} color={theme.c.bg} />
-            <Text
-              onPress={searchHere}
-              style={{ color: theme.c.bg, fontWeight: '600', fontSize: 12 }}
-            >
-              Search this area
-            </Text>
-          </View>
+          <Body>Couldn’t load nearby chargers. Check your connection.</Body>
+          <Button label={nearby.isFetching ? 'Retrying…' : 'Retry'} loading={nearby.isFetching} onPress={() => nearby.refetch()} />
         </View>
       ) : null}
-
-      {/* Empty-area indicator — non-blocking. Shows only after a settled fetch
-          that returned zero chargers in the searched radius; disappears the
-          instant a pin arrives. pointerEvents="none" so it never blocks gestures. */}
-      {!nearby.isLoading && !nearby.isError && (nearby.data ?? []).length === 0 ? (
-        <View
-          pointerEvents="none"
-          style={{
-            position: 'absolute',
-            top: 0,
-            bottom: 0,
-            left: 0,
-            right: 0,
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
-        >
-          <View
-            style={{
-              backgroundColor: theme.c.card,
-              paddingHorizontal: 16,
-              height: 40,
-              borderRadius: 20,
-              flexDirection: 'row',
-              alignItems: 'center',
-              gap: 8,
-              ...theme.shadow.cardLight,
-            }}
-          >
-            <Search size={14} color={theme.c.muted} />
-            <Text style={{ color: theme.c.muted, fontWeight: '600', fontSize: 13 }}>
-              No chargers in this area
-            </Text>
-          </View>
-        </View>
-      ) : null}
-
-      {/* Loading badge */}
-      {nearby.isFetching ? (
-        <View
-          style={{
-            position: 'absolute',
-            top: 116,
-            right: 20,
-            backgroundColor: theme.c.card,
-            borderRadius: 999,
-            padding: 8,
-            ...theme.shadow.cardLight,
-          }}
-        >
-          <ActivityIndicator size="small" />
-        </View>
-      ) : null}
-
-      {/* Recenter FAB */}
-      <View style={{ position: 'absolute', right: 16, bottom: 24 }}>
-        <IconCircle size={48} onPress={recenter} accessibilityLabel="Recenter map on my location">
-          <Recenter size={18} color={theme.c.ink} />
-        </IconCircle>
-      </View>
     </View>
   );
 }
