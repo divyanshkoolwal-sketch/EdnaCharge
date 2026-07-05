@@ -6,7 +6,7 @@ import { RPCServer } from 'ocpp-rpc';
 import bcrypt from 'bcryptjs';
 import { loadEnv } from '@edna/config';
 import { prisma } from '@edna/db';
-import { initServiceSentry, Sentry } from '@edna/server-utils';
+import { initServiceSentry, Sentry, registerRequestId, registerMetrics } from '@edna/server-utils';
 import { logger } from './logger.js';
 import { bindHandlers, type Client } from './handlers/index.js';
 import { closeQueues as closeHandlerQueues } from './handlers/queues.js';
@@ -69,7 +69,10 @@ async function main() {
     // Under sustained failures, cap bcrypt to one per BCRYPT_THROTTLE_MS for this
     // charge point — bounds hashing work from a flood on a derivable cpId while
     // still giving a legit charger a slot within the window (never a hard lock).
-    if (priorFails.length >= AUTH_FAIL_MAX && now - (lastBcryptAt.get(throttleKey) ?? 0) < BCRYPT_THROTTLE_MS) {
+    if (
+      priorFails.length >= AUTH_FAIL_MAX &&
+      now - (lastBcryptAt.get(throttleKey) ?? 0) < BCRYPT_THROTTLE_MS
+    ) {
       logger.warn({ ip, cpId, fails: priorFails.length }, 'ocpp auth: bcrypt throttled');
       return reject(429, 'Too many attempts');
     }
@@ -165,6 +168,8 @@ async function main() {
   });
 
   const app = Fastify({ logger: false });
+  registerRequestId(app, logger);
+  registerMetrics(app, 'csms');
   app.get('/healthz', async () => ({
     status: 'ok',
     service: 'csms',

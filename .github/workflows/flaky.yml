@@ -1,0 +1,45 @@
+name: Flaky test scan
+
+# Nightly (and on-demand) re-run of every suite to surface non-deterministic
+# tests. Non-blocking by design — the signal goes to the job summary so a flake
+# gets quarantined (*.flaky.test.ts) + tracked rather than randomly reddening
+# unrelated PRs. See docs/TESTING.md.
+on:
+  schedule:
+    - cron: '30 5 * * *'
+  workflow_dispatch:
+    inputs:
+      runs:
+        description: 'Repeat runs per suite'
+        default: '5'
+
+permissions:
+  contents: read
+
+jobs:
+  flaky:
+    name: Detect flaky tests
+    runs-on: ubuntu-latest
+    services:
+      redis:
+        image: redis:7
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      REDIS_URL: redis://localhost:6379
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.28.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Re-run suites and detect flakes
+        run: pnpm detect-flaky --runs=${{ github.event.inputs.runs || '5' }} | tee -a "$GITHUB_STEP_SUMMARY"

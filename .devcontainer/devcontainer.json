@@ -1,0 +1,36 @@
+{
+  "name": "EdnaCharge",
+  "image": "mcr.microsoft.com/devcontainers/typescript-node:20",
+  "features": {
+    "ghcr.io/devcontainers/features/github-cli:1": {},
+    "ghcr.io/itsmechlark/features/redis-server:1": {}
+  },
+  "forwardPorts": [3000, 3100, 3200, 6379],
+  "portsAttributes": {
+    "3000": { "label": "api" },
+    "3100": { "label": "csms" },
+    "3200": { "label": "worker" },
+    "6379": { "label": "redis" }
+  },
+  "onCreateCommand": "corepack enable && corepack prepare pnpm@10.28.0 --activate",
+  "postCreateCommand": "pnpm install && (cp -n .env.example .env || true)",
+  "postStartCommand": "redis-server --daemonize yes || true",
+  "remoteEnv": {
+    "REDIS_URL": "redis://localhost:6379"
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "dbaeumer.vscode-eslint",
+        "esbenp.prettier-vscode",
+        "Prisma.prisma",
+        "vitest.explorer",
+        "GitHub.vscode-github-actions"
+      ],
+      "settings": {
+        "editor.formatOnSave": true,
+        "editor.defaultFormatter": "esbenp.prettier-vscode"
+      }
+    }
+  }
+}

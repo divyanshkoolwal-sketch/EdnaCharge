@@ -2,7 +2,13 @@
 import Fastify from 'fastify';
 import { Worker, type Job } from 'bullmq';
 import { loadEnv } from '@edna/config';
-import { createRedisConnection, initServiceSentry, Sentry } from '@edna/server-utils';
+import {
+  createRedisConnection,
+  initServiceSentry,
+  Sentry,
+  registerRequestId,
+  registerMetrics,
+} from '@edna/server-utils';
 import { logger } from './logger.js';
 import { autoDeclineById } from './jobs/auto-decline.js';
 import { settleSessionById } from './jobs/settle-session.js';
@@ -73,7 +79,9 @@ async function main() {
   // cancel_hold, auto_decline), so a prod boot without the Stripe secret would run
   // "healthy" while silently completing bookings with no money movement.
   if (process.env.NODE_ENV === 'production' && !process.env.STRIPE_SECRET_KEY) {
-    throw new Error('Refusing to boot: STRIPE_SECRET_KEY is required in production for the worker.');
+    throw new Error(
+      'Refusing to boot: STRIPE_SECRET_KEY is required in production for the worker.',
+    );
   }
   initServiceSentry('worker', 'SENTRY_DSN_WORKER', logger);
 
@@ -219,6 +227,8 @@ async function main() {
   }
 
   const app = Fastify({ logger: false });
+  registerRequestId(app, logger);
+  registerMetrics(app, 'worker');
   app.get('/healthz', async () => ({
     status: 'ok',
     service: 'worker',

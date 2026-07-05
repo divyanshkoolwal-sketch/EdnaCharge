@@ -1,0 +1,119 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Typecheck · Lint · Test · Coverage
+    runs-on: ubuntu-latest
+    services:
+      redis:
+        image: redis:7
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      REDIS_URL: redis://localhost:6379
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.28.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Lint (conventions + eslint + tsc)
+        run: pnpm lint
+      - name: Typecheck
+        run: pnpm typecheck
+      - name: Module boundaries (dependency-cruiser)
+        run: pnpm depcruise
+      - name: Feature-flag hygiene
+        run: pnpm flags:check
+      - name: Test with coverage
+        run: pnpm test:coverage
+      - name: OpenAPI freshness
+        run: pnpm openapi:check
+      - name: Upload coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: 'apps/*/coverage/**'
+          if-no-files-found: ignore
+      - name: Publish coverage to Codecov
+        if: always()
+        uses: codecov/codecov-action@v4
+        with:
+          fail_ci_if_error: false
+          token: ${{ secrets.CODECOV_TOKEN }}
+
+  quality-scans:
+    name: Quality scans (informational)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.28.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Dead code / unused deps (knip)
+        continue-on-error: true
+        run: pnpm deadcode
+      - name: Duplicate code (jscpd)
+        continue-on-error: true
+        run: pnpm dupcheck
+      - name: Version drift (syncpack)
+        continue-on-error: true
+        run: pnpm deps:check
+      - name: Bundle-size budgets (size-limit)
+        continue-on-error: true
+        run: pnpm size
+      - name: Technical-debt markers
+        continue-on-error: true
+        run: pnpm todos
+
+  eslint-review:
+    name: ESLint PR review
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      checks: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.28.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Post ESLint findings as PR review comments
+        uses: reviewdog/action-eslint@v1
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          reporter: github-pr-review
+          eslint_flags: '.'
+          fail_on_error: false

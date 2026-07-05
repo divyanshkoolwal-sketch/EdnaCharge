@@ -1,0 +1,39 @@
+version: 2
+updates:
+  # Application + tooling dependencies (single pnpm workspace at the root).
+  - package-ecosystem: npm
+    directory: '/'
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 10
+    versioning-strategy: increase
+    # Minimum dependency release age: don't propose a version until it has been
+    # published for at least 7 days, so freshly-published (possibly compromised
+    # or broken) releases age out before they can land.
+    cooldown:
+      default-days: 7
+    groups:
+      dev-dependencies:
+        dependency-type: development
+        update-types: ['minor', 'patch']
+      prod-minor-patch:
+        dependency-type: production
+        update-types: ['minor', 'patch']
+    labels:
+      - 'area: dependencies'
+    commit-message:
+      prefix: 'chore(deps)'
+
+  # GitHub Actions used by the workflows below.
+  - package-ecosystem: github-actions
+    directory: '/'
+    schedule:
+      interval: weekly
+      day: monday
+    cooldown:
+      default-days: 7
+    labels:
+      - 'area: ci'
+    commit-message:
+      prefix: 'chore(ci)'

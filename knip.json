@@ -1,0 +1,45 @@
+{
+  "$schema": "https://unpkg.com/knip@5/schema.json",
+  "workspaces": {
+    ".": {
+      "entry": ["scripts/*.ts"],
+      "project": "scripts/**/*.ts"
+    },
+    "apps/api": {
+      "entry": ["src/index.ts", "test/**/*.test.ts"],
+      "project": "src/**/*.ts"
+    },
+    "apps/csms": {
+      "entry": ["src/index.ts", "test/**/*.test.ts"],
+      "project": "src/**/*.ts"
+    },
+    "apps/worker": {
+      "entry": ["src/index.ts", "test/**/*.test.ts"],
+      "project": "src/**/*.ts"
+    },
+    "apps/mobile": {
+      "entry": ["app/**/*.{ts,tsx}", "index.{ts,tsx}", "test/**/*.test.ts"],
+      "project": "src/**/*.{ts,tsx}"
+    },
+    "packages/*": {
+      "entry": ["src/index.ts"],
+      "project": "src/**/*.ts"
+    },
+    "tools/*": {
+      "entry": ["src/**/*.ts"],
+      "project": "src/**/*.ts"
+    }
+  },
+  "ignore": ["**/dist/**", "**/.expo/**", "**/coverage/**", "docs/api-reference/**"],
+  "ignoreBinaries": ["redis-server", "supabase", "clinic", "expo"],
+  "ignoreDependencies": ["pino-pretty", "expo-system-ui", "@trpc/server", "expo-router"],
+  "rules": {
+    "exports": "warn",
+    "types": "warn",
+    "nsExports": "warn",
+    "nsTypes": "warn",
+    "enumMembers": "warn",
+    "classMembers": "warn",
+    "duplicates": "warn"
+  }
+}

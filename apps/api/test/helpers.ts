@@ -15,7 +15,7 @@ function testUserId(email: string): string {
   return `${h.slice(0, 8)}-${h.slice(8, 12)}-4${h.slice(13, 16)}-8${h.slice(17, 20)}-${h.slice(20, 32)}`;
 }
 
-const API_URL = process.env.E2E_API_URL ?? 'http://localhost:3000';
+const API_URL = process.env.E2E_API_URL ?? 'http://localhost:3300';
 
 export const HAS_SUPABASE = process.env.E2E_LIVE === '1';
 export const HAS_SERVICE_ROLE = process.env.E2E_LIVE === '1';

@@ -4,7 +4,15 @@ import { extname, join } from 'node:path';
 
 const ROOTS = ['apps', 'packages', 'tools', 'scripts'];
 const SOURCE_EXTS = new Set(['.ts', '.tsx', '.js', '.jsx']);
-const SKIP_DIRS = new Set(['node_modules', 'dist', '.turbo', 'coverage', 'ios', 'android']);
+const SKIP_DIRS = new Set([
+  'node_modules',
+  'dist',
+  '.turbo',
+  'coverage',
+  'ios',
+  'android',
+  '.expo',
+]);
 const MAX_LOC = 300;
 
 const files: string[] = [];
@@ -16,7 +24,9 @@ function walk(dir: string) {
     const filePath = join(dir, entry.name);
     if (entry.isDirectory()) {
       walk(filePath);
-    } else if (SOURCE_EXTS.has(extname(entry.name))) {
+    } else if (SOURCE_EXTS.has(extname(entry.name)) && !entry.name.endsWith('.d.ts')) {
+      // Skip ambient/generated .d.ts declarations (e.g. Expo's expo-env.d.ts,
+      // .expo/types/*) — they aren't authored source and carry no docstring.
       files.push(filePath);
     }
   }

@@ -1,0 +1,16 @@
+{
+  "threshold": 5,
+  "reporters": ["console"],
+  "absolute": false,
+  "gitignore": true,
+  "pattern": "{apps,packages,tools,scripts}/**/*.{ts,tsx}",
+  "ignore": [
+    "**/node_modules/**",
+    "**/dist/**",
+    "**/.expo/**",
+    "**/coverage/**",
+    "**/*.test.ts",
+    "**/*.test.tsx",
+    "**/*.fixture.ts"
+  ]
+}

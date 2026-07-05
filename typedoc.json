@@ -1,0 +1,14 @@
+{
+  "$schema": "https://typedoc.org/schema.json",
+  "entryPoints": [
+    "packages/server-utils/src/index.ts",
+    "packages/schemas/src/index.ts",
+    "packages/config/src/index.ts"
+  ],
+  "out": "docs/api-reference",
+  "entryPointStrategy": "expand",
+  "skipErrorChecking": true,
+  "excludePrivate": false,
+  "readme": "none",
+  "githubPages": false
+}

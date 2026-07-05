@@ -1,0 +1,52 @@
+name: DAST (ZAP baseline)
+
+# Dynamic scan of the running API. Heavy, so it runs on a schedule and on demand
+# rather than every PR. Boots the API in dev mode (no prod boot-guards, DB not
+# required for the crawl) and runs the OWASP ZAP baseline against it.
+on:
+  schedule:
+    - cron: '41 5 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  zap-baseline:
+    name: OWASP ZAP baseline
+    runs-on: ubuntu-latest
+    services:
+      redis:
+        image: redis:7
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      NODE_ENV: development
+      REDIS_URL: redis://localhost:6379
+      ENABLE_DEV_BYPASS: '1'
+      API_PORT: '3000'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.28.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Boot API
+        run: |
+          pnpm -F @edna/api start &
+          npx --yes wait-on http://localhost:3000/healthz --timeout 60000
+      - name: ZAP baseline scan
+        uses: zaproxy/action-baseline@v0.12.0
+        with:
+          target: http://localhost:3000
+          fail_action: false
+          allow_issue_writing: false
+          cmd_options: '-a'

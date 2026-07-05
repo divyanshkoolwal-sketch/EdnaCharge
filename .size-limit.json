@@ -1,0 +1,30 @@
+[
+  {
+    "name": "api service source",
+    "path": "apps/api/src/**/*.ts",
+    "limit": "600 kB",
+    "gzip": false,
+    "brotli": false
+  },
+  {
+    "name": "csms service source",
+    "path": "apps/csms/src/**/*.ts",
+    "limit": "250 kB",
+    "gzip": false,
+    "brotli": false
+  },
+  {
+    "name": "worker service source",
+    "path": "apps/worker/src/**/*.ts",
+    "limit": "250 kB",
+    "gzip": false,
+    "brotli": false
+  },
+  {
+    "name": "shared packages source",
+    "path": "packages/*/src/**/*.ts",
+    "limit": "400 kB",
+    "gzip": false,
+    "brotli": false
+  }
+]

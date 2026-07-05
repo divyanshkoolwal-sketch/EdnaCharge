@@ -1,5 +1,7 @@
 /** @file apps/api/src/lib/mapbox.ts. */
 import { TRPCError } from '@trpc/server';
+import { createBreaker } from '@edna/server-utils';
+import { logger } from '../logger.js';
 
 type AddressInput = {
   addressLine1: string;
@@ -30,6 +32,22 @@ function token(): string | null {
   return process.env.MAPBOX_TOKEN ?? process.env.MAPBOX_ACCESS_TOKEN ?? null;
 }
 
+// Circuit breaker around Mapbox HTTP: a Mapbox outage/slowdown fails fast and
+// self-heals instead of stacking slow requests on the API event loop. When open,
+// `fire` rejects — geocoding surfaces SERVICE_UNAVAILABLE, route estimates fall
+// back to null.
+const mapboxBreaker = createBreaker((url: string): Promise<Response> => fetch(url), {
+  name: 'mapbox',
+  timeoutMs: 4000,
+  errorThresholdPercentage: 50,
+  resetTimeoutMs: 15_000,
+  logger,
+});
+
+function mapboxFetch(url: string): Promise<Response> {
+  return mapboxBreaker.fire(url);
+}
+
 export async function drivingRouteEstimate(
   origin: Coordinate,
   destination: Coordinate,
@@ -41,7 +59,7 @@ export async function drivingRouteEstimate(
     `https://api.mapbox.com/directions/v5/mapbox/driving/${coords}` +
     `?overview=false&access_token=${encodeURIComponent(accessToken)}`;
   try {
-    const res = await fetch(url);
+    const res = await mapboxFetch(url);
     if (!res.ok) return null;
     const body = (await res.json()) as { routes?: Array<{ distance?: number; duration?: number }> };
     const route = body.routes?.[0];
@@ -57,6 +75,17 @@ export async function drivingRouteEstimate(
   } catch {
     return null;
   }
+}
+
+/**
+ * Straight-line (great-circle) ETA used as an experimental fallback when the live
+ * Mapbox driving route is unavailable (no token / Mapbox down). Rough: assumes a
+ * ~13.4 m/s (~30 mph) average urban speed. Gated behind ROUTE_ESTIMATE_V2 at the
+ * call site so default behavior is unchanged.
+ */
+export function straightLineEstimate(origin: Coordinate, destination: Coordinate): RouteEstimate {
+  const distanceM = metersBetween(origin, destination);
+  return { distanceM, durationSeconds: Math.round(distanceM / 13.4) };
 }
 
 export async function validateAddressPin(input: AddressInput): Promise<void> {
@@ -81,7 +110,16 @@ export async function validateAddressPin(input: AddressInput): Promise<void> {
   const url =
     `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(address)}.json` +
     `?limit=1&country=${encodeURIComponent(input.country ?? 'US')}&access_token=${encodeURIComponent(accessToken)}`;
-  const res = await fetch(url);
+  let res: Response;
+  try {
+    res = await mapboxFetch(url);
+  } catch {
+    // Breaker open or network failure — treat as a transient dependency outage.
+    throw new TRPCError({
+      code: 'SERVICE_UNAVAILABLE',
+      message: 'Address validation is temporarily unavailable.',
+    });
+  }
   if (!res.ok) {
     throw new TRPCError({
       code: 'SERVICE_UNAVAILABLE',

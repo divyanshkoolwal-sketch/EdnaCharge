@@ -1,0 +1,126 @@
+openapi: 3.1.0
+info:
+  title: EdnaCharge API (HTTP surface)
+  version: 0.0.0
+  description: >-
+    EdnaCharge's application API is a tRPC router mounted under `/trpc` (a typed
+    contract consumed by the mobile app via @trpc/client — see
+    `apps/api/src/router.ts` and `packages/schemas`). This document describes the
+    concrete HTTP surface (health, metrics, legal, Stripe webhooks, the tRPC
+    mount) and enumerates the tRPC routers under `x-trpc-routers`. Freshness is
+    enforced by `scripts/check-openapi.ts` (run as `pnpm openapi:check` in the
+    `verify` and docs CI jobs).
+servers:
+  - url: https://api.ednacharge.com
+    description: Production
+  - url: http://localhost:3000
+    description: Local dev (API_PORT)
+
+# The tRPC routers exposed under /trpc/<router>.<procedure>. Kept in sync with
+# apps/api/src/router.ts by scripts/check-openapi.ts.
+x-trpc-routers:
+  - health
+  - auth
+  - payment
+  - charger
+  - booking
+  - chat
+  - review
+  - notification
+  - moderation
+  - support
+  - access
+  - privacy
+
+paths:
+  /healthz:
+    get:
+      summary: Liveness probe
+      description: Always-200 process liveness (does not touch dependencies).
+      responses:
+        '200':
+          description: Service is up
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, enum: [ok] }
+                  service: { type: string }
+                  uptimeSec: { type: integer }
+  /readyz:
+    get:
+      summary: Readiness probe
+      description: Verifies the database (API/CSMS) or Redis (worker) is reachable.
+      responses:
+        '200':
+          description: Ready
+        '503':
+          description: A dependency is unavailable
+  /metrics:
+    get:
+      summary: Prometheus metrics
+      description: >-
+        Default Node process metrics plus `http_requests_total` and
+        `http_request_duration_seconds`. Intended to be scraped over a private
+        network. Exposition format v0.0.4.
+      responses:
+        '200':
+          description: Prometheus exposition
+          content:
+            text/plain: {}
+  /privacy:
+    get:
+      summary: Privacy policy (public legal page)
+      responses:
+        '200': { description: HTML page }
+  /terms:
+    get:
+      summary: Terms of service (public legal page)
+      responses:
+        '200': { description: HTML page }
+  /stripe/webhooks:
+    post:
+      summary: Stripe account/payment webhook
+      description: Signed with STRIPE_WEBHOOK_SECRET. Raw body, signature-verified.
+      responses:
+        '200': { description: Received }
+        '400': { description: Bad signature }
+  /stripe/webhooks/connect:
+    post:
+      summary: Stripe Connect (connected accounts) webhook
+      description: Signed with STRIPE_WEBHOOK_SECRET_CONNECT.
+      responses:
+        '200': { description: Received }
+        '400': { description: Bad signature }
+  /trpc/{procedure}:
+    post:
+      summary: tRPC procedure call (mutations) — httpBatchLink
+      parameters:
+        - name: procedure
+          in: path
+          required: true
+          schema: { type: string }
+          description: 'e.g. booking.request, payment.addPaymentMethod'
+      responses:
+        '200':
+          description: tRPC envelope (errors returned in-body; see x-trpc-unauthorized header)
+    get:
+      summary: tRPC procedure call (queries) — httpBatchLink
+      parameters:
+        - name: procedure
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: tRPC envelope }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Supabase access token, verified server-side via supabase.auth.getUser.
+security:
+  - bearerAuth: []

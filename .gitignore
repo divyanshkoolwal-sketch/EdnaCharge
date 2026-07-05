@@ -60,11 +60,18 @@ apps/mobile/*.provisionprofile
 *.aab
 *.xcarchive/
 
-# Local agent/tooling scratch
+# Local agent/tooling scratch (but keep committed Claude skills)
 .context/
-.claude/
+.claude/*
+!.claude/skills/
 .codex/
 .playwright-mcp/
+
+# Generated tooling output
+.profiles/
+docs/api-reference/
+*.sarif
+*.cpuprofile
 
 # Supabase/local infra state
 supabase/.temp/

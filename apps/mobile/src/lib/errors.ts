@@ -7,6 +7,7 @@
 import { Alert } from 'react-native';
 import { useAuth } from '../state/auth';
 import { Sentry } from './sentry';
+import { log } from './logger';
 
 export type ErrorOptions = {
   /** Human label of the feature being attempted, e.g. "Payments", "Booking". */
@@ -41,8 +42,7 @@ const REPORT_FEATURE = /^(auth|booking|session|payment|payment methods|stripe)$/
 
 function classify(err: unknown): { code: string | null; raw: AnyErr } {
   const e = err as AnyErr;
-  const code =
-    e?.data?.code ?? e?.shape?.data?.code ?? null;
+  const code = e?.data?.code ?? e?.shape?.data?.code ?? null;
   return { code, raw: e };
 }
 
@@ -79,9 +79,12 @@ export function handleError(err: unknown, opts: ErrorOptions = {}): void {
   //    Welcome. The tRPC fetch wrapper has already tried a refresh; if we got
   //    here the refresh also failed.
   if (code === 'UNAUTHORIZED' || /UNAUTHORIZED/i.test(rawMessage)) {
-    void useAuth.getState().signOut().catch(() => {
-      useAuth.getState().setSession(null);
-    });
+    void useAuth
+      .getState()
+      .signOut()
+      .catch(() => {
+        useAuth.getState().setSession(null);
+      });
     if (!opts.silent) {
       Alert.alert('Signed out', 'Your session expired. Please sign in again.');
     }
@@ -89,7 +92,7 @@ export function handleError(err: unknown, opts: ErrorOptions = {}): void {
   }
 
   if (opts.silent) {
-    console.warn('[handleError]', { code, message: rawMessage, opts });
+    log.warn('[handleError]', { code, message: rawMessage, feature: opts.feature });
     return;
   }
 
@@ -103,7 +106,7 @@ export function handleError(err: unknown, opts: ErrorOptions = {}): void {
   // 2. Server-side validation (zod) — extract the first useful field.
   const zod = parseZodMessage(rawMessage);
   if (zod) {
-    Alert.alert(opts.title ?? "Check your input", zod);
+    Alert.alert(opts.title ?? 'Check your input', zod);
     return;
   }
 
@@ -128,7 +131,7 @@ export function handleError(err: unknown, opts: ErrorOptions = {}): void {
   //    message: dev-mode Prisma / TRPC errors include stack traces, file
   //    paths, and SQL — none of which the user should see. Log the full
   //    detail to the console for debugging instead.
-  console.warn('[handleError uncategorised]', { code, message: rawMessage, raw });
+  log.warn('[handleError uncategorised]', { code, message: rawMessage });
   Alert.alert(
     opts.title ?? 'Something went wrong',
     looksLikeServerStack(rawMessage)
